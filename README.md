@@ -35,15 +35,22 @@ RustyNum is a high-performance numerical computation library written in Rust, le
 | `zeros`, `ones` | Array constructors |
 | `arange`, `linspace` | Range generators |
 | `mean`, `median` | Statistics (with axis support) |
+| `std`, `var` | Standard deviation & variance (with axis support) |
+| `percentile` | Percentile with linear interpolation (with axis support) |
 | `min`, `max` | Reduction (with axis support) |
+| `argmin`, `argmax` | Index of min/max value |
+| `top_k` | Top-k largest elements (indices + values) |
 | `sort` | Ascending sort |
 | `exp`, `log`, `sigmoid` | Element-wise math |
+| `softmax`, `log_softmax` | Numerically stable softmax (row-wise for N-D) |
+| `cosine_similarity` | Cosine similarity between vectors |
 | `dot`, `matmul` | Dot product, matrix multiply |
+| `cumsum` | Cumulative sum |
 | `reshape`, `squeeze`, `slice` | Shape manipulation |
 | `transpose`, `flip_axis` | Dimension reordering |
 | `concatenate` | Array joining |
 | `+`, `-`, `*`, `/` | Element-wise arithmetic |
-| `norm` | L2 norm |
+| `norm` | L1/L2 norm (with axis + keepdims) |
 
 ### Bitwise Operations (AVX-512)
 
@@ -171,10 +178,13 @@ Each 2 KB container is exactly 32 AVX-512 registers. A full VPOPCNTDQ sweep is 3
 - ~~HDC primitives~~ (BIND, BUNDLE, PERMUTE, DISTANCE)
 - ~~Int8 embeddings~~ (dot_i8, cosine_i8, norm_sq_i8)
 - ~~Blackboard parallelization~~ (lock-free split_at_mut threading)
+- ~~Statistics~~ (std, var, percentile with axis support)
+- ~~Search & selection~~ (argmin, argmax, top_k, cumsum)
+- ~~ML primitives~~ (cosine_similarity, softmax, log_softmax)
 
 ### Planned
 
-- Additional operations: argmin, argmax, std, var, cumsum, interp
+- Additional operations: interp
 - C++ and WASM bindings
 
 ### Not Planned
@@ -198,7 +208,7 @@ cd rustynum-rs
 cargo test
 ```
 
-249 tests (209 unit + 2 integration + 38 doc tests).
+292 tests (239 unit + 2 integration + 51 doc tests).
 
 ### Run Benchmarks
 
