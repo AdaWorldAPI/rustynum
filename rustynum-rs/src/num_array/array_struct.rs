@@ -114,6 +114,17 @@ where
         // Product of shape dimensions is more robust if data could be over-allocated (though not here).
         self.shape.iter().product()
     }
+
+    /// Consumes the array and returns the underlying data vector.
+    /// Enables zero-copy transfer to Arrow buffers.
+    pub fn into_data(self) -> Vec<T> {
+        self.data
+    }
+
+    /// Consumes the array and returns (data, shape, strides).
+    pub fn into_parts(self) -> (Vec<T>, Vec<usize>, Vec<usize>) {
+        (self.data, self.shape, self.strides)
+    }
 }
 
 impl<T, Ops> NumArray<T, Ops>
