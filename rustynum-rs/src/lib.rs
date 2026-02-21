@@ -4,8 +4,6 @@
 //! This crate provides efficient numerical arrays and operations, including basic arithmetic, dot products,
 //! and transformations.
 
-#![feature(array_chunks)]
-#![feature(slice_as_chunks)]
 #![feature(portable_simd)]
 
 mod helpers;
@@ -15,3 +13,4 @@ pub mod simd_ops;
 pub mod traits;
 
 pub use num_array::{NumArray, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
+pub use simd_ops::{BitwiseSimdOps, HammingSimdOps, SimdOps};
