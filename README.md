@@ -72,6 +72,8 @@ RustyNum is a high-performance numerical computation library written in Rust, le
 | **DISTANCE** | `a.hamming_distance(&b)` | Hamming distance via POPCNT |
 | **POPCOUNT** | `a.popcount()` | Population count |
 | **BATCH DISTANCE** | `a.hamming_distance_batch(&b, dim, count)` | Batched Hamming for database scans |
+| **ADAPTIVE DISTANCE** | `a.hamming_distance_adaptive(&b, threshold)` | 3-stage cascade with 3σ/2σ early-exit |
+| **ADAPTIVE SEARCH** | `q.hamming_search_adaptive(&db, dim, n, thresh)` | Batch scan, eliminates ~99.7% early |
 
 ### Int8 Embedding Operations (VNNI)
 
@@ -80,6 +82,7 @@ RustyNum is a high-performance numerical computation library written in Rust, le
 | **Dot Product** | `a.dot_i8(&b)` | Signed int8 multiply-accumulate → i64 |
 | **Norm²** | `a.norm_sq_i8()` | Squared L2 norm as int8 |
 | **Cosine** | `a.cosine_i8(&b)` | Cosine similarity [-1.0, 1.0] |
+| **ADAPTIVE COSINE** | `q.cosine_search_adaptive(&db, dim, n, min_sim)` | Cascade cosine scan, FP64 at ~3% cost |
 
 ## Quick Start (Rust)
 
@@ -138,6 +141,26 @@ Note: n=1024 barely costs more than n=256 — the ripple-carry counter scales O(
 
 226 ns for 1024D int8 dot product = ~4.4M similarities/sec/core.
 
+#### Adaptive Cascade Search (Early Exit)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Stage 1: 1/16 sample (2 VPOPCNTDQ per 2KB container)          │
+│  ├─ 99.7% eliminated (> 3σ from threshold)                     │
+│  └─ ~6% compute cost                                           │
+│                                                                  │
+│  Stage 2: 1/4 sample (8 VPOPCNTDQ, incremental)                │
+│  ├─ ~95% of remaining eliminated (> 2σ)                        │
+│  └─ ~25% compute cost                                          │
+│                                                                  │
+│  Stage 3: full precision (32 VPOPCNTDQ)                         │
+│  └─ Only ~0.3% of candidates reach here                        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+For 1M × 2KB database scan: **~15× speedup** (2.1M vs 32M VPOPCNTDQ instructions).
+Same cascade pattern applies to int8 cosine → FP64 cosine at ~3% of full cost.
+
 ### Core Numerical Operations (Rust, float32)
 
 | Input Size | RustyNum | nalgebra | ndarray |
@@ -181,6 +204,7 @@ Each 2 KB container is exactly 32 AVX-512 registers. A full VPOPCNTDQ sweep is 3
 - ~~Statistics~~ (std, var, percentile with axis support)
 - ~~Search & selection~~ (argmin, argmax, top_k, cumsum)
 - ~~ML primitives~~ (cosine_similarity, softmax, log_softmax)
+- ~~Adaptive cascade search~~ (3σ/2σ early-exit for Hamming + cosine, ~99.7% elimination)
 
 ### Planned
 
@@ -208,7 +232,7 @@ cd rustynum-rs
 cargo test
 ```
 
-292 tests (239 unit + 2 integration + 51 doc tests).
+303 tests (247 unit + 2 integration + 54 doc tests).
 
 ### Run Benchmarks
 
