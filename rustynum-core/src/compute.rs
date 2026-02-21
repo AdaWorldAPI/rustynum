@@ -30,7 +30,7 @@
 use std::sync::OnceLock;
 
 /// Detected compute capabilities of the current hardware.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ComputeCaps {
     pub avx512f: bool,
     pub avx512bw: bool,
@@ -150,6 +150,12 @@ pub enum ComputeTier {
     Scalar,
 }
 
+impl Default for ComputeTier {
+    fn default() -> Self {
+        Self::Scalar
+    }
+}
+
 /// Recommend compute tier based on workload characteristics.
 pub fn recommend_tier(
     m: usize,
@@ -201,6 +207,12 @@ pub enum Precision {
     Half,
     /// Full f32 precision
     Full,
+}
+
+impl Default for Precision {
+    fn default() -> Self {
+        Self::Full
+    }
 }
 
 /// Print detected capabilities summary.
