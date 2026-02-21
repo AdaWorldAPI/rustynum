@@ -39,6 +39,7 @@ pub mod phase;
 pub mod cogrecord_v3;
 pub mod carrier;
 pub mod focus;
+pub mod holograph;
 
 pub use phase::{
     phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
@@ -75,4 +76,15 @@ pub use focus::{
     focus_delta, CompactDelta,
     focus_xor_auto,
     FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z,
+};
+
+pub use holograph::{
+    GaussianLUT, WaveletTemplate,
+    gabor_write, gabor_read,
+    delta_cube_xor, delta_cube_sub,
+    delta_cube_write_gabor, delta_cube_read_gabor,
+    delta_cube_recover_xor, delta_cube_recover_phase,
+    SpatialTransform,
+    spatial_bind, spatial_unbind,
+    spatial_bind_i8, spatial_unbind_i8,
 };
