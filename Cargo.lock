@@ -4606,6 +4606,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustynum-archive"
+version = "0.1.0"
+dependencies = [
+ "rustynum-rs",
+]
+
+[[package]]
 name = "rustynum-arrow"
 version = "0.1.0"
 dependencies = [

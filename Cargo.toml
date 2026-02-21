@@ -7,5 +7,6 @@ members = [
     "rustymkl",
     "rustynum-arrow",
     "rustynum-holo",
+    "rustynum-archive",
     "bindings/python",
 ]
