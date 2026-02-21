@@ -13,10 +13,13 @@
 #![feature(portable_simd)]
 
 pub mod blackboard;
+pub mod compute;
 pub mod layout;
 pub mod parallel;
+pub mod prefilter;
 pub mod simd;
 
 pub use blackboard::{Blackboard, BufferHandle};
+pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
