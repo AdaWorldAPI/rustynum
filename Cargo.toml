@@ -11,5 +11,6 @@ members = [
     "rustynum-archive-v3",
     "rustynum-carrier",
     "rustynum-focus",
+    "rustynum-oracle",
     "bindings/python",
 ]

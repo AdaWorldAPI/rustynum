@@ -4662,6 +4662,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustynum-oracle"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.5",
+ "rustynum-core",
+]
+
+[[package]]
 name = "rustynum-rs"
 version = "0.1.0"
 dependencies = [
