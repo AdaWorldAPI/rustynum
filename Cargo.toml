@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "rustynum-core",
+    "rustynum-rs",
+    "rustyblas",
+    "rustymkl",
+    "bindings/python",
+]
