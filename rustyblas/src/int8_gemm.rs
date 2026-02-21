@@ -152,15 +152,23 @@ pub fn int8_gemm_i32(
 
     #[cfg(target_arch = "x86_64")]
     {
+        // Prefer 512-bit VNNI if available (servers: Sapphire Rapids, etc.)
         if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512bw") {
             unsafe {
-                int8_gemm_vnni(a, &b_t, c, m, n, k);
+                int8_gemm_vnni_512(a, &b_t, c, m, n, k);
+            }
+            return;
+        }
+        // Fall back to 256-bit AVX-VNNI (laptops: Meteor Lake U9 185H, etc.)
+        if is_x86_feature_detected!("avxvnni") {
+            unsafe {
+                int8_gemm_vnni_256(a, &b_t, c, m, n, k);
             }
             return;
         }
     }
 
-    // Scalar fallback
+    // Scalar fallback (no VNNI)
     int8_gemm_scalar(a, &b_t, c, m, n, k);
 }
 
@@ -177,12 +185,12 @@ fn int8_gemm_scalar(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize, k: 
     }
 }
 
-/// AVX-512 VNNI INT8 GEMM using `vpdpbusd`.
+/// AVX-512 VNNI INT8 GEMM using 512-bit `vpdpbusd` (64 MACs/instruction).
 ///
 /// Safety: requires avx512vnni + avx512bw. B_t is K-transposed (column-major).
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
-unsafe fn int8_gemm_vnni(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize, k: usize) {
+unsafe fn int8_gemm_vnni_512(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize, k: usize) {
     for i in 0..m {
         let a_row = &a[i * k..];
 
@@ -217,6 +225,59 @@ unsafe fn int8_gemm_vnni(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize
 
             // Horizontal reduction of 16 i32 lanes
             c[i * n + j] = _mm512_reduce_add_epi32(acc);
+        }
+    }
+}
+
+/// AVX2-VNNI INT8 GEMM using 256-bit `vpdpbusd` (32 MACs/instruction).
+///
+/// For Meteor Lake (U9 185H) and other AVX2+VNNI laptops.
+/// Same algorithm, half the width: 8 lanes x 4 pairs = 32 MACs per instruction.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,avxvnni")]
+unsafe fn int8_gemm_vnni_256(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize, k: usize) {
+    for i in 0..m {
+        let a_row = &a[i * k..];
+
+        for j in 0..n {
+            let b_col = &b_t[j * k..];
+            let mut acc = _mm256_setzero_si256();
+
+            // Main loop: 32 bytes per iteration (256-bit)
+            let mut p = 0;
+            while p + 32 <= k {
+                let a_vec = _mm256_loadu_si256(a_row[p..].as_ptr() as *const __m256i);
+                let b_vec = _mm256_loadu_si256(b_col[p..].as_ptr() as *const __m256i);
+                acc = _mm256_dpbusd_epi32(acc, a_vec, b_vec);
+                p += 32;
+            }
+
+            // Handle remaining bytes with zero-padded buffer
+            if p < k {
+                let mut a_buf = [0u8; 32];
+                let mut b_buf = [0u8; 32];
+                let remaining = k - p;
+                a_buf[..remaining].copy_from_slice(&a_row[p..p + remaining]);
+                for idx in 0..remaining {
+                    b_buf[idx] = b_col[p + idx] as u8;
+                }
+
+                let a_vec = _mm256_loadu_si256(a_buf.as_ptr() as *const __m256i);
+                let b_vec = _mm256_loadu_si256(b_buf.as_ptr() as *const __m256i);
+                acc = _mm256_dpbusd_epi32(acc, a_vec, b_vec);
+            }
+
+            // Horizontal reduction of 8 i32 lanes
+            // Extract high 128 and add to low 128
+            let hi = _mm256_extracti128_si256(acc, 1);
+            let lo = _mm256_castsi256_si128(acc);
+            let sum128 = _mm_add_epi32(lo, hi);
+            // Horizontal add within 128 bits
+            let shuf = _mm_shuffle_epi32(sum128, 0b_01_00_11_10);
+            let sum64 = _mm_add_epi32(sum128, shuf);
+            let shuf2 = _mm_shuffle_epi32(sum64, 0b_00_00_00_01);
+            let sum32 = _mm_add_epi32(sum64, shuf2);
+            c[i * n + j] = _mm_cvtsi128_si32(sum32);
         }
     }
 }
@@ -434,4 +495,85 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_quantize_f32_to_i4_roundtrip() {
+        let data: Vec<f32> = (0..16).map(|i| (i as f32 - 8.0) * 0.5).collect();
+        let (packed, params) = quantize_f32_to_i4(&data);
+        let recovered = dequantize_i4_to_f32(&packed, &params, data.len());
+
+        for i in 0..data.len() {
+            let err = (recovered[i] - data[i]).abs();
+            // int4 has only 16 levels — coarser than int8
+            assert!(err < params.scale * 1.5,
+                "int4 roundtrip error at {}: {} vs {} (err={})",
+                i, recovered[i], data[i], err);
+        }
+    }
+
+    #[test]
+    fn test_quantize_i4_packing() {
+        // 8 values should pack into 4 bytes
+        let data = vec![1.0f32, -1.0, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0];
+        let (packed, _params) = quantize_f32_to_i4(&data);
+        assert_eq!(packed.len(), 4); // 8 values × 4 bits / 8 bits per byte = 4 bytes
+    }
+}
+
+// ============================================================================
+// INT4 Quantization
+// ============================================================================
+
+/// Quantize f32 data to int4 (packed: 2 values per byte).
+///
+/// 1024D embedding → 512 bytes (quarter of Container 3).
+/// 2048D embedding → 1024 bytes (half of Container 3).
+///
+/// Uses symmetric quantization: scale = max(|x|) / 7
+/// Values are clamped to [-8, 7] and packed as signed 4-bit nibbles.
+///
+/// Packing: high nibble = even index, low nibble = odd index.
+pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
+    if data.is_empty() {
+        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+    }
+
+    let abs_max = data.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs()));
+    let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
+
+    let packed_len = (data.len() + 1) / 2; // ceil(len / 2)
+    let mut packed = vec![0u8; packed_len];
+
+    for i in (0..data.len()).step_by(2) {
+        let v0 = (data[i] / scale).round().clamp(-8.0, 7.0) as i8;
+        let v1 = if i + 1 < data.len() {
+            (data[i + 1] / scale).round().clamp(-8.0, 7.0) as i8
+        } else {
+            0
+        };
+
+        // Pack: high nibble = v0 (even), low nibble = v1 (odd)
+        packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
+    }
+
+    (packed, QuantParams { scale, zero_point: 0 })
+}
+
+/// Dequantize int4 packed data back to f32.
+pub fn dequantize_i4_to_f32(packed: &[u8], params: &QuantParams, len: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(len);
+
+    for i in 0..packed.len() {
+        // High nibble (even index)
+        let hi = ((packed[i] >> 4) as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(hi as f32 * params.scale);
+        if out.len() >= len { break; }
+
+        // Low nibble (odd index)
+        let lo = (packed[i] as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(lo as f32 * params.scale);
+        if out.len() >= len { break; }
+    }
+
+    out
 }

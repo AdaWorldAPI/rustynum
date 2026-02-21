@@ -1,15 +1,23 @@
 //! BLAS Level 3: Matrix-matrix operations.
 //!
-//! The crown jewel is GEMM — cache-blocked with AVX-512 microkernels.
+//! The crown jewel is GEMM — cache-blocked with AVX-512/AVX2 microkernels.
 //! Uses the Goto BLAS algorithm: pack panels of A and B into contiguous
 //! cache-friendly buffers, then invoke the microkernel on tiles.
+//!
+//! The SIMD width adapts at compile time via feature flags:
+//! - `avx512`: f32x16 (6x16 microkernel), f64x8 (6x8 microkernel)
+//! - `avx2`:   f32x8  (6x8  microkernel), f64x4 (4x4 microkernel)
 
 use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
 use rustynum_core::parallel::parallel_for_chunks;
 use rustynum_core::simd::{self, F32_LANES, F64_LANES, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC, SGEMM_NR, DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR};
-use std::simd::f32x16;
-use std::simd::f64x8;
 use std::simd::num::SimdFloat;
+
+// SIMD vector types selected by feature flag — no runtime branching
+#[cfg(feature = "avx512")]
+use std::simd::{f32x16 as F32Simd, f64x8 as F64Simd};
+#[cfg(not(feature = "avx512"))]
+use std::simd::{f32x8 as F32Simd, f64x4 as F64Simd};
 
 /// Wrapper to send a raw mutable pointer across thread boundaries.
 /// Safety: The caller must ensure non-overlapping access between threads.
@@ -375,37 +383,37 @@ fn sgemm_microkernel_6x16(
     nr: usize,
     kb: usize,
 ) {
-    // Accumulator registers for 6 rows x 16 columns
-    let mut acc = [f32x16::splat(0.0); 6];
+    // Accumulator registers for MR rows x NR columns
+    let mut acc = [F32Simd::splat(0.0); 6];
 
     // Main K loop
     for p in 0..kb {
         // Load NR elements of B for this K step
         let b_base = p * SGEMM_NR;
         let b_vec = if nr >= SGEMM_NR {
-            f32x16::from_slice(&packed_b[b_base..])
+            F32Simd::from_slice(&packed_b[b_base..])
         } else {
-            // Partial: pad with zeros
-            let mut buf = [0.0f32; 16];
+            // Partial: pad with zeros — use NR-sized buf
+            let mut tmp = vec![0.0f32; SGEMM_NR];
             for j in 0..nr {
-                buf[j] = packed_b[b_base + j];
+                tmp[j] = packed_b[b_base + j];
             }
-            f32x16::from_array(buf)
+            F32Simd::from_slice(&tmp)
         };
 
         // Load MR elements of A and broadcast-multiply
         let a_base = p * SGEMM_MR;
-        for ir in 0..mr.min(6) {
-            let a_val = f32x16::splat(packed_a[a_base + ir]);
+        for ir in 0..mr.min(SGEMM_MR) {
+            let a_val = F32Simd::splat(packed_a[a_base + ir]);
             acc[ir] += a_val * b_vec;
         }
     }
 
     // Store results back to C with alpha scaling
-    let alpha_v = f32x16::splat(alpha);
-    for ir in 0..mr.min(6) {
+    let alpha_v = F32Simd::splat(alpha);
+    for ir in 0..mr.min(SGEMM_MR) {
         let result = acc[ir] * alpha_v;
-        let mut buf = result.to_array();
+        let buf = result.to_array();
         for jr in 0..nr {
             let idx = layout.index(row + ir, col + jr, ldc);
             c[idx] += buf[jr];
@@ -697,7 +705,8 @@ fn dgemm_macrokernel(
     }
 }
 
-/// AVX-512 microkernel for DGEMM: 6 rows × 8 columns using f64x8.
+/// DGEMM microkernel: MR rows x NR columns using F64Simd.
+/// AVX-512: 6x8 (f64x8), AVX2: 4x4 (f64x4).
 #[inline(always)]
 fn dgemm_microkernel_6x8(
     alpha: f64,
@@ -712,29 +721,29 @@ fn dgemm_microkernel_6x8(
     nr: usize,
     kb: usize,
 ) {
-    let mut acc = [f64x8::splat(0.0); 6];
+    let mut acc = [F64Simd::splat(0.0); 6];
 
     for p in 0..kb {
         let b_base = p * DGEMM_NR;
         let b_vec = if nr >= DGEMM_NR {
-            f64x8::from_slice(&packed_b[b_base..])
+            F64Simd::from_slice(&packed_b[b_base..])
         } else {
-            let mut buf = [0.0f64; 8];
+            let mut tmp = vec![0.0f64; DGEMM_NR];
             for j in 0..nr {
-                buf[j] = packed_b[b_base + j];
+                tmp[j] = packed_b[b_base + j];
             }
-            f64x8::from_array(buf)
+            F64Simd::from_slice(&tmp)
         };
 
         let a_base = p * DGEMM_MR;
-        for ir in 0..mr.min(6) {
-            let a_val = f64x8::splat(packed_a[a_base + ir]);
+        for ir in 0..mr.min(DGEMM_MR) {
+            let a_val = F64Simd::splat(packed_a[a_base + ir]);
             acc[ir] += a_val * b_vec;
         }
     }
 
-    let alpha_v = f64x8::splat(alpha);
-    for ir in 0..mr.min(6) {
+    let alpha_v = F64Simd::splat(alpha);
+    for ir in 0..mr.min(DGEMM_MR) {
         let result = acc[ir] * alpha_v;
         let buf = result.to_array();
         for jr in 0..nr {

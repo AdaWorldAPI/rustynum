@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "Shared SIMD primitives and zero-copy blackboard for rustynum ecosystem"
 
+[features]
+default = ["avx512"]
+# AVX-512: f32x16, f64x8, u8x64 — for servers/cloud (Sapphire Rapids, EPYC, etc.)
+avx512 = []
+# AVX2: f32x8, f64x4, u8x32 — for laptops (Meteor Lake U9 185H, etc.)
+# Build with: cargo build --no-default-features --features avx2
+avx2 = []
+
 [dependencies]
 
 [dev-dependencies]
