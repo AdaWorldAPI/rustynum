@@ -1,5 +1,7 @@
 mod array_struct;
+pub mod bitwise;
 mod constructors;
+pub mod hdc;
 mod impl_clone_from;
 pub mod linalg;
 mod manipulation;
