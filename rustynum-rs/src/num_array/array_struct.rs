@@ -519,6 +519,111 @@ where
         Self::new_with_shape(sigmoid_data, self.shape.clone())
     }
 
+    /// Returns the index of the minimum value in the array.
+    ///
+    /// # Returns
+    /// The index of the minimum value.
+    ///
+    /// # Panics
+    /// Panics if the array is empty.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5]);
+    /// assert_eq!(array.argmin(), 1);
+    /// ```
+    pub fn argmin(&self) -> usize {
+        assert!(!self.data.is_empty(), "Cannot compute argmin of empty array.");
+        let mut min_idx = 0;
+        let mut min_val = self.data[0];
+        for (i, &val) in self.data.iter().enumerate().skip(1) {
+            if val < min_val {
+                min_val = val;
+                min_idx = i;
+            }
+        }
+        min_idx
+    }
+
+    /// Returns the index of the maximum value in the array.
+    ///
+    /// # Returns
+    /// The index of the maximum value.
+    ///
+    /// # Panics
+    /// Panics if the array is empty.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5]);
+    /// assert_eq!(array.argmax(), 2);
+    /// ```
+    pub fn argmax(&self) -> usize {
+        assert!(!self.data.is_empty(), "Cannot compute argmax of empty array.");
+        let mut max_idx = 0;
+        let mut max_val = self.data[0];
+        for (i, &val) in self.data.iter().enumerate().skip(1) {
+            if val > max_val {
+                max_val = val;
+                max_idx = i;
+            }
+        }
+        max_idx
+    }
+
+    /// Returns the indices and values of the top-k largest elements.
+    ///
+    /// # Parameters
+    /// * `k` - The number of top elements to return.
+    ///
+    /// # Returns
+    /// A tuple of (indices, values) sorted by descending value.
+    ///
+    /// # Panics
+    /// Panics if k is greater than the array length.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5, 9.0, 2.6]);
+    /// let (indices, values) = array.top_k(3);
+    /// assert_eq!(indices, vec![4, 2, 0]);
+    /// ```
+    pub fn top_k(&self, k: usize) -> (Vec<usize>, Vec<T>) {
+        assert!(k <= self.data.len(), "k must be <= array length.");
+        let mut indexed: Vec<(usize, T)> =
+            self.data.iter().copied().enumerate().collect();
+        indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        indexed.truncate(k);
+        let indices: Vec<usize> = indexed.iter().map(|&(i, _)| i).collect();
+        let values: Vec<T> = indexed.iter().map(|&(_, v)| v).collect();
+        (indices, values)
+    }
+
+    /// Computes the cumulative sum of the array.
+    ///
+    /// # Returns
+    /// A new `NumArray` instance where each element is the cumulative sum up to that index.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0]);
+    /// let cumsum = array.cumsum();
+    /// assert_eq!(cumsum.get_data(), &[1.0, 3.0, 6.0, 10.0]);
+    /// ```
+    pub fn cumsum(&self) -> NumArray<T, Ops> {
+        let mut result = Vec::with_capacity(self.data.len());
+        let mut acc = T::from_u32(0);
+        for &val in &self.data {
+            acc = acc + val;
+            result.push(acc);
+        }
+        NumArray::new_with_shape(result, self.shape.clone())
+    }
+
     /// Extracts a slice representing a row from the matrix.
     ///
     /// # Parameters
@@ -552,6 +657,133 @@ where
         (0..self.shape()[0])
             .map(|i| self.data[i * self.shape()[1] + col])
             .collect()
+    }
+
+    /// Computes the cosine similarity between two 1D arrays.
+    ///
+    /// cosine_similarity = dot(a, b) / (norm(a) * norm(b))
+    ///
+    /// # Parameters
+    /// * `other` - The other array to compute similarity with.
+    ///
+    /// # Returns
+    /// The cosine similarity as a scalar in [-1.0, 1.0].
+    ///
+    /// # Panics
+    /// Panics if the arrays have different lengths or are not 1D.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let a = NumArrayF32::new(vec![1.0, 0.0, 0.0]);
+    /// let b = NumArrayF32::new(vec![0.0, 1.0, 0.0]);
+    /// let sim = a.cosine_similarity(&b);
+    /// assert!((sim - 0.0).abs() < 1e-5);
+    /// ```
+    pub fn cosine_similarity(&self, other: &Self) -> T {
+        assert_eq!(
+            self.data.len(),
+            other.data.len(),
+            "Arrays must have the same length for cosine similarity."
+        );
+        let dot = Ops::dot_product(&self.data, &other.data);
+        let norm_a = Ops::l2_norm(&self.data);
+        let norm_b = Ops::l2_norm(&other.data);
+        let denom = norm_a * norm_b;
+        if denom == T::from_u32(0) {
+            T::from_u32(0)
+        } else {
+            dot / denom
+        }
+    }
+
+    /// Applies the softmax function along the last axis.
+    ///
+    /// softmax(x_i) = exp(x_i - max(x)) / sum(exp(x_j - max(x)))
+    ///
+    /// Numerically stable implementation using max subtraction.
+    ///
+    /// # Returns
+    /// A new `NumArray` with the same shape where each row sums to 1.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+    /// let sm = array.softmax();
+    /// let sum: f32 = sm.get_data().iter().sum();
+    /// assert!((sum - 1.0).abs() < 1e-5);
+    /// ```
+    pub fn softmax(&self) -> Self {
+        if self.shape.len() <= 1 {
+            // 1D case
+            let max_val = Ops::max_simd(&self.data);
+            let exp_data: Vec<T> = self.data.iter().map(|&x| (x - max_val).exp()).collect();
+            let sum: T = exp_data.iter().copied().fold(T::from_u32(0), |a, b| a + b);
+            let result: Vec<T> = exp_data.iter().map(|&x| x / sum).collect();
+            Self::new_with_shape(result, self.shape.clone())
+        } else {
+            // N-D case: apply softmax along the last axis
+            let last_dim = *self.shape.last().unwrap();
+            let num_rows = self.data.len() / last_dim;
+            let mut result = Vec::with_capacity(self.data.len());
+            for i in 0..num_rows {
+                let row = &self.data[i * last_dim..(i + 1) * last_dim];
+                let max_val = Ops::max_simd(row);
+                let exp_row: Vec<T> = row.iter().map(|&x| (x - max_val).exp()).collect();
+                let sum: T = exp_row.iter().copied().fold(T::from_u32(0), |a, b| a + b);
+                result.extend(exp_row.iter().map(|&x| x / sum));
+            }
+            Self::new_with_shape(result, self.shape.clone())
+        }
+    }
+
+    /// Applies the log-softmax function along the last axis.
+    ///
+    /// log_softmax(x_i) = x_i - max(x) - log(sum(exp(x_j - max(x))))
+    ///
+    /// More numerically stable than log(softmax(x)).
+    ///
+    /// # Returns
+    /// A new `NumArray` with the same shape.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+    /// let lsm = array.log_softmax();
+    /// // exp(log_softmax) should sum to 1
+    /// let sum: f32 = lsm.get_data().iter().map(|&x| x.exp()).sum();
+    /// assert!((sum - 1.0).abs() < 1e-5);
+    /// ```
+    pub fn log_softmax(&self) -> Self {
+        if self.shape.len() <= 1 {
+            let max_val = Ops::max_simd(&self.data);
+            let shifted: Vec<T> = self.data.iter().map(|&x| x - max_val).collect();
+            let exp_sum: T = shifted
+                .iter()
+                .copied()
+                .fold(T::from_u32(0), |a, b| a + b.exp());
+            let log_sum = exp_sum.log();
+            let result: Vec<T> = shifted.iter().map(|&x| x - log_sum).collect();
+            Self::new_with_shape(result, self.shape.clone())
+        } else {
+            let last_dim = *self.shape.last().unwrap();
+            let num_rows = self.data.len() / last_dim;
+            let mut result = Vec::with_capacity(self.data.len());
+            for i in 0..num_rows {
+                let row = &self.data[i * last_dim..(i + 1) * last_dim];
+                let max_val = Ops::max_simd(row);
+                let shifted: Vec<T> = row.iter().map(|&x| x - max_val).collect();
+                let exp_sum: T = shifted
+                    .iter()
+                    .copied()
+                    .fold(T::from_u32(0), |a, b| a + b.exp());
+                let log_sum = exp_sum.log();
+                result.extend(shifted.iter().map(|&x| x - log_sum));
+            }
+            Self::new_with_shape(result, self.shape.clone())
+        }
     }
 
     /// Computes the maximum value along the specified axis.
@@ -1513,5 +1745,161 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_argmin_f32() {
+        let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5, 2.0]);
+        assert_eq!(array.argmin(), 1);
+    }
+
+    #[test]
+    fn test_argmax_f32() {
+        let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5, 2.0]);
+        assert_eq!(array.argmax(), 2);
+    }
+
+    #[test]
+    fn test_argmin_f64() {
+        let array = NumArrayF64::new(vec![5.0, 2.0, 8.0, 1.0, 3.0]);
+        assert_eq!(array.argmin(), 3);
+    }
+
+    #[test]
+    fn test_argmax_f64() {
+        let array = NumArrayF64::new(vec![5.0, 2.0, 8.0, 1.0, 3.0]);
+        assert_eq!(array.argmax(), 2);
+    }
+
+    #[test]
+    fn test_top_k_f32() {
+        let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5, 9.0, 2.6]);
+        let (indices, values) = array.top_k(3);
+        assert_eq!(indices, vec![4, 2, 0]);
+        assert_eq!(values, vec![9.0, 4.0, 3.0]);
+    }
+
+    #[test]
+    fn test_top_k_all() {
+        let array = NumArrayF32::new(vec![2.0, 1.0, 3.0]);
+        let (indices, values) = array.top_k(3);
+        assert_eq!(indices, vec![2, 0, 1]);
+        assert_eq!(values, vec![3.0, 2.0, 1.0]);
+    }
+
+    #[test]
+    fn test_cumsum_f32() {
+        let array = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0]);
+        let cumsum = array.cumsum();
+        assert_eq!(cumsum.get_data(), &[1.0, 3.0, 6.0, 10.0]);
+    }
+
+    #[test]
+    fn test_cumsum_f64() {
+        let array = NumArrayF64::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        let cumsum = array.cumsum();
+        assert_eq!(cumsum.get_data(), &[1.0, 3.0, 6.0, 10.0, 15.0]);
+    }
+
+    #[test]
+    fn test_cumsum_single() {
+        let array = NumArrayF32::new(vec![42.0]);
+        assert_eq!(array.cumsum().get_data(), &[42.0]);
+    }
+
+    #[test]
+    fn test_cosine_similarity_orthogonal() {
+        let a = NumArrayF32::new(vec![1.0, 0.0, 0.0]);
+        let b = NumArrayF32::new(vec![0.0, 1.0, 0.0]);
+        let sim = a.cosine_similarity(&b);
+        assert!((sim - 0.0).abs() < 1e-5, "Expected 0.0, got {}", sim);
+    }
+
+    #[test]
+    fn test_cosine_similarity_identical() {
+        let a = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+        let sim = a.cosine_similarity(&a);
+        assert!((sim - 1.0).abs() < 1e-5, "Expected 1.0, got {}", sim);
+    }
+
+    #[test]
+    fn test_cosine_similarity_opposite() {
+        let a = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+        let b = NumArrayF32::new(vec![-1.0, -2.0, -3.0]);
+        let sim = a.cosine_similarity(&b);
+        assert!((sim - (-1.0)).abs() < 1e-5, "Expected -1.0, got {}", sim);
+    }
+
+    #[test]
+    fn test_cosine_similarity_f64() {
+        let a = NumArrayF64::new(vec![1.0, 0.0]);
+        let b = NumArrayF64::new(vec![1.0, 1.0]);
+        let sim = a.cosine_similarity(&b);
+        let expected = 1.0 / 2.0_f64.sqrt();
+        assert!(
+            (sim - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            sim
+        );
+    }
+
+    #[test]
+    fn test_softmax_1d() {
+        let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+        let sm = array.softmax();
+        let sum: f32 = sm.get_data().iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "Softmax should sum to 1, got {}", sum);
+        // Values should be monotonically increasing
+        assert!(sm.get_data()[0] < sm.get_data()[1]);
+        assert!(sm.get_data()[1] < sm.get_data()[2]);
+    }
+
+    #[test]
+    fn test_softmax_2d() {
+        let data = vec![1.0, 2.0, 3.0, 1.0, 2.0, 3.0];
+        let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
+        let sm = array.softmax();
+        assert_eq!(sm.shape(), &[2, 3]);
+        // Each row should sum to 1
+        let row0_sum: f32 = sm.get_data()[0..3].iter().sum();
+        let row1_sum: f32 = sm.get_data()[3..6].iter().sum();
+        assert!((row0_sum - 1.0).abs() < 1e-5);
+        assert!((row1_sum - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_softmax_numerical_stability() {
+        // Large values should not cause overflow
+        let array = NumArrayF32::new(vec![1000.0, 1001.0, 1002.0]);
+        let sm = array.softmax();
+        let sum: f32 = sm.get_data().iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "Softmax should be stable, got sum {}", sum);
+    }
+
+    #[test]
+    fn test_log_softmax_1d() {
+        let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+        let lsm = array.log_softmax();
+        // exp(log_softmax) should sum to 1
+        let sum: f32 = lsm.get_data().iter().map(|&x| x.exp()).sum();
+        assert!((sum - 1.0).abs() < 1e-5);
+        // All values should be negative (log of probability)
+        for &v in lsm.get_data() {
+            assert!(v <= 0.0, "Log-softmax values should be <= 0, got {}", v);
+        }
+    }
+
+    #[test]
+    fn test_log_softmax_2d() {
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
+        let lsm = array.log_softmax();
+        assert_eq!(lsm.shape(), &[2, 3]);
+        // Each row's exp should sum to 1
+        let row0_sum: f32 = lsm.get_data()[0..3].iter().map(|&x| x.exp()).sum();
+        let row1_sum: f32 = lsm.get_data()[3..6].iter().map(|&x| x.exp()).sum();
+        assert!((row0_sum - 1.0).abs() < 1e-5);
+        assert!((row1_sum - 1.0).abs() < 1e-5);
     }
 }
