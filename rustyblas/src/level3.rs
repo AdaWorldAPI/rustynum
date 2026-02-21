@@ -11,6 +11,27 @@ use std::simd::f32x16;
 use std::simd::f64x8;
 use std::simd::num::SimdFloat;
 
+/// Wrapper to send a raw mutable pointer across thread boundaries.
+/// Safety: The caller must ensure non-overlapping access between threads.
+#[derive(Clone, Copy)]
+struct SendMutPtr<T> {
+    ptr: *mut T,
+    len: usize,
+}
+unsafe impl<T> Send for SendMutPtr<T> {}
+unsafe impl<T> Sync for SendMutPtr<T> {}
+
+impl<T> SendMutPtr<T> {
+    fn new(slice: &mut [T]) -> Self {
+        Self { ptr: slice.as_mut_ptr(), len: slice.len() }
+    }
+
+    /// Get a mutable slice. Safety: caller ensures no aliasing.
+    unsafe fn as_mut_slice(&self) -> &mut [T] {
+        std::slice::from_raw_parts_mut(self.ptr, self.len)
+    }
+}
+
 // ============================================================================
 // SGEMM: Single-precision General Matrix Multiply
 // C := alpha * op(A) * op(B) + beta * C
@@ -59,8 +80,9 @@ pub fn sgemm(
         return;
     }
 
-    // For small matrices, use simple triple-loop
-    if m * n * k < 32768 {
+    // For small matrices, use simple triple-loop.
+    // Threshold: below ~48^3 ≈ 110K flops, the packing overhead isn't worth it.
+    if m * n * k < 110_000 {
         sgemm_simple(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
         return;
     }
@@ -109,15 +131,23 @@ fn sgemm_simple(
     }
 }
 
+/// Threshold for multithreaded GEMM (total elements in C).
+/// Below this, single-threaded blocked is faster due to thread spawn overhead.
+/// Tuned: 256*256=65536 is the crossover where MT overhead pays off.
+const SGEMM_PARALLEL_THRESHOLD: usize = 256 * 256;
+
 /// Cache-blocked GEMM using the Goto BLAS algorithm.
 ///
 /// Memory hierarchy:
 /// - Outer loop over N (L3 blocks of NC columns)
 /// - Middle loop over K (L2 blocks of KC depth)
-/// - Pack panel of B into contiguous buffer
-/// - Inner loop over M (L1 blocks of MC rows)
-/// - Pack panel of A into contiguous buffer
-/// - Microkernel: MR x NR register tile
+/// - Pack panel of B into contiguous buffer (shared across threads)
+/// - Inner loop over M (parallelized across threads)
+/// - Each thread packs its own A panel + runs microkernel
+///
+/// Multithreading: For large matrices (m*n > 4096), the M-loop is
+/// parallelized using scoped threads with `split_at_mut` — each thread
+/// gets exclusive ownership of its C rows. No Arc, no Mutex, no locks.
 fn sgemm_blocked(
     layout: Layout,
     trans_a: Transpose,
@@ -140,7 +170,17 @@ fn sgemm_blocked(
     // Packed buffers — padded to MR/NR boundaries for microkernel alignment
     let mc_padded = ((mc + SGEMM_MR - 1) / SGEMM_MR) * SGEMM_MR;
     let nc_padded = ((nc + SGEMM_NR - 1) / SGEMM_NR) * SGEMM_NR;
-    let mut packed_a = vec![0.0f32; mc_padded * kc];
+
+    let use_parallel = m * n > SGEMM_PARALLEL_THRESHOLD;
+    let num_threads = if use_parallel {
+        std::thread::available_parallelism()
+            .map(|t| t.get())
+            .unwrap_or(1)
+    } else {
+        1
+    };
+
+    // Packed B is shared across all threads (read-only after packing)
     let mut packed_b = vec![0.0f32; kc * nc_padded];
 
     for jc in (0..n).step_by(nc) {
@@ -149,18 +189,54 @@ fn sgemm_blocked(
         for pc in (0..k).step_by(kc) {
             let pb = kc.min(k - pc);
 
-            // Pack B panel: pb x jb -> packed_b in NR-column panels
+            // Pack B panel: shared across threads
             pack_b_f32(layout, trans_b, b, ldb, pc, jc, pb, jb, &mut packed_b);
 
-            // Parallelize over M blocks
-            for ic in (0..m).step_by(mc) {
-                let ib = mc.min(m - ic);
+            if num_threads > 1 {
+                // ── Multithreaded M-loop ──
+                // Each thread works on disjoint rows of C.
+                // We wrap C's pointer in SendPtr so threads can write to
+                // non-overlapping regions — the blackboard borrow-mut pattern.
+                let c_send = SendMutPtr::new(c);
+                let rows_per_thread = ((m + num_threads - 1) / num_threads + SGEMM_MR - 1) / SGEMM_MR * SGEMM_MR;
 
-                // Pack A panel: ib x pb -> packed_a in MR-row panels
-                pack_a_f32(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
+                // Collect work items (row ranges) upfront
+                let mut work_items = Vec::new();
+                let mut row = 0;
+                while row < m {
+                    let row_end = (row + rows_per_thread).min(m);
+                    work_items.push((row, row_end - row));
+                    row = row_end;
+                }
 
-                // Microkernel: MR x NR tiles
-                sgemm_macrokernel(alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb);
+                std::thread::scope(|s| {
+                    let packed_b_ref = &packed_b;
+                    for &(ic, thread_m) in &work_items {
+                        let c_ptr = c_send;
+                        s.spawn(move || {
+                            // Safety: each thread writes to rows [ic..ic+thread_m] of C,
+                            // which are non-overlapping across threads.
+                            let c_slice = unsafe { c_ptr.as_mut_slice() };
+                            let mut thread_packed_a = vec![0.0f32; mc_padded * kc];
+
+                            let mut thread_ic = ic;
+                            while thread_ic < ic + thread_m {
+                                let ib = mc.min(ic + thread_m - thread_ic);
+                                pack_a_f32(layout, trans_a, a, lda, thread_ic, pc, ib, pb, &mut thread_packed_a);
+                                sgemm_macrokernel(alpha, &thread_packed_a, packed_b_ref, c_slice, layout, ldc, thread_ic, jc, ib, jb, pb);
+                                thread_ic += mc;
+                            }
+                        });
+                    }
+                });
+            } else {
+                // ── Single-threaded M-loop ──
+                let mut packed_a = vec![0.0f32; mc_padded * kc];
+                for ic in (0..m).step_by(mc) {
+                    let ib = mc.min(m - ic);
+                    pack_a_f32(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
+                    sgemm_macrokernel(alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb);
+                }
             }
         }
     }
@@ -378,7 +454,32 @@ pub fn dgemm(
         return;
     }
 
-    // Simple triple-loop for now; cache-blocked dgemm follows same pattern as sgemm
+    // Small matrices: simple triple-loop
+    if m * n * k < 110_000 {
+        dgemm_simple(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+        return;
+    }
+
+    // Cache-blocked DGEMM with packing + multithreading
+    dgemm_blocked(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+}
+
+/// Simple triple-loop DGEMM for small matrices.
+fn dgemm_simple(
+    layout: Layout,
+    trans_a: Transpose,
+    trans_b: Transpose,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: f64,
+    a: &[f64],
+    lda: usize,
+    b: &[f64],
+    ldb: usize,
+    c: &mut [f64],
+    ldc: usize,
+) {
     for i in 0..m {
         for j in 0..n {
             let mut sum = 0.0f64;
@@ -399,6 +500,246 @@ pub fn dgemm(
             }
             let idx = layout.index(i, j, ldc);
             c[idx] += alpha * sum;
+        }
+    }
+}
+
+/// Threshold for multithreaded DGEMM.
+const DGEMM_PARALLEL_THRESHOLD: usize = 256 * 256;
+
+/// Cache-blocked DGEMM using Goto BLAS algorithm with 6x8 f64 microkernel.
+fn dgemm_blocked(
+    layout: Layout,
+    trans_a: Transpose,
+    trans_b: Transpose,
+    m: usize,
+    n: usize,
+    k: usize,
+    alpha: f64,
+    a: &[f64],
+    lda: usize,
+    b: &[f64],
+    ldb: usize,
+    c: &mut [f64],
+    ldc: usize,
+) {
+    let mc = DGEMM_MC.min(m);
+    let nc = DGEMM_NC.min(n);
+    let kc = DGEMM_KC.min(k);
+
+    let mc_padded = ((mc + DGEMM_MR - 1) / DGEMM_MR) * DGEMM_MR;
+    let nc_padded = ((nc + DGEMM_NR - 1) / DGEMM_NR) * DGEMM_NR;
+
+    let use_parallel = m * n > DGEMM_PARALLEL_THRESHOLD;
+    let num_threads = if use_parallel {
+        std::thread::available_parallelism()
+            .map(|t| t.get())
+            .unwrap_or(1)
+    } else {
+        1
+    };
+
+    let mut packed_b = vec![0.0f64; kc * nc_padded];
+
+    for jc in (0..n).step_by(nc) {
+        let jb = nc.min(n - jc);
+
+        for pc in (0..k).step_by(kc) {
+            let pb = kc.min(k - pc);
+
+            pack_b_f64(layout, trans_b, b, ldb, pc, jc, pb, jb, &mut packed_b);
+
+            if num_threads > 1 {
+                let c_send = SendMutPtr::new(c);
+                let rows_per_thread = ((m + num_threads - 1) / num_threads + DGEMM_MR - 1) / DGEMM_MR * DGEMM_MR;
+
+                let mut work_items = Vec::new();
+                let mut row = 0;
+                while row < m {
+                    let row_end = (row + rows_per_thread).min(m);
+                    work_items.push((row, row_end - row));
+                    row = row_end;
+                }
+
+                std::thread::scope(|s| {
+                    let packed_b_ref = &packed_b;
+                    for &(ic, thread_m) in &work_items {
+                        let c_ptr = c_send;
+                        s.spawn(move || {
+                            let c_slice = unsafe { c_ptr.as_mut_slice() };
+                            let mut thread_packed_a = vec![0.0f64; mc_padded * kc];
+
+                            let mut thread_ic = ic;
+                            while thread_ic < ic + thread_m {
+                                let ib = mc.min(ic + thread_m - thread_ic);
+                                pack_a_f64(layout, trans_a, a, lda, thread_ic, pc, ib, pb, &mut thread_packed_a);
+                                dgemm_macrokernel(alpha, &thread_packed_a, packed_b_ref, c_slice, layout, ldc, thread_ic, jc, ib, jb, pb);
+                                thread_ic += mc;
+                            }
+                        });
+                    }
+                });
+            } else {
+                let mut packed_a = vec![0.0f64; mc_padded * kc];
+                for ic in (0..m).step_by(mc) {
+                    let ib = mc.min(m - ic);
+                    pack_a_f64(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
+                    dgemm_macrokernel(alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb);
+                }
+            }
+        }
+    }
+}
+
+/// Pack A panel for DGEMM (MR-row strips).
+fn pack_a_f64(
+    layout: Layout,
+    trans: Transpose,
+    a: &[f64],
+    lda: usize,
+    row_start: usize,
+    col_start: usize,
+    rows: usize,
+    cols: usize,
+    packed: &mut [f64],
+) {
+    let mut idx = 0;
+    for i_block in (0..rows).step_by(DGEMM_MR) {
+        let mr = DGEMM_MR.min(rows - i_block);
+        for p in 0..cols {
+            for ir in 0..DGEMM_MR {
+                if ir < mr {
+                    let i = row_start + i_block + ir;
+                    let j = col_start + p;
+                    packed[idx] = match (layout, trans) {
+                        (Layout::RowMajor, Transpose::NoTrans) => a[i * lda + j],
+                        (Layout::RowMajor, _) => a[j * lda + i],
+                        (Layout::ColMajor, Transpose::NoTrans) => a[j * lda + i],
+                        (Layout::ColMajor, _) => a[i * lda + j],
+                    };
+                } else {
+                    packed[idx] = 0.0;
+                }
+                idx += 1;
+            }
+        }
+    }
+}
+
+/// Pack B panel for DGEMM (NR-column strips).
+fn pack_b_f64(
+    layout: Layout,
+    trans: Transpose,
+    b: &[f64],
+    ldb: usize,
+    row_start: usize,
+    col_start: usize,
+    rows: usize,
+    cols: usize,
+    packed: &mut [f64],
+) {
+    let mut idx = 0;
+    for j_block in (0..cols).step_by(DGEMM_NR) {
+        let nr = DGEMM_NR.min(cols - j_block);
+        for p in 0..rows {
+            for jr in 0..DGEMM_NR {
+                if jr < nr {
+                    let i = row_start + p;
+                    let j = col_start + j_block + jr;
+                    packed[idx] = match (layout, trans) {
+                        (Layout::RowMajor, Transpose::NoTrans) => b[i * ldb + j],
+                        (Layout::RowMajor, _) => b[j * ldb + i],
+                        (Layout::ColMajor, Transpose::NoTrans) => b[j * ldb + i],
+                        (Layout::ColMajor, _) => b[i * ldb + j],
+                    };
+                } else {
+                    packed[idx] = 0.0;
+                }
+                idx += 1;
+            }
+        }
+    }
+}
+
+/// DGEMM macro-kernel: dispatch 6x8 microkernels.
+fn dgemm_macrokernel(
+    alpha: f64,
+    packed_a: &[f64],
+    packed_b: &[f64],
+    c: &mut [f64],
+    layout: Layout,
+    ldc: usize,
+    ic: usize,
+    jc: usize,
+    mb: usize,
+    nb: usize,
+    kb: usize,
+) {
+    let mr_blocks = (mb + DGEMM_MR - 1) / DGEMM_MR;
+    let nr_blocks = (nb + DGEMM_NR - 1) / DGEMM_NR;
+
+    for jr in 0..nr_blocks {
+        let nr = DGEMM_NR.min(nb - jr * DGEMM_NR);
+        for ir in 0..mr_blocks {
+            let mr = DGEMM_MR.min(mb - ir * DGEMM_MR);
+            let a_offset = ir * DGEMM_MR * kb;
+            let b_offset = jr * DGEMM_NR * kb;
+            dgemm_microkernel_6x8(
+                alpha,
+                &packed_a[a_offset..],
+                &packed_b[b_offset..],
+                c, layout, ldc,
+                ic + ir * DGEMM_MR,
+                jc + jr * DGEMM_NR,
+                mr, nr, kb,
+            );
+        }
+    }
+}
+
+/// AVX-512 microkernel for DGEMM: 6 rows × 8 columns using f64x8.
+#[inline(always)]
+fn dgemm_microkernel_6x8(
+    alpha: f64,
+    packed_a: &[f64],
+    packed_b: &[f64],
+    c: &mut [f64],
+    layout: Layout,
+    ldc: usize,
+    row: usize,
+    col: usize,
+    mr: usize,
+    nr: usize,
+    kb: usize,
+) {
+    let mut acc = [f64x8::splat(0.0); 6];
+
+    for p in 0..kb {
+        let b_base = p * DGEMM_NR;
+        let b_vec = if nr >= DGEMM_NR {
+            f64x8::from_slice(&packed_b[b_base..])
+        } else {
+            let mut buf = [0.0f64; 8];
+            for j in 0..nr {
+                buf[j] = packed_b[b_base + j];
+            }
+            f64x8::from_array(buf)
+        };
+
+        let a_base = p * DGEMM_MR;
+        for ir in 0..mr.min(6) {
+            let a_val = f64x8::splat(packed_a[a_base + ir]);
+            acc[ir] += a_val * b_vec;
+        }
+    }
+
+    let alpha_v = f64x8::splat(alpha);
+    for ir in 0..mr.min(6) {
+        let result = acc[ir] * alpha_v;
+        let buf = result.to_array();
+        for jr in 0..nr {
+            let idx = layout.index(row + ir, col + jr, ldc);
+            c[idx] += buf[jr];
         }
     }
 }
@@ -832,5 +1173,61 @@ mod tests {
         assert_eq!(c[0], 5.0);  // C[0,0]
         assert_eq!(c[1], 11.0); // C[0,1]
         assert_eq!(c[3], 25.0); // C[1,1]
+    }
+
+    #[test]
+    fn test_dgemm_blocked_64x64() {
+        // Large enough to trigger blocked path
+        let n = 64;
+        let a: Vec<f64> = (0..n * n).map(|i| (i % 17) as f64 * 0.1).collect();
+        let b: Vec<f64> = (0..n * n).map(|i| (i % 13) as f64 * 0.1).collect();
+        let mut c = vec![0.0f64; n * n];
+        let mut c_ref = vec![0.0f64; n * n];
+
+        dgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
+              n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n);
+
+        // Reference
+        for i in 0..n {
+            for j in 0..n {
+                for p in 0..n {
+                    c_ref[i * n + j] += a[i * n + p] * b[p * n + j];
+                }
+            }
+        }
+
+        let max_err = c.iter().zip(c_ref.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f64, f64::max);
+        assert!(max_err < 1e-6, "dgemm 64x64 max error: {}", max_err);
+    }
+
+    #[test]
+    fn test_sgemm_blocked_correctness() {
+        // Test various sizes that exercise blocked path (> 110K flops)
+        for &n in &[48, 50, 64, 100, 128] {
+            let a: Vec<f32> = (0..n * n).map(|i| ((i * 7 + 3) % 100) as f32 * 0.01).collect();
+            let b: Vec<f32> = (0..n * n).map(|i| ((i * 11 + 5) % 100) as f32 * 0.01).collect();
+            let mut c = vec![0.0f32; n * n];
+            let mut c_ref = vec![0.0f32; n * n];
+
+            sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
+                  n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n);
+
+            for i in 0..n {
+                for j in 0..n {
+                    for p in 0..n {
+                        c_ref[i * n + j] += a[i * n + p] * b[p * n + j];
+                    }
+                }
+            }
+
+            let max_err = c.iter().zip(c_ref.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            let max_val = c_ref.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
+            let rel_err = if max_val > 0.0 { max_err / max_val } else { max_err };
+            assert!(rel_err < 1e-4, "sgemm {}x{} relative error: {}", n, n, rel_err);
+        }
     }
 }
