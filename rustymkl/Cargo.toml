@@ -1,0 +1,16 @@
+[package]
+name = "rustymkl"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust MKL replacement — LAPACK, FFT, VML with AVX-512 SIMD"
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core" }
+rustyblas = { path = "../rustyblas" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "mkl_benchmarks"
+harness = false

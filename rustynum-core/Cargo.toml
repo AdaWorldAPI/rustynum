@@ -1,0 +1,9 @@
+[package]
+name = "rustynum-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared SIMD primitives and zero-copy blackboard for rustynum ecosystem"
+
+[dependencies]
+
+[dev-dependencies]

@@ -1,0 +1,15 @@
+[package]
+name = "rustyblas"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement"
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "blas_benchmarks"
+harness = false
