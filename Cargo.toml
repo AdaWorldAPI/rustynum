@@ -8,5 +8,6 @@ members = [
     "rustynum-arrow",
     "rustynum-holo",
     "rustynum-archive",
+    "rustynum-archive-v3",
     "bindings/python",
 ]
