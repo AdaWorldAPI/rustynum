@@ -264,6 +264,78 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
     sum.sqrt()
 }
 
+// ============================================================================
+// Hamming distance (portable — no VPOPCNTDQ on AVX2 hardware)
+// ============================================================================
+
+/// Hamming distance between two byte arrays (number of differing bits).
+///
+/// Uses scalar POPCNT on u64 chunks (~4x faster than byte-by-byte).
+/// AVX2 hardware lacks VPOPCNTDQ, so this is the fast path.
+#[inline]
+pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
+    debug_assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let u64_chunks = len / 8;
+    let mut sum: u64 = 0;
+
+    for i in 0..u64_chunks {
+        let base = i * 8;
+        let a_u64 = u64::from_le_bytes([
+            a[base], a[base+1], a[base+2], a[base+3],
+            a[base+4], a[base+5], a[base+6], a[base+7],
+        ]);
+        let b_u64 = u64::from_le_bytes([
+            b[base], b[base+1], b[base+2], b[base+3],
+            b[base+4], b[base+5], b[base+6], b[base+7],
+        ]);
+        sum += (a_u64 ^ b_u64).count_ones() as u64;
+    }
+
+    for i in (u64_chunks * 8)..len {
+        sum += (a[i] ^ b[i]).count_ones() as u64;
+    }
+
+    sum
+}
+
+/// Batch Hamming distance: compute distances from `query` to each row in `database`.
+#[inline]
+pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+    debug_assert_eq!(query.len(), row_bytes);
+    debug_assert_eq!(database.len(), num_rows * row_bytes);
+
+    let mut distances = vec![0u64; num_rows];
+
+    let full = num_rows / 4;
+    for i in 0..full {
+        let base = i * 4;
+        distances[base] = hamming_distance(query, &database[base * row_bytes..(base + 1) * row_bytes]);
+        distances[base + 1] = hamming_distance(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
+        distances[base + 2] = hamming_distance(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
+        distances[base + 3] = hamming_distance(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
+    }
+    for i in (full * 4)..num_rows {
+        distances[i] = hamming_distance(query, &database[i * row_bytes..(i + 1) * row_bytes]);
+    }
+
+    distances
+}
+
+/// Top-k nearest neighbors by Hamming distance.
+pub fn hamming_top_k(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize, k: usize) -> (Vec<usize>, Vec<u64>) {
+    let distances = hamming_batch(query, database, num_rows, row_bytes);
+    let k = k.min(num_rows);
+
+    let mut indices: Vec<usize> = (0..num_rows).collect();
+    indices.select_nth_unstable_by_key(k.saturating_sub(1), |&i| distances[i]);
+    indices.truncate(k);
+    indices.sort_unstable_by_key(|&i| distances[i]);
+
+    let top_distances: Vec<u64> = indices.iter().map(|&i| distances[i]).collect();
+    (indices, top_distances)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,5 +383,47 @@ mod tests {
     fn test_nrm2_f32() {
         let x = vec![3.0f32, 4.0];
         assert!((nrm2_f32(&x) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_hamming_distance_identical() {
+        let a = vec![0xFFu8; 2048];
+        let b = vec![0xFFu8; 2048];
+        assert_eq!(hamming_distance(&a, &b), 0);
+    }
+
+    #[test]
+    fn test_hamming_distance_all_different() {
+        let a = vec![0x00u8; 64];
+        let b = vec![0xFFu8; 64];
+        assert_eq!(hamming_distance(&a, &b), 512);
+    }
+
+    #[test]
+    fn test_hamming_distance_2kb() {
+        let a: Vec<u8> = (0..2048).map(|i| (i % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| ((i + 1) % 256) as u8).collect();
+        let dist = hamming_distance(&a, &b);
+        let expected: u64 = a.iter().zip(b.iter())
+            .map(|(&x, &y)| (x ^ y).count_ones() as u64).sum();
+        assert_eq!(dist, expected);
+    }
+
+    #[test]
+    fn test_hamming_batch() {
+        let query = vec![0xAAu8; 16];
+        let mut database = vec![0u8; 16 * 4];
+        for i in 0..16 { database[i] = 0xAA; }
+        for i in 16..32 { database[i] = 0x55; }
+        for i in 32..40 { database[i] = 0xAA; }
+        for i in 40..48 { database[i] = 0x55; }
+        for i in 48..64 { database[i] = 0xAA; }
+        database[48] = 0x55;
+
+        let distances = hamming_batch(&query, &database, 4, 16);
+        assert_eq!(distances[0], 0);
+        assert_eq!(distances[1], 128);
+        assert_eq!(distances[2], 64);
+        assert_eq!(distances[3], 8);
     }
 }

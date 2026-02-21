@@ -495,4 +495,85 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_quantize_f32_to_i4_roundtrip() {
+        let data: Vec<f32> = (0..16).map(|i| (i as f32 - 8.0) * 0.5).collect();
+        let (packed, params) = quantize_f32_to_i4(&data);
+        let recovered = dequantize_i4_to_f32(&packed, &params, data.len());
+
+        for i in 0..data.len() {
+            let err = (recovered[i] - data[i]).abs();
+            // int4 has only 16 levels — coarser than int8
+            assert!(err < params.scale * 1.5,
+                "int4 roundtrip error at {}: {} vs {} (err={})",
+                i, recovered[i], data[i], err);
+        }
+    }
+
+    #[test]
+    fn test_quantize_i4_packing() {
+        // 8 values should pack into 4 bytes
+        let data = vec![1.0f32, -1.0, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0];
+        let (packed, _params) = quantize_f32_to_i4(&data);
+        assert_eq!(packed.len(), 4); // 8 values × 4 bits / 8 bits per byte = 4 bytes
+    }
+}
+
+// ============================================================================
+// INT4 Quantization
+// ============================================================================
+
+/// Quantize f32 data to int4 (packed: 2 values per byte).
+///
+/// 1024D embedding → 512 bytes (quarter of Container 3).
+/// 2048D embedding → 1024 bytes (half of Container 3).
+///
+/// Uses symmetric quantization: scale = max(|x|) / 7
+/// Values are clamped to [-8, 7] and packed as signed 4-bit nibbles.
+///
+/// Packing: high nibble = even index, low nibble = odd index.
+pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
+    if data.is_empty() {
+        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+    }
+
+    let abs_max = data.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs()));
+    let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
+
+    let packed_len = (data.len() + 1) / 2; // ceil(len / 2)
+    let mut packed = vec![0u8; packed_len];
+
+    for i in (0..data.len()).step_by(2) {
+        let v0 = (data[i] / scale).round().clamp(-8.0, 7.0) as i8;
+        let v1 = if i + 1 < data.len() {
+            (data[i + 1] / scale).round().clamp(-8.0, 7.0) as i8
+        } else {
+            0
+        };
+
+        // Pack: high nibble = v0 (even), low nibble = v1 (odd)
+        packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
+    }
+
+    (packed, QuantParams { scale, zero_point: 0 })
+}
+
+/// Dequantize int4 packed data back to f32.
+pub fn dequantize_i4_to_f32(packed: &[u8], params: &QuantParams, len: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(len);
+
+    for i in 0..packed.len() {
+        // High nibble (even index)
+        let hi = ((packed[i] >> 4) as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(hi as f32 * params.scale);
+        if out.len() >= len { break; }
+
+        // Low nibble (odd index)
+        let lo = (packed[i] as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(lo as f32 * params.scale);
+        if out.len() >= len { break; }
+    }
+
+    out
 }
