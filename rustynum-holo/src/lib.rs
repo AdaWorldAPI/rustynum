@@ -38,6 +38,7 @@
 pub mod phase;
 pub mod cogrecord_v3;
 pub mod carrier;
+pub mod focus;
 
 pub use phase::{
     phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
@@ -60,4 +61,18 @@ pub use carrier::{
     carrier_encode, carrier_decode, carrier_bundle,
     carrier_distance_l1, carrier_correlation,
     carrier_spectrum, spectral_distance,
+};
+
+pub use focus::{
+    FocusDensity, FocusRegistry,
+    pack_focus, unpack_focus,
+    concept_to_focus, materialize_focus_mask,
+    focus_xor, focus_read, focus_add, focus_sub,
+    focus_xor_materialized, focus_add_materialized,
+    focus_hamming, focus_l1,
+    focus_bind_binary, focus_bind_phase, focus_unbind_phase,
+    focus_carrier_encode,
+    focus_delta, CompactDelta,
+    focus_xor_auto,
+    FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z,
 };
