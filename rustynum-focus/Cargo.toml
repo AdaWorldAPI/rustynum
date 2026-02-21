@@ -1,0 +1,16 @@
+[package]
+name = "rustynum-focus"
+version = "0.1.0"
+edition = "2021"
+description = "Archive of CogRecordV3 + carrier + focus-gating model (pre-holograph): 8 phase operations, 5 carrier operations, 16 focus operations, CogRecordV3 + CarrierRecord + FocusRegistry. Frozen snapshot before holographic Gabor wavelet extension."
+
+[features]
+default = ["avx512"]
+avx512 = ["rustynum-core/avx512"]
+avx2 = ["rustynum-core/avx2"]
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core", default-features = false }
+rustynum-rs = { path = "../rustynum-rs" }
+
+[dev-dependencies]
