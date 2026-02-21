@@ -59,11 +59,23 @@ pub enum SweepMode {
     Hybrid,
 }
 
+impl Default for SweepMode {
+    fn default() -> Self {
+        Self::Hamming
+    }
+}
+
 /// Result of a 4-channel sweep: distances per container.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SweepResult {
     pub index: usize,
     pub distances: [u64; 4],
+}
+
+impl Default for CogRecord {
+    fn default() -> Self {
+        Self::zeros()
+    }
 }
 
 impl CogRecord {

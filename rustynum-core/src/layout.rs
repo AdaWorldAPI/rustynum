@@ -13,6 +13,12 @@ pub enum Layout {
     ColMajor = 102,
 }
 
+impl Default for Layout {
+    fn default() -> Self {
+        Self::RowMajor
+    }
+}
+
 /// Transpose operation for matrices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -23,6 +29,12 @@ pub enum Transpose {
     Trans = 112,
     /// Conjugate transpose (for complex types).
     ConjTrans = 113,
+}
+
+impl Default for Transpose {
+    fn default() -> Self {
+        Self::NoTrans
+    }
 }
 
 impl Layout {
@@ -53,6 +65,12 @@ pub enum Uplo {
     Lower = 122,
 }
 
+impl Default for Uplo {
+    fn default() -> Self {
+        Self::Upper
+    }
+}
+
 /// BLAS side specifier (left/right multiplication).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -61,10 +79,22 @@ pub enum Side {
     Right = 142,
 }
 
+impl Default for Side {
+    fn default() -> Self {
+        Self::Left
+    }
+}
+
 /// BLAS diagonal specifier (unit/non-unit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Diag {
     NonUnit = 131,
     Unit = 132,
+}
+
+impl Default for Diag {
+    fn default() -> Self {
+        Self::NonUnit
+    }
 }

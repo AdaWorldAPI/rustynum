@@ -62,6 +62,17 @@ where
     pub(crate) _ops: PhantomData<Ops>,
 }
 
+impl<T: Debug + Default, Ops> Default for NumArray<T, Ops> {
+    fn default() -> Self {
+        Self {
+            data: vec![],
+            shape: vec![0],
+            strides: vec![1],
+            _ops: PhantomData,
+        }
+    }
+}
+
 impl<T, Ops> NumArray<T, Ops>
 where
     T: Debug, // Minimal trait bounds for basic operations

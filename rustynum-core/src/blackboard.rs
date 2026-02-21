@@ -40,7 +40,7 @@ use std::collections::HashMap;
 const ALIGNMENT: usize = 64;
 
 /// Opaque handle to a buffer in the blackboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct BufferHandle(u32);
 
 /// Type tag for buffer element types.
@@ -51,6 +51,12 @@ pub enum DType {
     I32,
     I64,
     U8,
+}
+
+impl Default for DType {
+    fn default() -> Self {
+        Self::F32
+    }
 }
 
 impl DType {
