@@ -79,13 +79,38 @@ pub use focus::{
 };
 
 pub use holograph::{
+    // Core Gabor wavelet types and operations
     GaussianLUT, WaveletTemplate,
     gabor_write, gabor_read,
+    // Delta cube operations
     delta_cube_xor, delta_cube_sub,
     delta_cube_write_gabor, delta_cube_read_gabor,
     delta_cube_recover_xor, delta_cube_recover_phase,
+    // Spatial transforms
     SpatialTransform,
     spatial_bind, spatial_unbind,
     spatial_bind_i8, spatial_unbind_i8,
+    // Overlay / blackboard layer
     Overlay,
+    // Spectral analysis and cleaning
+    SpectralMap,
+    residual_energy, clean_if_needed, orthogonal_project,
+    // Learning
+    hebbian_update, anti_hebbian_update, adapt_sigma,
+    // Archetype detection
+    FastArchetypeDetector, crystallize_archetypes,
+    // BLAS acceleration
+    spectral_analysis_blas, GaborBatch,
+    // Co-occurrence and axis discovery
+    CooccurrenceMatrix, ready_for_crystallization,
+    AxisCrystallizer,
+    // Container lifecycle and migration
+    ContainerMode, MODE_BYTE_OFFSET,
+    get_container_mode, set_container_mode,
+    MigrationResult,
+    bootstrap_write, bootstrap_read,
+    migrate_carrier_to_gabor,
+    crystallize_from_superposition,
+    incremental_axis_update,
+    apply_migrations,
 };
