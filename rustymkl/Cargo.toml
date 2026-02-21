@@ -2,11 +2,16 @@
 name = "rustymkl"
 version = "0.1.0"
 edition = "2021"
-description = "Pure Rust MKL replacement — LAPACK, FFT, VML with AVX-512 SIMD"
+description = "Pure Rust MKL replacement — LAPACK, FFT, VML with AVX-512/AVX2 SIMD"
+
+[features]
+default = ["avx512"]
+avx512 = ["rustynum-core/avx512", "rustyblas/avx512"]
+avx2 = ["rustynum-core/avx2", "rustyblas/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core" }
-rustyblas = { path = "../rustyblas" }
+rustynum-core = { path = "../rustynum-core", default-features = false }
+rustyblas = { path = "../rustyblas", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

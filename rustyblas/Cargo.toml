@@ -2,10 +2,15 @@
 name = "rustyblas"
 version = "0.1.0"
 edition = "2021"
-description = "Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement"
+description = "Pure Rust BLAS implementation with AVX-512/AVX2 SIMD — drop-in OpenBLAS replacement"
+
+[features]
+default = ["avx512"]
+avx512 = ["rustynum-core/avx512"]
+avx2 = ["rustynum-core/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core" }
+rustynum-core = { path = "../rustynum-core", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

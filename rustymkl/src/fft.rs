@@ -12,9 +12,8 @@
 //!
 //! Complex numbers are stored as interleaved (re, im, re, im, ...).
 
-use std::simd::f32x16;
-use std::simd::f64x8;
-use rustynum_core::simd::F32_LANES;
+// FFT is currently scalar (Cooley-Tukey butterfly).
+// SIMD acceleration can be added for large butterfly stages in the future.
 
 // ============================================================================
 // Complex FFT (radix-2 Cooley-Tukey, in-place, decimation-in-time)

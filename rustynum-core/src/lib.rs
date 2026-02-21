@@ -17,6 +17,18 @@ pub mod compute;
 pub mod layout;
 pub mod parallel;
 pub mod prefilter;
+
+// SIMD backend selection: AVX-512 (default) or AVX2 (for Meteor Lake, etc.)
+// Build with: cargo build --no-default-features --features avx2
+#[cfg(feature = "avx512")]
+pub mod simd;
+#[cfg(feature = "avx2")]
+#[path = "simd_avx2.rs"]
+pub mod simd;
+
+// If neither feature is set, fall back to AVX2 (safer default)
+#[cfg(not(any(feature = "avx512", feature = "avx2")))]
+#[path = "simd_avx2.rs"]
 pub mod simd;
 
 pub use blackboard::{Blackboard, BufferHandle};

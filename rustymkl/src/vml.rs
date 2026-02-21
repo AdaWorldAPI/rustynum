@@ -6,11 +6,15 @@
 //! Naming convention follows MKL: `vs` prefix = single-precision vector,
 //! `vd` prefix = double-precision vector.
 
-use std::simd::f32x16;
-use std::simd::f64x8;
 use std::simd::num::SimdFloat;
 use std::simd::StdFloat;
 use rustynum_core::simd::{F32_LANES, F64_LANES};
+
+// SIMD vector types selected by feature flag
+#[cfg(feature = "avx512")]
+use std::simd::{f32x16 as F32Simd, f64x8 as F64Simd};
+#[cfg(not(feature = "avx512"))]
+use std::simd::{f32x8 as F32Simd, f64x4 as F64Simd};
 
 // ============================================================================
 // EXP: e^x
@@ -26,7 +30,7 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let xv = f32x16::from_slice(&x[base..]);
+        let xv = F32Simd::from_slice(&x[base..]);
         let result = simd_exp_f32(xv);
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -44,7 +48,7 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
 
     for i in 0..chunks {
         let base = i * F64_LANES;
-        let xv = f64x8::from_slice(&x[base..]);
+        let xv = F64Simd::from_slice(&x[base..]);
         let result = simd_exp_f64(xv);
         result.copy_to_slice(&mut out[base..base + F64_LANES]);
     }
@@ -66,7 +70,7 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let xv = f32x16::from_slice(&x[base..]);
+        let xv = F32Simd::from_slice(&x[base..]);
         let result = simd_ln_f32(xv);
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -98,7 +102,7 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let xv = f32x16::from_slice(&x[base..]);
+        let xv = F32Simd::from_slice(&x[base..]);
         let result = xv.sqrt();
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -116,7 +120,7 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
 
     for i in 0..chunks {
         let base = i * F64_LANES;
-        let xv = f64x8::from_slice(&x[base..]);
+        let xv = F64Simd::from_slice(&x[base..]);
         let result = xv.sqrt();
         result.copy_to_slice(&mut out[base..base + F64_LANES]);
     }
@@ -138,7 +142,7 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let xv = f32x16::from_slice(&x[base..]);
+        let xv = F32Simd::from_slice(&x[base..]);
         let result = xv.abs();
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -156,7 +160,7 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
 
     for i in 0..chunks {
         let base = i * F64_LANES;
-        let xv = f64x8::from_slice(&x[base..]);
+        let xv = F64Simd::from_slice(&x[base..]);
         let result = xv.abs();
         result.copy_to_slice(&mut out[base..base + F64_LANES]);
     }
@@ -179,8 +183,8 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let av = f32x16::from_slice(&a[base..]);
-        let bv = f32x16::from_slice(&b[base..]);
+        let av = F32Simd::from_slice(&a[base..]);
+        let bv = F32Simd::from_slice(&b[base..]);
         let result = av + bv;
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -199,8 +203,8 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let av = f32x16::from_slice(&a[base..]);
-        let bv = f32x16::from_slice(&b[base..]);
+        let av = F32Simd::from_slice(&a[base..]);
+        let bv = F32Simd::from_slice(&b[base..]);
         let result = av * bv;
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -219,8 +223,8 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
 
     for i in 0..chunks {
         let base = i * F32_LANES;
-        let av = f32x16::from_slice(&a[base..]);
-        let bv = f32x16::from_slice(&b[base..]);
+        let av = F32Simd::from_slice(&a[base..]);
+        let bv = F32Simd::from_slice(&b[base..]);
         let result = av / bv;
         result.copy_to_slice(&mut out[base..base + F32_LANES]);
     }
@@ -266,7 +270,7 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 // SIMD polynomial approximations for transcendental functions
 // ============================================================================
 
-/// Fast SIMD exp(x) for f32x16 using the "range reduction + polynomial" method.
+/// Fast SIMD exp(x) for F32Simd using the "range reduction + polynomial" method.
 ///
 /// Algorithm:
 /// 1. Clamp input to avoid overflow/underflow
@@ -274,65 +278,59 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// 3. Compute exp(r) using degree-6 minimax polynomial
 /// 4. Scale by 2^n via integer addition to the exponent field
 #[inline(always)]
-fn simd_exp_f32(x: f32x16) -> f32x16 {
-    let ln2_inv = f32x16::splat(1.442695040888963f32); // 1/ln(2)
-    let ln2_hi = f32x16::splat(0.693145751953125f32);
-    let ln2_lo = f32x16::splat(1.428606765330187e-6f32);
+fn simd_exp_f32(x: F32Simd) -> F32Simd {
+    let ln2_inv = F32Simd::splat(1.442695040888963f32); // 1/ln(2)
+    let ln2_hi = F32Simd::splat(0.693145751953125f32);
+    let ln2_lo = F32Simd::splat(1.428606765330187e-6f32);
 
     // Polynomial coefficients (minimax on [-ln2/2, ln2/2])
-    let c1 = f32x16::splat(1.0);
-    let c2 = f32x16::splat(0.5);
-    let c3 = f32x16::splat(0.16666666666666666);
-    let c4 = f32x16::splat(0.041666666666666664);
-    let c5 = f32x16::splat(0.008333333333333333);
+    let c1 = F32Simd::splat(1.0);
+    let c2 = F32Simd::splat(0.5);
+    let c3 = F32Simd::splat(0.16666666666666666);
+    let c4 = F32Simd::splat(0.041666666666666664);
+    let c5 = F32Simd::splat(0.008333333333333333);
 
     // Clamp to avoid overflow
-    let x_clamped = x.simd_max(f32x16::splat(-87.0)).simd_min(f32x16::splat(88.0));
+    let x_clamped = x.simd_max(F32Simd::splat(-87.0)).simd_min(F32Simd::splat(88.0));
 
     // n = round(x / ln2)
-    let n = (x_clamped * ln2_inv + f32x16::splat(0.5)).floor();
+    let n = (x_clamped * ln2_inv + F32Simd::splat(0.5)).floor();
 
     // r = x - n * ln2 (high precision via hi/lo split)
     let r = x_clamped - n * ln2_hi - n * ln2_lo;
 
     // exp(r) ≈ 1 + r + r^2/2 + r^3/6 + r^4/24 + r^5/120
-    let r2 = r * r;
     let poly = c1 + r * (c1 + r * (c2 + r * (c3 + r * (c4 + r * c5))));
 
-    // Scale by 2^n: add n to the exponent bits
-    // For portable_simd, we use the scalar path
-    let result = poly;
+    // Scale by 2^n via scalar path (portable across lane widths)
     let n_arr = n.to_array();
-    let mut out = result.to_array();
-    for i in 0..16 {
+    let mut out = poly.to_array();
+    for i in 0..out.len() {
         out[i] *= (2.0f32).powi(n_arr[i] as i32);
     }
-    f32x16::from_array(out)
+    F32Simd::from_array(out)
 }
 
-/// Fast SIMD exp(x) for f64x8.
+/// Fast SIMD exp(x) for F64Simd.
 #[inline(always)]
-fn simd_exp_f64(x: f64x8) -> f64x8 {
-    let arr = x.to_array();
-    let mut out = [0.0f64; 8];
-    for i in 0..8 {
-        out[i] = arr[i].exp();
+fn simd_exp_f64(x: F64Simd) -> F64Simd {
+    let mut arr = x.to_array();
+    for v in arr.iter_mut() {
+        *v = v.exp();
     }
-    f64x8::from_array(out)
+    F64Simd::from_array(arr)
 }
 
-/// Fast SIMD ln(x) for f32x16.
+/// Fast SIMD ln(x) for F32Simd.
 ///
 /// Uses range reduction: extract exponent + Padé approximation on mantissa.
 #[inline(always)]
-fn simd_ln_f32(x: f32x16) -> f32x16 {
-    // Scalar fallback for correctness; SIMD Padé can be added
-    let arr = x.to_array();
-    let mut out = [0.0f32; 16];
-    for i in 0..16 {
-        out[i] = arr[i].ln();
+fn simd_ln_f32(x: F32Simd) -> F32Simd {
+    let mut arr = x.to_array();
+    for v in arr.iter_mut() {
+        *v = v.ln();
     }
-    f32x16::from_array(out)
+    F32Simd::from_array(arr)
 }
 
 #[cfg(test)]
