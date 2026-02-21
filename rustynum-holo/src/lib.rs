@@ -87,4 +87,5 @@ pub use holograph::{
     SpatialTransform,
     spatial_bind, spatial_unbind,
     spatial_bind_i8, spatial_unbind_i8,
+    Overlay,
 };

@@ -473,6 +473,176 @@ pub fn spatial_unbind_i8(container: &[i8], transform: &SpatialTransform) -> Vec<
 }
 
 // ============================================================================
+// Operation 21: Overlay — The Blackboard Layer
+// ============================================================================
+
+/// XOR/ADD overlay that sits on top of a committed container.
+///
+/// The overlay IS the blackboard's scratch space. All writes go into the
+/// overlay. Reads see through both layers. Flush merges overlay into
+/// the container. Rewind restores from snapshot.
+///
+/// For binary containers (META, BTREE): XOR semantics.
+///   read: container ^ overlay
+///   flush: container ^= overlay
+///
+/// For phase/carrier containers (CAM, EMBED): ADD semantics.
+///   read: container + overlay (wrapping)
+///   flush: container += overlay (wrapping)
+///   undo flush: container -= overlay (wrapping, exact inverse)
+///
+/// ## STM/LTM Boundary
+///
+/// | Layer     | Role         | Analogy   |
+/// |-----------|------------- |-----------|
+/// | Overlay   | Working set  | Redis     |
+/// | Container | Committed    | LanceDB   |
+pub struct Overlay {
+    /// The scratch surface. Same geometry as container: 2048 bytes = 8×8×32.
+    pub buffer: Vec<u8>,
+
+    /// Snapshot stack for rewind. Each snapshot is a full 2048-byte copy
+    /// of the overlay at the time of the snapshot.
+    snapshots: Vec<Vec<u8>>,
+}
+
+impl Overlay {
+    /// Create a zeroed overlay.
+    pub fn new() -> Self {
+        Self {
+            buffer: vec![0u8; 2048],
+            snapshots: Vec::new(),
+        }
+    }
+
+    /// Take a snapshot of the current overlay state (for rewind).
+    pub fn snapshot(&mut self) {
+        self.snapshots.push(self.buffer.clone());
+    }
+
+    /// Rewind to the most recent snapshot. Discards everything written since.
+    /// Returns false if no snapshots exist.
+    pub fn rewind(&mut self) -> bool {
+        if let Some(snap) = self.snapshots.pop() {
+            self.buffer = snap;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clear the overlay without flushing (discard all STM).
+    pub fn discard(&mut self) {
+        self.buffer.fill(0);
+        self.snapshots.clear();
+    }
+
+    /// Number of snapshots on the rewind stack.
+    pub fn snapshot_depth(&self) -> usize {
+        self.snapshots.len()
+    }
+
+    /// Check if the overlay has any non-zero content.
+    pub fn is_clean(&self) -> bool {
+        self.buffer.iter().all(|&b| b == 0)
+    }
+
+    // ---- Read through both layers ----
+
+    /// Read a single byte through the overlay (XOR mode).
+    #[inline]
+    pub fn read_xor(&self, container: &[u8], idx: usize) -> u8 {
+        container[idx] ^ self.buffer[idx]
+    }
+
+    /// Read a single byte through the overlay (ADD mode).
+    #[inline]
+    pub fn read_add(&self, container: &[u8], idx: usize) -> u8 {
+        container[idx].wrapping_add(self.buffer[idx])
+    }
+
+    /// Read the full container through the overlay (XOR mode).
+    pub fn read_full_xor(&self, container: &[u8]) -> Vec<u8> {
+        assert!(container.len() >= 2048);
+        container.iter()
+            .zip(self.buffer.iter())
+            .map(|(&c, &o)| c ^ o)
+            .collect()
+    }
+
+    /// Read the full container through the overlay (ADD mode).
+    pub fn read_full_add(&self, container: &[u8]) -> Vec<u8> {
+        assert!(container.len() >= 2048);
+        container.iter()
+            .zip(self.buffer.iter())
+            .map(|(&c, &o)| c.wrapping_add(o))
+            .collect()
+    }
+
+    /// Read the full container through the overlay (i8 ADD mode, for carrier/Gabor).
+    pub fn read_full_add_i8(&self, container: &[i8]) -> Vec<i8> {
+        assert!(container.len() >= 2048);
+        container.iter()
+            .zip(self.buffer.iter())
+            .map(|(&c, &o)| c.saturating_add(o as i8))
+            .collect()
+    }
+
+    // ---- Flush: merge overlay into container ----
+
+    /// Flush overlay into container via XOR (binary mode).
+    /// After flush, overlay is cleared.
+    ///
+    /// SIMD: 32 VPXORD instructions for 2048 bytes.
+    pub fn flush_xor(&mut self, container: &mut [u8]) {
+        assert!(container.len() >= 2048);
+        for i in 0..2048 {
+            container[i] ^= self.buffer[i];
+        }
+        self.buffer.fill(0);
+        self.snapshots.clear();
+    }
+
+    /// Flush overlay into container via ADD (phase/carrier mode, u8).
+    /// After flush, overlay is cleared.
+    ///
+    /// SIMD: 32 VPADDB instructions for 2048 bytes.
+    pub fn flush_add(&mut self, container: &mut [u8]) {
+        assert!(container.len() >= 2048);
+        for i in 0..2048 {
+            container[i] = container[i].wrapping_add(self.buffer[i]);
+        }
+        self.buffer.fill(0);
+        self.snapshots.clear();
+    }
+
+    /// Flush overlay into i8 container via saturating ADD (carrier/Gabor mode).
+    /// After flush, overlay is cleared.
+    pub fn flush_add_i8(&mut self, container: &mut [i8]) {
+        assert!(container.len() >= 2048);
+        for i in 0..2048 {
+            container[i] = container[i].saturating_add(self.buffer[i] as i8);
+        }
+        self.buffer.fill(0);
+        self.snapshots.clear();
+    }
+
+    // ---- Safe i8/u8 reinterpretation ----
+
+    /// Get the overlay buffer as mutable i8 slice (for Gabor/carrier writes).
+    pub fn as_i8_mut(&mut self) -> &mut [i8] {
+        // SAFETY: u8 and i8 have identical size, alignment, and no invalid values.
+        unsafe { std::slice::from_raw_parts_mut(self.buffer.as_mut_ptr() as *mut i8, 2048) }
+    }
+
+    /// Get the overlay buffer as i8 slice (for Gabor/carrier reads).
+    pub fn as_i8(&self) -> &[i8] {
+        // SAFETY: u8 and i8 have identical size, alignment, and no invalid values.
+        unsafe { std::slice::from_raw_parts(self.buffer.as_ptr() as *const i8, 2048) }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1108,5 +1278,439 @@ mod tests {
                 p2
             );
         }
+    }
+
+    // ---- Overlay (Blackboard Layer) tests ----
+
+    #[test]
+    fn test_overlay_new_is_clean() {
+        let overlay = Overlay::new();
+        assert!(overlay.is_clean());
+        assert_eq!(overlay.buffer.len(), 2048);
+        assert_eq!(overlay.snapshot_depth(), 0);
+    }
+
+    #[test]
+    fn test_overlay_single_gabor_write_flush_matches_direct() {
+        let lut = GaussianLUT::new(2.0);
+
+        // Direct write to container
+        let mut direct = vec![0i8; 2048];
+        gabor_write(&mut direct, &lut, 4, 4, 16, 3.0, 1.5, 7.0);
+
+        // Write through overlay, then flush
+        let mut container = vec![0i8; 2048];
+        let mut overlay = Overlay::new();
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 3.0, 1.5, 7.0);
+        assert!(!overlay.is_clean());
+        overlay.flush_add_i8(&mut container);
+
+        assert_eq!(container, direct);
+        assert!(overlay.is_clean());
+    }
+
+    #[test]
+    fn test_overlay_five_gabor_writes_flush_matches_direct() {
+        let lut = GaussianLUT::new(2.0);
+        let params: Vec<(u8, u8, u8, f32, f32)> = vec![
+            (2, 2, 8, 2.0, 0.5),
+            (4, 4, 16, 3.0, 1.5),
+            (6, 6, 24, 5.0, 3.0),
+            (1, 3, 10, 7.0, 4.5),
+            (5, 1, 20, 4.0, 2.0),
+        ];
+
+        // Direct writes
+        let mut direct = vec![0i8; 2048];
+        for &(x, y, z, f, p) in &params {
+            gabor_write(&mut direct, &lut, x, y, z, f, p, 7.0);
+        }
+
+        // Overlay writes then flush
+        let mut container = vec![0i8; 2048];
+        let mut overlay = Overlay::new();
+        for &(x, y, z, f, p) in &params {
+            gabor_write(overlay.as_i8_mut(), &lut, x, y, z, f, p, 7.0);
+        }
+        overlay.flush_add_i8(&mut container);
+
+        assert_eq!(container, direct);
+    }
+
+    #[test]
+    fn test_overlay_read_full_add_i8_before_flush() {
+        let lut = GaussianLUT::new(2.0);
+
+        // Base container with one concept
+        let mut base = vec![0i8; 2048];
+        gabor_write(&mut base, &lut, 2, 2, 8, 3.0, 1.0, 7.0);
+
+        // Overlay with another concept
+        let mut overlay = Overlay::new();
+        gabor_write(overlay.as_i8_mut(), &lut, 6, 6, 24, 5.0, 2.0, 7.0);
+
+        // Read through: should show combined state
+        let combined = overlay.read_full_add_i8(&base);
+
+        // The combined view should have both concepts readable
+        let (p1, a1) = gabor_read(&combined, &lut, 2, 2, 8, 3.0);
+        let (p2, a2) = gabor_read(&combined, &lut, 6, 6, 24, 5.0);
+
+        assert!(phase_error(p1, 1.0) < 0.15, "base concept: {:.4} vs 1.0", p1);
+        assert!(a1 > 0.5);
+        assert!(phase_error(p2, 2.0) < 0.15, "overlay concept: {:.4} vs 2.0", p2);
+        assert!(a2 > 0.5);
+    }
+
+    #[test]
+    fn test_overlay_read_full_add_i8_matches_after_flush() {
+        let lut = GaussianLUT::new(2.0);
+
+        let mut base = vec![0i8; 2048];
+        gabor_write(&mut base, &lut, 2, 2, 8, 3.0, 1.0, 7.0);
+
+        let mut overlay = Overlay::new();
+        gabor_write(overlay.as_i8_mut(), &lut, 6, 6, 24, 5.0, 2.0, 7.0);
+
+        // Read through before flush
+        let view_before = overlay.read_full_add_i8(&base);
+
+        // Flush
+        overlay.flush_add_i8(&mut base);
+
+        // Container after flush should match the read-through view
+        assert_eq!(base, view_before);
+    }
+
+    #[test]
+    fn test_overlay_flush_xor_binary() {
+        let mut container: Vec<u8> = (0..2048).map(|i| (i * 31 % 256) as u8).collect();
+        let original = container.clone();
+
+        let mut overlay = Overlay::new();
+        // Write pattern into overlay
+        for i in 0..2048 {
+            overlay.buffer[i] = (i * 17 % 256) as u8;
+        }
+
+        overlay.flush_xor(&mut container);
+
+        // Verify XOR was applied
+        for i in 0..2048 {
+            assert_eq!(
+                container[i],
+                original[i] ^ (i * 17 % 256) as u8,
+                "XOR mismatch at {}", i
+            );
+        }
+        assert!(overlay.is_clean());
+    }
+
+    #[test]
+    fn test_overlay_flush_add_phase() {
+        let mut container: Vec<u8> = (0..2048).map(|i| (i * 13 % 256) as u8).collect();
+        let original = container.clone();
+
+        let mut overlay = Overlay::new();
+        for i in 0..2048 {
+            overlay.buffer[i] = (i * 7 % 256) as u8;
+        }
+
+        overlay.flush_add(&mut container);
+
+        for i in 0..2048 {
+            assert_eq!(
+                container[i],
+                original[i].wrapping_add((i * 7 % 256) as u8),
+                "ADD mismatch at {}", i
+            );
+        }
+        assert!(overlay.is_clean());
+    }
+
+    #[test]
+    fn test_overlay_double_flush_noop() {
+        let mut container: Vec<u8> = (0..2048).map(|i| (i * 31 % 256) as u8).collect();
+
+        let mut overlay = Overlay::new();
+        for i in 0..2048 {
+            overlay.buffer[i] = (i * 17 % 256) as u8;
+        }
+        overlay.flush_xor(&mut container);
+        let after_first = container.clone();
+
+        // Second flush with clean overlay: no-op
+        overlay.flush_xor(&mut container);
+        assert_eq!(container, after_first, "double flush should be no-op");
+    }
+
+    #[test]
+    fn test_overlay_snapshot_rewind() {
+        let mut overlay = Overlay::new();
+
+        // Write some data
+        overlay.buffer[0] = 42;
+        overlay.buffer[100] = 99;
+        overlay.snapshot(); // save state with [42, ..., 99, ...]
+        assert_eq!(overlay.snapshot_depth(), 1);
+
+        // Write more data
+        overlay.buffer[0] = 0;
+        overlay.buffer[200] = 77;
+
+        // Rewind: should restore to snapshot state
+        assert!(overlay.rewind());
+        assert_eq!(overlay.buffer[0], 42);
+        assert_eq!(overlay.buffer[100], 99);
+        assert_eq!(overlay.buffer[200], 0); // reverted
+        assert_eq!(overlay.snapshot_depth(), 0);
+    }
+
+    #[test]
+    fn test_overlay_snapshot_write_rewind_flush() {
+        let lut = GaussianLUT::new(2.0);
+
+        let mut container = vec![0i8; 2048];
+        let mut overlay = Overlay::new();
+
+        // Write concept A into overlay
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 3.0, 1.0, 7.0);
+        overlay.snapshot(); // save: has concept A
+
+        // Write concept B into overlay
+        gabor_write(overlay.as_i8_mut(), &lut, 6, 6, 24, 5.0, 2.0, 7.0);
+
+        // Oops, concept B was wrong. Rewind.
+        overlay.rewind();
+
+        // Flush: only concept A should be committed
+        overlay.flush_add_i8(&mut container);
+
+        // Concept A recoverable
+        let (pa, aa) = gabor_read(&container, &lut, 4, 4, 16, 3.0);
+        assert!(phase_error(pa, 1.0) < 0.15, "A: {:.4} vs 1.0", pa);
+        assert!(aa > 0.5);
+
+        // Concept B should NOT be in the container (noise-floor amplitude)
+        let (_, ab) = gabor_read(&container, &lut, 6, 6, 24, 5.0);
+        assert!(ab < 0.3, "B should be absent, got amplitude {:.4}", ab);
+    }
+
+    #[test]
+    fn test_overlay_multiple_snapshots_lifo() {
+        let mut overlay = Overlay::new();
+
+        overlay.buffer[0] = 10;
+        overlay.snapshot(); // snap 0: [10, ...]
+
+        overlay.buffer[0] = 20;
+        overlay.snapshot(); // snap 1: [20, ...]
+
+        overlay.buffer[0] = 30;
+        overlay.snapshot(); // snap 2: [30, ...]
+
+        overlay.buffer[0] = 40;
+        assert_eq!(overlay.snapshot_depth(), 3);
+
+        // Rewind from 40 → 30 (snap 2)
+        assert!(overlay.rewind());
+        assert_eq!(overlay.buffer[0], 30);
+        assert_eq!(overlay.snapshot_depth(), 2);
+
+        // Rewind from 30 → 20 (snap 1)
+        assert!(overlay.rewind());
+        assert_eq!(overlay.buffer[0], 20);
+        assert_eq!(overlay.snapshot_depth(), 1);
+
+        // Rewind from 20 → 10 (snap 0)
+        assert!(overlay.rewind());
+        assert_eq!(overlay.buffer[0], 10);
+        assert_eq!(overlay.snapshot_depth(), 0);
+
+        // No more snapshots
+        assert!(!overlay.rewind());
+        assert_eq!(overlay.buffer[0], 10); // unchanged
+    }
+
+    #[test]
+    fn test_overlay_rewind_empty_returns_false() {
+        let mut overlay = Overlay::new();
+        assert!(!overlay.rewind());
+        assert!(overlay.is_clean()); // unchanged
+    }
+
+    #[test]
+    fn test_overlay_discard() {
+        let mut overlay = Overlay::new();
+        overlay.buffer[0] = 42;
+        overlay.snapshot();
+        overlay.buffer[0] = 99;
+
+        let mut container = vec![0u8; 2048];
+        container[0] = 10;
+
+        // Discard: zeros overlay, clears snapshots, doesn't touch container
+        overlay.discard();
+        assert!(overlay.is_clean());
+        assert_eq!(overlay.snapshot_depth(), 0);
+        assert_eq!(container[0], 10); // untouched
+    }
+
+    #[test]
+    fn test_overlay_is_clean_lifecycle() {
+        let mut overlay = Overlay::new();
+        assert!(overlay.is_clean()); // new
+
+        overlay.buffer[500] = 1;
+        assert!(!overlay.is_clean()); // after write
+
+        overlay.discard();
+        assert!(overlay.is_clean()); // after discard
+
+        overlay.buffer[500] = 1;
+        let mut container = vec![0u8; 2048];
+        overlay.flush_xor(&mut container);
+        assert!(overlay.is_clean()); // after flush
+    }
+
+    #[test]
+    fn test_overlay_as_i8_mut_gabor_write() {
+        let lut = GaussianLUT::new(2.0);
+        let mut overlay = Overlay::new();
+
+        // Write through safe i8 wrapper
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 3.0, 1.5, 7.0);
+
+        // Read back through i8 view
+        let (rec_phase, rec_amp) = gabor_read(overlay.as_i8(), &lut, 4, 4, 16, 3.0);
+        assert!(
+            phase_error(rec_phase, 1.5) < 0.15,
+            "as_i8_mut write: expected 1.5, got {:.4}", rec_phase
+        );
+        assert!(rec_amp > 0.5);
+    }
+
+    #[test]
+    fn test_overlay_read_xor_single_byte() {
+        let overlay_val = 0xABu8;
+        let container_val = 0xCDu8;
+
+        let mut overlay = Overlay::new();
+        overlay.buffer[42] = overlay_val;
+
+        let container = {
+            let mut c = vec![0u8; 2048];
+            c[42] = container_val;
+            c
+        };
+
+        assert_eq!(overlay.read_xor(&container, 42), 0xABu8 ^ 0xCDu8);
+        assert_eq!(overlay.read_add(&container, 42), 0xCDu8.wrapping_add(0xABu8));
+    }
+
+    #[test]
+    fn test_overlay_read_full_xor() {
+        let mut overlay = Overlay::new();
+        let mut container = vec![0u8; 2048];
+        for i in 0..2048 {
+            overlay.buffer[i] = (i * 3 % 256) as u8;
+            container[i] = (i * 7 % 256) as u8;
+        }
+
+        let result = overlay.read_full_xor(&container);
+        for i in 0..2048 {
+            assert_eq!(
+                result[i],
+                container[i] ^ overlay.buffer[i],
+                "XOR mismatch at {}", i
+            );
+        }
+    }
+
+    #[test]
+    fn test_overlay_delta_cube_pipeline() {
+        let lut = GaussianLUT::new(2.0);
+
+        // Create two fields
+        let mut field_a = vec![0i8; 2048];
+        let mut field_b = vec![0i8; 2048];
+        gabor_write(&mut field_a, &lut, 2, 2, 8, 3.0, 1.0, 7.0);
+        gabor_write(&mut field_b, &lut, 6, 6, 24, 5.0, 2.0, 7.0);
+
+        // Delta cube into overlay
+        let mut overlay = Overlay::new();
+        let delta_buf = overlay.as_i8_mut();
+        for i in 0..2048 {
+            delta_buf[i] = field_a[i].wrapping_sub(field_b[i]);
+        }
+
+        // Write relationship content into overlay
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 7.0, 3.5, 7.0);
+
+        // Flush to container
+        let mut container = vec![0i8; 2048];
+        overlay.flush_add_i8(&mut container);
+
+        // Recover content
+        let mut content = vec![0i8; 2048];
+        delta_cube_recover_phase(&container, &field_a, &field_b, &mut content);
+
+        let (rec, amp) = gabor_read(&content, &lut, 4, 4, 16, 7.0);
+        assert!(
+            phase_error(rec, 3.5) < 0.2,
+            "overlay delta-cube: expected 3.5, got {:.4}", rec
+        );
+        assert!(amp > 0.3);
+    }
+
+    #[test]
+    fn test_overlay_spatial_transform() {
+        let lut = GaussianLUT::new(2.0);
+        let mut overlay = Overlay::new();
+
+        // Write wavelet at (4,4,16)
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 3.0, 1.5, 7.0);
+
+        // Apply spatial transform to the overlay buffer
+        let t = SpatialTransform::rotate_x(2);
+        let transformed = spatial_bind(&overlay.buffer, &t);
+        overlay.buffer.copy_from_slice(&transformed);
+
+        // Flush to container
+        let mut container = vec![0i8; 2048];
+        overlay.flush_add_i8(&mut container);
+
+        // Read at transformed position (6,4,16)
+        let (rec, amp) = gabor_read(&container, &lut, 6, 4, 16, 3.0);
+        assert!(
+            phase_error(rec, 1.5) < 0.2,
+            "spatial overlay: expected 1.5, got {:.4}", rec
+        );
+        assert!(amp > 0.5);
+    }
+
+    #[test]
+    fn test_overlay_stm_ltm_boundary() {
+        // After flush, individual concepts only recoverable by holographic readout (key)
+        let lut = GaussianLUT::new(2.0);
+
+        let mut container = vec![0i8; 2048];
+        let mut overlay = Overlay::new();
+
+        // Write 3 concepts into overlay at different frequencies
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 2.0, 0.5, 7.0);
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 5.0, 2.5, 7.0);
+        gabor_write(overlay.as_i8_mut(), &lut, 4, 4, 16, 8.0, 4.5, 7.0);
+
+        overlay.flush_add_i8(&mut container);
+
+        // All three recoverable by key (frequency)
+        let (p1, _) = gabor_read(&container, &lut, 4, 4, 16, 2.0);
+        let (p2, _) = gabor_read(&container, &lut, 4, 4, 16, 5.0);
+        let (p3, _) = gabor_read(&container, &lut, 4, 4, 16, 8.0);
+
+        assert!(phase_error(p1, 0.5) < 0.4, "STM→LTM freq 2: {:.4} vs 0.5", p1);
+        assert!(phase_error(p2, 2.5) < 0.4, "STM→LTM freq 5: {:.4} vs 2.5", p2);
+        assert!(phase_error(p3, 4.5) < 0.4, "STM→LTM freq 8: {:.4} vs 4.5", p3);
     }
 }
