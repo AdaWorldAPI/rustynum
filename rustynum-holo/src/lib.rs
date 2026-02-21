@@ -26,9 +26,18 @@
 //! - `phase_bundle_circular` — correct circular mean bundling
 //! - `project_5d_to_phase` / `recover_5d_from_phase` — spatial coordinate encoding
 //! - `sort_phase_vector` / `unsort_phase_vector` — write-time preparation
+//!
+//! ## Carrier Model (alternative encoding)
+//!
+//! - `carrier_encode` / `carrier_decode` — frequency-domain concept encoding
+//! - `carrier_bundle` — waveform addition (32 VPADDB vs ~500 trig instructions)
+//! - `carrier_distance_l1` / `carrier_correlation` — waveform similarity
+//! - `carrier_spectrum` / `spectral_distance` — frequency fingerprinting
+//! - `CarrierRecord` — hybrid binary + carrier containers
 
 pub mod phase;
 pub mod cogrecord_v3;
+pub mod carrier;
 
 pub use phase::{
     phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
@@ -43,4 +52,12 @@ pub use phase::{
 
 pub use cogrecord_v3::{
     CogRecordV3, HybridThresholds, HybridDistances, CONTAINER_BYTES,
+};
+
+pub use carrier::{
+    CarrierBasis, CarrierRecord, CarrierThresholds, CarrierDistances,
+    CARRIER_FREQUENCIES, CARRIER_AMPLITUDE,
+    carrier_encode, carrier_decode, carrier_bundle,
+    carrier_distance_l1, carrier_correlation,
+    carrier_spectrum, spectral_distance,
 };
