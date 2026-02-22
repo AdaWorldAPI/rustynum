@@ -4602,6 +4602,8 @@ name = "rustynum"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+ "rustyblas",
+ "rustynum-core",
  "rustynum-rs",
 ]
 

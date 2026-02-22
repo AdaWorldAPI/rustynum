@@ -4,9 +4,11 @@ RustyNum Functions Module
 This module provides NumPy-like functions for creating and manipulating NumArray objects.
 These functions offer a familiar interface for users coming from NumPy while leveraging
 the performance benefits of Rust-based implementations.
+
+Also exposes HDC/VSA cognitive computing primitives and INT8 GEMM quantized inference.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from . import _rustynum
 from .num_array_class import NumArray
@@ -415,3 +417,64 @@ def norm(
         return NumArray(_rustynum.norm_f64(a.inner, p, axis, keepdims), dtype="float64")
     else:
         raise ValueError(f"Unsupported dtype for norm: {a.dtype}")
+
+
+# === HDC/VSA Functions ===
+
+
+def hamming_distance(a: bytes, b: bytes) -> int:
+    """VPOPCNTDQ-accelerated Hamming distance between two byte arrays."""
+    return _rustynum.hamming_distance(list(a), list(b))
+
+
+def hamming_batch(
+    query: bytes, database: bytes, num_rows: int, row_bytes: int
+) -> List[int]:
+    """Batch Hamming distances from query to each row in a flat database."""
+    return _rustynum.hamming_batch(list(query), list(database), num_rows, row_bytes)
+
+
+def hamming_top_k(
+    query: bytes, database: bytes, num_rows: int, row_bytes: int, k: int
+) -> Tuple[List[int], List[int]]:
+    """Top-K nearest by Hamming distance. Returns (indices, distances)."""
+    return _rustynum.hamming_top_k(list(query), list(database), num_rows, row_bytes, k)
+
+
+def bundle_u8(vectors: List[NumArray]) -> NumArray:
+    """Majority-vote bundle of multiple u8 NumArray vectors (VSA superposition)."""
+    return NumArray(_rustynum.bundle_u8([v.inner for v in vectors]), dtype="uint8")
+
+
+# === INT8 GEMM Functions ===
+
+
+def quantize_f32_to_u8(data: List[float]) -> Tuple[List[int], float, int]:
+    """Quantize f32 data to u8. Returns (quantized, scale, zero_point)."""
+    return _rustynum.quantize_f32_to_u8(data)
+
+
+def quantize_f32_to_i8(data: List[float]) -> Tuple[List[int], float, int]:
+    """Quantize f32 data to i8. Returns (quantized, scale, zero_point)."""
+    return _rustynum.quantize_f32_to_i8(data)
+
+
+def int8_gemm_i32(
+    a: List[int], b: List[int], m: int, n: int, k: int
+) -> List[int]:
+    """INT8 GEMM with i32 accumulation. A=u8, B=i8, C=i32. VNNI-accelerated."""
+    return _rustynum.int8_gemm_i32(a, b, m, n, k)
+
+
+def int8_gemm_f32(
+    a: List[int],
+    b: List[int],
+    m: int,
+    n: int,
+    k: int,
+    scale_a: float,
+    zero_point_a: int,
+    scale_b: float,
+) -> List[float]:
+    """INT8 GEMM with f32 dequantization. VNNI-accelerated."""
+    return _rustynum.int8_gemm_f32(a, b, m, n, k, scale_a, zero_point_a, scale_b)
