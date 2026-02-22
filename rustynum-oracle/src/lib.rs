@@ -63,6 +63,11 @@ pub use nars::{
     reverse_trace, CausalTrace, TraceStep,
     granger_signal, granger_scan,
     find_similar_pairs, SimilarPair,
+    // BF16 causal pipeline
+    BF16Entity, CausalFeatureMap,
+    bf16_granger_causal_map, bf16_granger_causal_scan,
+    BF16TraceStep, BF16CausalTrace, bf16_reverse_trace,
+    BF16LearningEvent, LearningInterpretation, classify_learning_event,
 };
 
 pub use recognize::{
