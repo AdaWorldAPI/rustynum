@@ -93,7 +93,7 @@ impl PyNumArrayF32 {
                     let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
                     self.inner.mean_axis(Some(&axis_vec)) // Now correctly passing a slice wrapped in Some
                 }
-                None => self.inner.mean(),
+                None => self.inner.mean_axis(None),
             };
             Ok(PyNumArrayF32 { inner: result })
         })

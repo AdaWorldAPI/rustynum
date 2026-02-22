@@ -1,4 +1,5 @@
 // bindings/python/src/functions.rs
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use rustynum_rs::{NumArrayF32, NumArrayF64};
@@ -25,11 +26,11 @@ pub fn ones_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
 #[pyfunction]
 pub fn matmul_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
     Python::with_gil(|py| {
-        // Ensure both arrays are matrices for matrix multiplication
-        assert!(
-            a.inner.shape().len() == 2 && b.inner.shape().len() == 2,
-            "Both NumArrayF32 instances must be 2D for matrix multiplication."
-        );
+        if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
+            return Err(PyTypeError::new_err(
+                "Both NumArrayF32 instances must be 2D for matrix multiplication.",
+            ));
+        }
         let result = a.inner.dot(&b.inner);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -168,11 +169,11 @@ pub fn ones_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
 #[pyfunction]
 pub fn matmul_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
     Python::with_gil(|py| {
-        // Ensure both arrays are matrices for matrix multiplication
-        assert!(
-            a.inner.shape().len() == 2 && b.inner.shape().len() == 2,
-            "Both NumArrayF64 instances must be 2D for matrix multiplication."
-        );
+        if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
+            return Err(PyTypeError::new_err(
+                "Both NumArrayF64 instances must be 2D for matrix multiplication.",
+            ));
+        }
         let result = a.inner.dot(&b.inner);
         Ok(PyNumArrayF64 { inner: result })
     })

@@ -200,6 +200,13 @@ pub fn knn_repeated_rho(
     k: usize,
 ) -> KnnResult {
     let root = tree.root();
+    if root.cardinality == 0 {
+        return KnnResult {
+            hits: Vec::new(),
+            distance_calls: 0,
+            clusters_pruned: 0,
+        };
+    }
     let mut rho = root.radius / root.cardinality as u64;
     if rho == 0 {
         rho = 1;
