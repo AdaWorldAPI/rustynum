@@ -553,7 +553,7 @@ After bundling 512D+ hypervectors, use INT8 prefilter to avoid full-precision se
 ### Not Planned
 
 - Random number generation (use the `rand` crate)
-- Python bindings (upstream project provides these; this fork is pure Rust)
+- i32/i64 Python bindings (f32, f64, u8 available via PyO3)
 
 ## Design Principles
 
