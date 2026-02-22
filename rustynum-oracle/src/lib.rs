@@ -17,6 +17,7 @@ pub mod linalg;
 pub mod sweep;
 pub mod oracle;
 pub mod organic;
+pub mod aiwar_ghost;
 
 pub use linalg::{
     cholesky_solve, condition_number,
@@ -47,6 +48,8 @@ pub use organic::{
     FlushResult, organic_flush,
     OrganicResult, measure_recovery_organic, run_organic_sweep,
     organic_results_to_csv,
+    StressPoint, stress_test_absorption,
+    run_absorption_stress_test, run_plasticity_comparison,
     ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
 };
 pub use organic::FlushAction as OrganicFlushAction;
