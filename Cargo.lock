@@ -4688,6 +4688,7 @@ dependencies = [
  "criterion 0.3.6",
  "nalgebra",
  "ndarray",
+ "rustymkl",
  "rustynum-core",
 ]
 

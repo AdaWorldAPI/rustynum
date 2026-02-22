@@ -91,6 +91,14 @@ pub trait SimdOps<T> {
     fn mul_array(a: &[T], b: &[T], out: &mut [T]);
     /// Element-wise: out[i] = a[i] / b[i]
     fn div_array(a: &[T], b: &[T], out: &mut [T]);
+
+    /// Batch element-wise exp: out[i] = exp(a[i]).
+    /// Uses SIMD polynomial approximation via VML for full bus utilization.
+    fn exp_batch(a: &[T], out: &mut [T]);
+
+    /// Batch element-wise ln: out[i] = ln(a[i]).
+    /// Uses SIMD Padé series via VML for full bus utilization.
+    fn log_batch(a: &[T], out: &mut [T]);
 }
 
 /// AVX512-optimized bitwise operations for integer SIMD types.
@@ -360,6 +368,14 @@ impl SimdOps<u8> for u8x64 {
             out[i] = a[i] / b[i];
         }
     }
+
+    fn exp_batch(_a: &[u8], _out: &mut [u8]) {
+        unimplemented!("exp not defined for u8");
+    }
+
+    fn log_batch(_a: &[u8], _out: &mut [u8]) {
+        unimplemented!("log not defined for u8");
+    }
 }
 
 impl SimdOps<f32> for f32x16 {
@@ -625,6 +641,14 @@ impl SimdOps<f32> for f32x16 {
             out[i] = a[i] / b[i];
         }
     }
+
+    fn exp_batch(a: &[f32], out: &mut [f32]) {
+        rustymkl::vml::vsexp(a, out);
+    }
+
+    fn log_batch(a: &[f32], out: &mut [f32]) {
+        rustymkl::vml::vsln(a, out);
+    }
 }
 
 impl SimdOps<f64> for f64x8 {
@@ -886,6 +910,14 @@ impl SimdOps<f64> for f64x8 {
             out[i] = a[i] / b[i];
         }
     }
+
+    fn exp_batch(a: &[f64], out: &mut [f64]) {
+        rustymkl::vml::vdexp(a, out);
+    }
+
+    fn log_batch(a: &[f64], out: &mut [f64]) {
+        rustymkl::vml::vdln(a, out);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1124,6 +1156,14 @@ impl SimdOps<i32> for i32x16 {
             out[i] = a[i] / b[i];
         }
     }
+
+    fn exp_batch(_a: &[i32], _out: &mut [i32]) {
+        unimplemented!("exp not defined for i32");
+    }
+
+    fn log_batch(_a: &[i32], _out: &mut [i32]) {
+        unimplemented!("log not defined for i32");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1361,6 +1401,14 @@ impl SimdOps<i64> for i64x8 {
         for i in (chunks * LANES_64)..a.len() {
             out[i] = a[i] / b[i];
         }
+    }
+
+    fn exp_batch(_a: &[i64], _out: &mut [i64]) {
+        unimplemented!("exp not defined for i64");
+    }
+
+    fn log_batch(_a: &[i64], _out: &mut [i64]) {
+        unimplemented!("log not defined for i64");
     }
 }
 

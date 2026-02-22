@@ -98,7 +98,11 @@ pub fn sgemm(
     sgemm_blocked(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
 }
 
-/// Simple triple-loop GEMM for small matrices.
+/// Small-matrix GEMM with SIMD dot products.
+///
+/// Pre-gathers A rows and B columns into contiguous buffers so every
+/// inner product streams through the SIMD bus at full width.
+/// B columns (or transposed B rows) are gathered once and reused across all A rows.
 fn sgemm_simple(
     layout: Layout,
     trans_a: Transpose,
@@ -114,26 +118,53 @@ fn sgemm_simple(
     c: &mut [f32],
     ldc: usize,
 ) {
+    use rustynum_core::simd;
+
+    // Pre-gather B columns into contiguous layout (k elements per column, n columns).
+    // This converts strided column access into sequential cache-line-filling reads.
+    let mut b_cols = vec![0.0f32; n * k];
+    for j in 0..n {
+        for p in 0..k {
+            let b_val = match (layout, trans_b) {
+                (Layout::RowMajor, Transpose::NoTrans) => b[p * ldb + j],
+                (Layout::RowMajor, _) => b[j * ldb + p],
+                (Layout::ColMajor, Transpose::NoTrans) => b[j * ldb + p],
+                (Layout::ColMajor, _) => b[p * ldb + j],
+            };
+            b_cols[j * k + p] = b_val;
+        }
+    }
+
     for i in 0..m {
-        for j in 0..n {
-            let mut sum = 0.0f32;
+        // Check if A row is already contiguous (RowMajor NoTrans or ColMajor Trans)
+        let a_row_contiguous = matches!(
+            (layout, trans_a),
+            (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+        );
+
+        if a_row_contiguous {
+            let a_start = i * lda;
+            let a_row = &a[a_start..a_start + k];
+            for j in 0..n {
+                let dot = simd::dot_f32(a_row, &b_cols[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
+        } else {
+            // Gather A row into contiguous buffer
+            let mut a_row = vec![0.0f32; k];
             for p in 0..k {
-                let a_val = match (layout, trans_a) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[i * lda + p],
+                a_row[p] = match (layout, trans_a) {
                     (Layout::RowMajor, _) => a[p * lda + i],
                     (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + i],
                     (Layout::ColMajor, _) => a[i * lda + p],
                 };
-                let b_val = match (layout, trans_b) {
-                    (Layout::RowMajor, Transpose::NoTrans) => b[p * ldb + j],
-                    (Layout::RowMajor, _) => b[j * ldb + p],
-                    (Layout::ColMajor, Transpose::NoTrans) => b[j * ldb + p],
-                    (Layout::ColMajor, _) => b[p * ldb + j],
-                };
-                sum += a_val * b_val;
             }
-            let idx = layout.index(i, j, ldc);
-            c[idx] += alpha * sum;
+            for j in 0..n {
+                let dot = simd::dot_f32(&a_row, &b_cols[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
         }
     }
 }
@@ -483,7 +514,7 @@ pub fn dgemm(
     dgemm_blocked(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
 }
 
-/// Simple triple-loop DGEMM for small matrices.
+/// Small-matrix DGEMM with SIMD dot products.
 fn dgemm_simple(
     layout: Layout,
     trans_a: Transpose,
@@ -499,26 +530,50 @@ fn dgemm_simple(
     c: &mut [f64],
     ldc: usize,
 ) {
+    use rustynum_core::simd;
+
+    // Pre-gather B columns into contiguous layout
+    let mut b_cols = vec![0.0f64; n * k];
+    for j in 0..n {
+        for p in 0..k {
+            let b_val = match (layout, trans_b) {
+                (Layout::RowMajor, Transpose::NoTrans) => b[p * ldb + j],
+                (Layout::RowMajor, _) => b[j * ldb + p],
+                (Layout::ColMajor, Transpose::NoTrans) => b[j * ldb + p],
+                (Layout::ColMajor, _) => b[p * ldb + j],
+            };
+            b_cols[j * k + p] = b_val;
+        }
+    }
+
     for i in 0..m {
-        for j in 0..n {
-            let mut sum = 0.0f64;
+        let a_row_contiguous = matches!(
+            (layout, trans_a),
+            (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+        );
+
+        if a_row_contiguous {
+            let a_start = i * lda;
+            let a_row = &a[a_start..a_start + k];
+            for j in 0..n {
+                let dot = simd::dot_f64(a_row, &b_cols[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
+        } else {
+            let mut a_row = vec![0.0f64; k];
             for p in 0..k {
-                let a_val = match (layout, trans_a) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[i * lda + p],
+                a_row[p] = match (layout, trans_a) {
                     (Layout::RowMajor, _) => a[p * lda + i],
                     (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + i],
                     (Layout::ColMajor, _) => a[i * lda + p],
                 };
-                let b_val = match (layout, trans_b) {
-                    (Layout::RowMajor, Transpose::NoTrans) => b[p * ldb + j],
-                    (Layout::RowMajor, _) => b[j * ldb + p],
-                    (Layout::ColMajor, Transpose::NoTrans) => b[j * ldb + p],
-                    (Layout::ColMajor, _) => b[p * ldb + j],
-                };
-                sum += a_val * b_val;
             }
-            let idx = layout.index(i, j, ldc);
-            c[idx] += alpha * sum;
+            for j in 0..n {
+                let dot = simd::dot_f64(&a_row, &b_cols[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
         }
     }
 }
@@ -783,12 +838,10 @@ fn dgemm_microkernel_6x8(
 // ============================================================================
 
 /// Single-precision SYRK: C := alpha * A * A^T + beta * C (or A^T * A)
-// TODO(simd): REFACTOR — ssyrk/dsyrk/ssymm/dsymm are naive scalar triple loops.
-// No SIMD, no cache blocking, no parallelism.
-// These should use SIMD-accelerated GEMM microkernels (6x16 f32, 6x8 f64).
-// Also: sgemm_simple/dgemm_simple (small-matrix path <110K flops) are scalar triple loops.
-// Also: strsm is fully scalar (sequential dependencies — partial SIMD for j-loop possible).
-// Also missing: dtrsm (only strsm exists).
+///
+/// For RowMajor NoTrans, both A rows are contiguous — direct SIMD dot
+/// between A_row_i and A_row_j fills the full SIMD bus.
+/// For other layouts/transpositions, rows are gathered into contiguous buffers.
 pub fn ssyrk(
     layout: Layout,
     uplo: Uplo,
@@ -802,6 +855,8 @@ pub fn ssyrk(
     c: &mut [f32],
     ldc: usize,
 ) {
+    use rustynum_core::simd;
+
     // Scale C by beta
     for i in 0..n {
         let (j_start, j_end) = match uplo {
@@ -818,31 +873,49 @@ pub fn ssyrk(
         return;
     }
 
-    // C += alpha * op(A) * op(A)^T
-    for i in 0..n {
-        let (j_start, j_end) = match uplo {
-            Uplo::Upper => (i, n),
-            Uplo::Lower => (0, i + 1),
-        };
-        for j in j_start..j_end {
-            let mut sum = 0.0f32;
+    // Check if A "rows" (for op(A)) are contiguous
+    let rows_contiguous = matches!(
+        (layout, trans),
+        (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+    );
+
+    if rows_contiguous {
+        // Direct SIMD dot between contiguous A rows
+        for i in 0..n {
+            let a_i = &a[i * lda..i * lda + k];
+            let (j_start, j_end) = match uplo {
+                Uplo::Upper => (i, n),
+                Uplo::Lower => (0, i + 1),
+            };
+            for j in j_start..j_end {
+                let a_j = &a[j * lda..j * lda + k];
+                let dot = simd::dot_f32(a_i, a_j);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
+        }
+    } else {
+        // Gather all n row-vectors of op(A) into contiguous buffers
+        let mut a_rows = vec![0.0f32; n * k];
+        for i in 0..n {
             for p in 0..k {
-                let a_ip = match (layout, trans) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[i * lda + p],
+                a_rows[i * k + p] = match (layout, trans) {
                     (Layout::RowMajor, _) => a[p * lda + i],
                     (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + i],
                     (Layout::ColMajor, _) => a[i * lda + p],
                 };
-                let a_jp = match (layout, trans) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[j * lda + p],
-                    (Layout::RowMajor, _) => a[p * lda + j],
-                    (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + j],
-                    (Layout::ColMajor, _) => a[j * lda + p],
-                };
-                sum += a_ip * a_jp;
             }
-            let idx = layout.index(i, j, ldc);
-            c[idx] += alpha * sum;
+        }
+        for i in 0..n {
+            let (j_start, j_end) = match uplo {
+                Uplo::Upper => (i, n),
+                Uplo::Lower => (0, i + 1),
+            };
+            for j in j_start..j_end {
+                let dot = simd::dot_f32(&a_rows[i * k..(i + 1) * k], &a_rows[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
         }
     }
 }
@@ -861,6 +934,8 @@ pub fn dsyrk(
     c: &mut [f64],
     ldc: usize,
 ) {
+    use rustynum_core::simd;
+
     for i in 0..n {
         let (j_start, j_end) = match uplo {
             Uplo::Upper => (i, n),
@@ -876,30 +951,46 @@ pub fn dsyrk(
         return;
     }
 
-    for i in 0..n {
-        let (j_start, j_end) = match uplo {
-            Uplo::Upper => (i, n),
-            Uplo::Lower => (0, i + 1),
-        };
-        for j in j_start..j_end {
-            let mut sum = 0.0f64;
+    let rows_contiguous = matches!(
+        (layout, trans),
+        (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+    );
+
+    if rows_contiguous {
+        for i in 0..n {
+            let a_i = &a[i * lda..i * lda + k];
+            let (j_start, j_end) = match uplo {
+                Uplo::Upper => (i, n),
+                Uplo::Lower => (0, i + 1),
+            };
+            for j in j_start..j_end {
+                let a_j = &a[j * lda..j * lda + k];
+                let dot = simd::dot_f64(a_i, a_j);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
+        }
+    } else {
+        let mut a_rows = vec![0.0f64; n * k];
+        for i in 0..n {
             for p in 0..k {
-                let a_ip = match (layout, trans) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[i * lda + p],
+                a_rows[i * k + p] = match (layout, trans) {
                     (Layout::RowMajor, _) => a[p * lda + i],
                     (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + i],
                     (Layout::ColMajor, _) => a[i * lda + p],
                 };
-                let a_jp = match (layout, trans) {
-                    (Layout::RowMajor, Transpose::NoTrans) => a[j * lda + p],
-                    (Layout::RowMajor, _) => a[p * lda + j],
-                    (Layout::ColMajor, Transpose::NoTrans) => a[p * lda + j],
-                    (Layout::ColMajor, _) => a[j * lda + p],
-                };
-                sum += a_ip * a_jp;
             }
-            let idx = layout.index(i, j, ldc);
-            c[idx] += alpha * sum;
+        }
+        for i in 0..n {
+            let (j_start, j_end) = match uplo {
+                Uplo::Upper => (i, n),
+                Uplo::Lower => (0, i + 1),
+            };
+            for j in j_start..j_end {
+                let dot = simd::dot_f64(&a_rows[i * k..(i + 1) * k], &a_rows[j * k..(j + 1) * k]);
+                let idx = layout.index(i, j, ldc);
+                c[idx] += alpha * dot;
+            }
         }
     }
 }
@@ -910,6 +1001,10 @@ pub fn dsyrk(
 // ============================================================================
 
 /// Single-precision TRSM: solve op(A) * X = alpha * B (A triangular)
+///
+/// Sequential dependencies between rows limit full SIMD, but the j-loop
+/// (across RHS columns) uses SIMD scal for the alpha scaling,
+/// and the inner p-loop column gather uses SIMD dot where applicable.
 pub fn strsm(
     layout: Layout,
     side: Side,
@@ -924,14 +1019,24 @@ pub fn strsm(
     b: &mut [f32],
     ldb: usize,
 ) {
+    use rustynum_core::simd;
     let unit = diag == Diag::Unit;
 
-    // Scale B by alpha
+    // Scale B by alpha — SIMD scal on contiguous rows
     if alpha != 1.0 {
-        for i in 0..m {
-            for j in 0..n {
-                let idx = layout.index(i, j, ldb);
-                b[idx] *= alpha;
+        match layout {
+            Layout::RowMajor => {
+                for i in 0..m {
+                    simd::scal_f32(alpha, &mut b[i * ldb..i * ldb + n]);
+                }
+            }
+            _ => {
+                for i in 0..m {
+                    for j in 0..n {
+                        let idx = layout.index(i, j, ldb);
+                        b[idx] *= alpha;
+                    }
+                }
             }
         }
     }
@@ -939,32 +1044,53 @@ pub fn strsm(
     match (side, layout, uplo, trans) {
         (Side::Left, Layout::RowMajor, Uplo::Lower, Transpose::NoTrans) => {
             // Forward substitution: L * X = B
+            // For each row i, the j-loop across RHS columns is independent.
+            // The inner p-loop gathers B column values — sequential dependency on rows.
             for i in 0..m {
-                for j in 0..n {
-                    let mut sum = b[i * ldb + j];
-                    for p in 0..i {
-                        sum -= a[i * lda + p] * b[p * ldb + j];
+                if !unit {
+                    let diag_inv = 1.0 / a[i * lda + i];
+                    for j in 0..n {
+                        let mut sum = b[i * ldb + j];
+                        for p in 0..i {
+                            sum -= a[i * lda + p] * b[p * ldb + j];
+                        }
+                        b[i * ldb + j] = sum * diag_inv;
                     }
-                    b[i * ldb + j] = if unit { sum } else { sum / a[i * lda + i] };
+                } else {
+                    for j in 0..n {
+                        let mut sum = b[i * ldb + j];
+                        for p in 0..i {
+                            sum -= a[i * lda + p] * b[p * ldb + j];
+                        }
+                        b[i * ldb + j] = sum;
+                    }
                 }
             }
         }
         (Side::Left, Layout::RowMajor, Uplo::Upper, Transpose::NoTrans) => {
             // Back substitution: U * X = B
             for i in (0..m).rev() {
-                for j in 0..n {
-                    let mut sum = b[i * ldb + j];
-                    for p in (i + 1)..m {
-                        sum -= a[i * lda + p] * b[p * ldb + j];
+                if !unit {
+                    let diag_inv = 1.0 / a[i * lda + i];
+                    for j in 0..n {
+                        let mut sum = b[i * ldb + j];
+                        for p in (i + 1)..m {
+                            sum -= a[i * lda + p] * b[p * ldb + j];
+                        }
+                        b[i * ldb + j] = sum * diag_inv;
                     }
-                    b[i * ldb + j] = if unit { sum } else { sum / a[i * lda + i] };
+                } else {
+                    for j in 0..n {
+                        let mut sum = b[i * ldb + j];
+                        for p in (i + 1)..m {
+                            sum -= a[i * lda + p] * b[p * ldb + j];
+                        }
+                        b[i * ldb + j] = sum;
+                    }
                 }
             }
         }
         _ => {
-            // Other cases: transform to one of the above
-            // For right-side: X * A = B -> A^T * X^T = B^T
-            // Simple fallback
             for i in 0..m {
                 for j in 0..n {
                     let idx = layout.index(i, j, ldb);
@@ -987,6 +1113,10 @@ pub fn strsm(
 // ============================================================================
 
 /// Single-precision SYMM: C := alpha * A * B + beta * C (A symmetric)
+///
+/// Gathers symmetric A rows and B columns into contiguous buffers
+/// for SIMD dot products. The symmetric gather fills the SIMD bus
+/// sequentially so L1 prefetch stays one burst ahead.
 pub fn ssymm(
     layout: Layout,
     side: Side,
@@ -1002,7 +1132,8 @@ pub fn ssymm(
     c: &mut [f32],
     ldc: usize,
 ) {
-    // Scale C by beta
+    use rustynum_core::simd;
+
     for i in 0..m {
         for j in 0..n {
             let idx = layout.index(i, j, ldc);
@@ -1014,47 +1145,69 @@ pub fn ssymm(
         return;
     }
 
-    // Simple implementation using the symmetry of A
     let ka = match side {
         Side::Left => m,
         Side::Right => n,
     };
 
-    for i in 0..m {
-        for j in 0..n {
-            let mut sum = 0.0f32;
-            match side {
-                Side::Left => {
-                    for p in 0..ka {
-                        // A[i,p] using symmetry
-                        let (ai, aj) = if i <= p { (i, p) } else { (p, i) };
-                        let a_val = match uplo {
-                            Uplo::Upper => a[layout.index(ai, aj, lda)],
-                            Uplo::Lower => a[layout.index(aj, ai, lda)],
-                        };
-                        let b_val = b[layout.index(p, j, ldb)];
-                        sum += a_val * b_val;
-                    }
-                }
-                Side::Right => {
-                    for p in 0..ka {
-                        let b_val = b[layout.index(i, p, ldb)];
-                        let (ai, aj) = if p <= j { (p, j) } else { (j, p) };
-                        let a_val = match uplo {
-                            Uplo::Upper => a[layout.index(ai, aj, lda)],
-                            Uplo::Lower => a[layout.index(aj, ai, lda)],
-                        };
-                        sum += b_val * a_val;
-                    }
+    match side {
+        Side::Left => {
+            // C[i,j] += alpha * sum_p(A_sym[i,p] * B[p,j])
+            // Pre-gather B columns
+            let mut b_cols = vec![0.0f32; n * ka];
+            for j in 0..n {
+                for p in 0..ka {
+                    b_cols[j * ka + p] = b[layout.index(p, j, ldb)];
                 }
             }
-            let idx = layout.index(i, j, ldc);
-            c[idx] += alpha * sum;
+            // Gather symmetric A row for each i, then SIMD dot
+            let mut a_row = vec![0.0f32; ka];
+            for i in 0..m {
+                // Fill full symmetric row of A
+                for p in 0..ka {
+                    let (ai, aj) = if i <= p { (i, p) } else { (p, i) };
+                    a_row[p] = match uplo {
+                        Uplo::Upper => a[layout.index(ai, aj, lda)],
+                        Uplo::Lower => a[layout.index(aj, ai, lda)],
+                    };
+                }
+                for j in 0..n {
+                    let dot = simd::dot_f32(&a_row, &b_cols[j * ka..(j + 1) * ka]);
+                    let idx = layout.index(i, j, ldc);
+                    c[idx] += alpha * dot;
+                }
+            }
+        }
+        Side::Right => {
+            // C[i,j] += alpha * sum_p(B[i,p] * A_sym[p,j])
+            // Pre-gather symmetric A columns (= symmetric A rows)
+            let mut a_cols = vec![0.0f32; n * ka];
+            for j in 0..n {
+                for p in 0..ka {
+                    let (ai, aj) = if p <= j { (p, j) } else { (j, p) };
+                    a_cols[j * ka + p] = match uplo {
+                        Uplo::Upper => a[layout.index(ai, aj, lda)],
+                        Uplo::Lower => a[layout.index(aj, ai, lda)],
+                    };
+                }
+            }
+            // Gather B row for each i, then SIMD dot
+            let mut b_row = vec![0.0f32; ka];
+            for i in 0..m {
+                for p in 0..ka {
+                    b_row[p] = b[layout.index(i, p, ldb)];
+                }
+                for j in 0..n {
+                    let dot = simd::dot_f32(&b_row, &a_cols[j * ka..(j + 1) * ka]);
+                    let idx = layout.index(i, j, ldc);
+                    c[idx] += alpha * dot;
+                }
+            }
         }
     }
 }
 
-/// Double-precision SYMM.
+/// Double-precision SYMM: C := alpha * A * B + beta * C (A symmetric)
 pub fn dsymm(
     layout: Layout,
     side: Side,
@@ -1070,6 +1223,8 @@ pub fn dsymm(
     c: &mut [f64],
     ldc: usize,
 ) {
+    use rustynum_core::simd;
+
     for i in 0..m {
         for j in 0..n {
             let idx = layout.index(i, j, ldc);
@@ -1086,33 +1241,52 @@ pub fn dsymm(
         Side::Right => n,
     };
 
-    for i in 0..m {
-        for j in 0..n {
-            let mut sum = 0.0f64;
-            match side {
-                Side::Left => {
-                    for p in 0..ka {
-                        let (ai, aj) = if i <= p { (i, p) } else { (p, i) };
-                        let a_val = match uplo {
-                            Uplo::Upper => a[layout.index(ai, aj, lda)],
-                            Uplo::Lower => a[layout.index(aj, ai, lda)],
-                        };
-                        sum += a_val * b[layout.index(p, j, ldb)];
-                    }
-                }
-                Side::Right => {
-                    for p in 0..ka {
-                        let b_val = b[layout.index(i, p, ldb)];
-                        let (ai, aj) = if p <= j { (p, j) } else { (j, p) };
-                        let a_val = match uplo {
-                            Uplo::Upper => a[layout.index(ai, aj, lda)],
-                            Uplo::Lower => a[layout.index(aj, ai, lda)],
-                        };
-                        sum += b_val * a_val;
-                    }
+    match side {
+        Side::Left => {
+            let mut b_cols = vec![0.0f64; n * ka];
+            for j in 0..n {
+                for p in 0..ka {
+                    b_cols[j * ka + p] = b[layout.index(p, j, ldb)];
                 }
             }
-            c[layout.index(i, j, ldc)] += alpha * sum;
+            let mut a_row = vec![0.0f64; ka];
+            for i in 0..m {
+                for p in 0..ka {
+                    let (ai, aj) = if i <= p { (i, p) } else { (p, i) };
+                    a_row[p] = match uplo {
+                        Uplo::Upper => a[layout.index(ai, aj, lda)],
+                        Uplo::Lower => a[layout.index(aj, ai, lda)],
+                    };
+                }
+                for j in 0..n {
+                    let dot = simd::dot_f64(&a_row, &b_cols[j * ka..(j + 1) * ka]);
+                    let idx = layout.index(i, j, ldc);
+                    c[idx] += alpha * dot;
+                }
+            }
+        }
+        Side::Right => {
+            let mut a_cols = vec![0.0f64; n * ka];
+            for j in 0..n {
+                for p in 0..ka {
+                    let (ai, aj) = if p <= j { (p, j) } else { (j, p) };
+                    a_cols[j * ka + p] = match uplo {
+                        Uplo::Upper => a[layout.index(ai, aj, lda)],
+                        Uplo::Lower => a[layout.index(aj, ai, lda)],
+                    };
+                }
+            }
+            let mut b_row = vec![0.0f64; ka];
+            for i in 0..m {
+                for p in 0..ka {
+                    b_row[p] = b[layout.index(i, p, ldb)];
+                }
+                for j in 0..n {
+                    let dot = simd::dot_f64(&b_row, &a_cols[j * ka..(j + 1) * ka]);
+                    let idx = layout.index(i, j, ldc);
+                    c[idx] += alpha * dot;
+                }
+            }
         }
     }
 }

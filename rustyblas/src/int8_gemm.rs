@@ -1,14 +1,3 @@
-// TODO(simd): REFACTOR — int8_gemm has scalar quantization and fallback paths:
-// - quantize_f32_to_u8/quantize_f32_to_i8: scalar per-element quantize loops.
-//   Fix: SIMD min/max reduction, SIMD scale+round+clamp.
-// - quantize_per_channel_i8: scalar per-row quantize.
-//   Fix: SIMD abs_max per row, SIMD scale+clamp.
-// - quantize_f32_to_i4/dequantize_i4_to_f32: scalar nibble pack/unpack.
-//   Fix: SIMD byte shuffle for nibble interleave.
-// - int8_gemm_scalar: scalar triple loop fallback (no VNNI).
-//   Fix: mark as lowest tier, add AVX2 fallback with pmaddubsw+pmaddwd.
-// - B transpose: scalar double loop.
-//   Fix: SIMD 8x8 block transpose.
 //! INT8 Quantized GEMM with AVX-512 VNNI acceleration.
 //!
 //! Implements quantized matrix multiplication for inference workloads:
@@ -25,6 +14,42 @@
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
+
+use std::simd::f32x16;
+use std::simd::num::SimdFloat;
+use std::simd::StdFloat;
+
+/// f32 SIMD lane count (16 for AVX-512).
+const F32_LANES: usize = 16;
+
+// ============================================================================
+// SIMD helper: abs_max reduction
+// ============================================================================
+
+/// Compute max(|x|) over a f32 slice using SIMD f32x16.
+///
+/// Used by symmetric quantization (i8, i4) to find the scale factor.
+#[inline]
+fn simd_abs_max(data: &[f32]) -> f32 {
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let mut acc = f32x16::splat(0.0);
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        acc = acc.simd_max(v.abs());
+    }
+
+    let mut result = acc.reduce_max();
+
+    // Scalar tail
+    for i in (chunks * F32_LANES)..len {
+        result = result.max(data[i].abs());
+    }
+
+    result
+}
 
 // ============================================================================
 // Quantization parameters
@@ -52,13 +77,34 @@ pub struct PerChannelQuantParams {
 
 /// Quantize f32 tensor to u8 (asymmetric, per-tensor).
 /// Returns (quantized_data, params).
+///
+/// Uses SIMD f32x16 for both min/max reduction and the quantization loop.
 pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
     if data.is_empty() {
         return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
     }
 
-    let min_val = data.iter().copied().fold(f32::INFINITY, f32::min);
-    let max_val = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    // ---- SIMD min/max reduction ----
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let mut vmin = f32x16::splat(f32::INFINITY);
+    let mut vmax = f32x16::splat(f32::NEG_INFINITY);
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        vmin = vmin.simd_min(v);
+        vmax = vmax.simd_max(v);
+    }
+
+    let mut min_val = vmin.reduce_min();
+    let mut max_val = vmax.reduce_max();
+
+    // Scalar tail for remaining elements
+    for i in (chunks * F32_LANES)..len {
+        min_val = min_val.min(data[i]);
+        max_val = max_val.max(data[i]);
+    }
 
     let scale = if max_val == min_val {
         1.0
@@ -68,37 +114,79 @@ pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
     let zero_point = (-min_val / scale).round() as i32;
     let zero_point = zero_point.clamp(0, 255);
 
-    let quantized: Vec<u8> = data
-        .iter()
-        .map(|&v| ((v / scale).round() as i32 + zero_point).clamp(0, 255) as u8)
-        .collect();
+    // ---- SIMD quantization loop ----
+    let inv_scale_v = f32x16::splat(1.0 / scale);
+    let zp_v = f32x16::splat(zero_point as f32);
+    let lo_v = f32x16::splat(0.0);
+    let hi_v = f32x16::splat(255.0);
+
+    let mut quantized = vec![0u8; len];
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        // quantized = round(v / scale) + zero_point, clamped to [0, 255]
+        let scaled = (v * inv_scale_v).round() + zp_v;
+        let clamped = scaled.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast::<i32>();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            quantized[base + j] = arr[j] as u8;
+        }
+    }
+
+    // Scalar tail
+    for i in (chunks * F32_LANES)..len {
+        quantized[i] = ((data[i] / scale).round() as i32 + zero_point).clamp(0, 255) as u8;
+    }
 
     (quantized, QuantParams { scale, zero_point })
 }
 
 /// Quantize f32 tensor to i8 (symmetric, per-tensor).
 /// Returns (quantized_data, params).
+///
+/// Uses SIMD f32x16 for abs_max reduction and the quantization loop.
 pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
     if data.is_empty() {
         return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
     }
 
-    let abs_max = data
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, v| acc.max(v.abs()));
-
+    let abs_max = simd_abs_max(data);
     let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 127.0 };
 
-    let quantized: Vec<i8> = data
-        .iter()
-        .map(|&v| (v / scale).round().clamp(-128.0, 127.0) as i8)
-        .collect();
+    // ---- SIMD quantization loop ----
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let inv_scale_v = f32x16::splat(1.0 / scale);
+    let lo_v = f32x16::splat(-128.0);
+    let hi_v = f32x16::splat(127.0);
+
+    let mut quantized = vec![0i8; len];
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let scaled = (v * inv_scale_v).round();
+        let clamped = scaled.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast::<i32>();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            quantized[base + j] = arr[j] as i8;
+        }
+    }
+
+    // Scalar tail
+    for i in (chunks * F32_LANES)..len {
+        quantized[i] = (data[i] / scale).round().clamp(-128.0, 127.0) as i8;
+    }
 
     (quantized, QuantParams { scale, zero_point: 0 })
 }
 
 /// Per-channel quantization: quantize each row of an MxK matrix to i8.
+///
+/// Uses SIMD f32x16 for per-row abs_max reduction and quantization.
 pub fn quantize_per_channel_i8(
     data: &[f32],
     rows: usize,
@@ -108,13 +196,36 @@ pub fn quantize_per_channel_i8(
     let mut scales = Vec::with_capacity(rows);
     let mut zero_points = Vec::with_capacity(rows);
 
+    let chunks = cols / F32_LANES;
+    let lo_v = f32x16::splat(-128.0);
+    let hi_v = f32x16::splat(127.0);
+
     for r in 0..rows {
         let row = &data[r * cols..(r + 1) * cols];
-        let abs_max = row.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs()));
+
+        // SIMD abs_max for this row
+        let abs_max = simd_abs_max(row);
         let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 127.0 };
 
-        for c in 0..cols {
-            quantized[r * cols + c] = (row[c] / scale).round().clamp(-128.0, 127.0) as i8;
+        // SIMD quantization for this row
+        let inv_scale_v = f32x16::splat(1.0 / scale);
+        let out_row = &mut quantized[r * cols..(r + 1) * cols];
+
+        for i in 0..chunks {
+            let base = i * F32_LANES;
+            let v = f32x16::from_slice(&row[base..]);
+            let scaled = (v * inv_scale_v).round();
+            let clamped = scaled.simd_clamp(lo_v, hi_v);
+            let as_i32 = clamped.cast::<i32>();
+            let arr = as_i32.to_array();
+            for j in 0..F32_LANES {
+                out_row[base + j] = arr[j] as i8;
+            }
+        }
+
+        // Scalar tail
+        for c in (chunks * F32_LANES)..cols {
+            out_row[c] = (row[c] / scale).round().clamp(-128.0, 127.0) as i8;
         }
 
         scales.push(scale);
@@ -183,7 +294,16 @@ pub fn int8_gemm_i32(
     int8_gemm_scalar(a, &b_t, c, m, n, k);
 }
 
-/// Scalar INT8 GEMM fallback (B already transposed).
+/// Lowest-tier scalar INT8 GEMM fallback (B already transposed).
+///
+/// Used only when no VNNI instructions are available (neither AVX-512 VNNI
+/// nor AVX2-VNNI / AVX-VNNI). On modern x86_64 hardware this path is rarely
+/// taken — Sapphire Rapids+ and Meteor Lake+ all have VNNI. This exists as a
+/// correctness reference and portable fallback for non-x86 or very old CPUs.
+///
+/// For higher throughput without VNNI, an AVX2 path using `vpmaddubsw` +
+/// `vpmaddwd` could provide ~8x speedup over this scalar loop, but is not
+/// yet implemented since all target hardware has VNNI.
 fn int8_gemm_scalar(a: &[u8], b_t: &[i8], c: &mut [i32], m: usize, n: usize, k: usize) {
     for i in 0..m {
         for j in 0..n {
@@ -544,26 +664,52 @@ mod tests {
 /// Values are clamped to [-8, 7] and packed as signed 4-bit nibbles.
 ///
 /// Packing: high nibble = even index, low nibble = odd index.
+///
+/// SIMD is used for abs_max reduction and scale/clamp computation.
+/// Nibble packing remains scalar (inherently byte-level interleave).
 pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
     if data.is_empty() {
         return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
     }
 
-    let abs_max = data.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs()));
+    // SIMD abs_max reduction
+    let abs_max = simd_abs_max(data);
     let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
+    let inv_scale = 1.0 / scale;
 
-    let packed_len = (data.len() + 1) / 2; // ceil(len / 2)
+    // Pre-compute all scaled+clamped values using SIMD, then pack nibbles scalar
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let inv_scale_v = f32x16::splat(inv_scale);
+    let lo_v = f32x16::splat(-8.0);
+    let hi_v = f32x16::splat(7.0);
+
+    let mut scaled_vals = vec![0i8; len];
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let s = (v * inv_scale_v).round();
+        let clamped = s.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast::<i32>();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            scaled_vals[base + j] = arr[j] as i8;
+        }
+    }
+
+    // Scalar tail for remaining elements
+    for i in (chunks * F32_LANES)..len {
+        scaled_vals[i] = (data[i] * inv_scale).round().clamp(-8.0, 7.0) as i8;
+    }
+
+    // Nibble packing (scalar — inherently byte-level interleave)
+    let packed_len = (len + 1) / 2; // ceil(len / 2)
     let mut packed = vec![0u8; packed_len];
 
-    for i in (0..data.len()).step_by(2) {
-        let v0 = (data[i] / scale).round().clamp(-8.0, 7.0) as i8;
-        let v1 = if i + 1 < data.len() {
-            (data[i + 1] / scale).round().clamp(-8.0, 7.0) as i8
-        } else {
-            0
-        };
-
-        // Pack: high nibble = v0 (even), low nibble = v1 (odd)
+    for i in (0..len).step_by(2) {
+        let v0 = scaled_vals[i];
+        let v1 = if i + 1 < len { scaled_vals[i + 1] } else { 0 };
         packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
     }
 

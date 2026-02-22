@@ -480,10 +480,10 @@ where
     /// let exp_array = array.exp();
     /// assert_eq!(exp_array.get_data(), &[1.0, 2.7182817, 7.389056]);
     /// ```
-    // TODO(simd): REFACTOR — exp() is scalar iter().map(). Route through VML vsexp/vdexp.
     pub fn exp(&self) -> Self {
-        let exp_data = self.data.iter().map(|&x| x.exp()).collect::<Vec<T>>();
-        Self::new_with_shape(exp_data, self.shape.clone())
+        let mut out = vec![T::from_u32(0); self.data.len()];
+        Ops::exp_batch(&self.data, &mut out);
+        Self::new_with_shape(out, self.shape.clone())
     }
 
     /// Applies the natural logarithm to each element of the `NumArray`.
@@ -503,7 +503,6 @@ where
     /// assert_eq!(log_array.get_data(), &[0.0, 1.0, 2.0]);
     /// ```
     pub fn log(&self) -> Self {
-        // Ensure all elements are positive
         for &x in &self.data {
             assert!(
                 x > T::from_u32(0),
@@ -511,9 +510,9 @@ where
             );
         }
 
-        // TODO(simd): REFACTOR — log() is scalar iter().map(). Route through VML vsln/vdln.
-        let log_data = self.data.iter().map(|&x| x.log()).collect::<Vec<T>>();
-        Self::new_with_shape(log_data, self.shape.clone())
+        let mut out = vec![T::from_u32(0); self.data.len()];
+        Ops::log_batch(&self.data, &mut out);
+        Self::new_with_shape(out, self.shape.clone())
     }
 
     /// Applies the sigmoid function to each element of the `NumArray`.
@@ -534,14 +533,23 @@ where
     ///     assert!((computed - exp_val).abs() < 1e-5, "Expected {}, got {}", exp_val, computed);
     /// }
     /// ```
-    // TODO(simd): REFACTOR — sigmoid is scalar iter().map(). SIMD: 1/(1+exp(-x)) via VML exp + SIMD div.
     pub fn sigmoid(&self) -> Self {
-        let sigmoid_data = self
-            .data
-            .iter()
-            .map(|&x| T::from_u32(1) / (T::from_u32(1) + (-x).exp()))
-            .collect::<Vec<T>>();
-        Self::new_with_shape(sigmoid_data, self.shape.clone())
+        let n = self.data.len();
+        let one = T::from_u32(1);
+        // Step 1: negate → SIMD
+        let mut neg_x = vec![T::from_u32(0); n];
+        Ops::mul_scalar(&self.data, -one, &mut neg_x);
+        // Step 2: exp(-x) → SIMD VML
+        let mut exp_neg = vec![T::from_u32(0); n];
+        Ops::exp_batch(&neg_x, &mut exp_neg);
+        // Step 3: 1 + exp(-x) → SIMD
+        let mut denom = vec![T::from_u32(0); n];
+        Ops::add_scalar(&exp_neg, one, &mut denom);
+        // Step 4: 1 / denom → SIMD
+        let ones = vec![one; n];
+        let mut result = vec![T::from_u32(0); n];
+        Ops::div_array(&ones, &denom, &mut result);
+        Self::new_with_shape(result, self.shape.clone())
     }
 
     /// Returns the index of the minimum value in the array.
@@ -739,27 +747,36 @@ where
     /// let sum: f32 = sm.get_data().iter().sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
-    // TODO(simd): REFACTOR — softmax uses scalar exp/divide. Route exp through VML,
-    // sub/div through SIMD element-wise ops. Both 1D and N-D paths are scalar.
     pub fn softmax(&self) -> Self {
         if self.shape.len() <= 1 {
-            // 1D case
+            let n = self.data.len();
             let max_val = Ops::max_simd(&self.data);
-            let exp_data: Vec<T> = self.data.iter().map(|&x| (x - max_val).exp()).collect();
-            let sum: T = exp_data.iter().copied().fold(T::from_u32(0), |a, b| a + b);
-            let result: Vec<T> = exp_data.iter().map(|&x| x / sum).collect();
+            // sub(x, max) → SIMD
+            let mut shifted = vec![T::from_u32(0); n];
+            Ops::sub_scalar(&self.data, max_val, &mut shifted);
+            // exp(shifted) → SIMD VML
+            let mut exp_data = vec![T::from_u32(0); n];
+            Ops::exp_batch(&shifted, &mut exp_data);
+            // sum → SIMD
+            let sum = Ops::sum(&exp_data);
+            // div by sum → SIMD
+            let mut result = vec![T::from_u32(0); n];
+            Ops::div_scalar(&exp_data, sum, &mut result);
             Self::new_with_shape(result, self.shape.clone())
         } else {
-            // N-D case: apply softmax along the last axis
             let last_dim = *self.shape.last().unwrap();
             let num_rows = self.data.len() / last_dim;
-            let mut result = Vec::with_capacity(self.data.len());
+            let mut result = vec![T::from_u32(0); self.data.len()];
             for i in 0..num_rows {
                 let row = &self.data[i * last_dim..(i + 1) * last_dim];
+                let out = &mut result[i * last_dim..(i + 1) * last_dim];
                 let max_val = Ops::max_simd(row);
-                let exp_row: Vec<T> = row.iter().map(|&x| (x - max_val).exp()).collect();
-                let sum: T = exp_row.iter().copied().fold(T::from_u32(0), |a, b| a + b);
-                result.extend(exp_row.iter().map(|&x| x / sum));
+                // sub → exp → sum → div, all SIMD per row
+                Ops::sub_scalar(row, max_val, out);
+                let mut exp_row = vec![T::from_u32(0); last_dim];
+                Ops::exp_batch(out, &mut exp_row);
+                let sum = Ops::sum(&exp_row);
+                Ops::div_scalar(&exp_row, sum, out);
             }
             Self::new_with_shape(result, self.shape.clone())
         }
@@ -783,32 +800,38 @@ where
     /// let sum: f32 = lsm.get_data().iter().map(|&x| x.exp()).sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
-    // TODO(simd): REFACTOR — log_softmax uses scalar sub/exp/log. Same fix as softmax.
     pub fn log_softmax(&self) -> Self {
         if self.shape.len() <= 1 {
+            let n = self.data.len();
             let max_val = Ops::max_simd(&self.data);
-            let shifted: Vec<T> = self.data.iter().map(|&x| x - max_val).collect();
-            let exp_sum: T = shifted
-                .iter()
-                .copied()
-                .fold(T::from_u32(0), |a, b| a + b.exp());
+            // shifted = x - max → SIMD
+            let mut shifted = vec![T::from_u32(0); n];
+            Ops::sub_scalar(&self.data, max_val, &mut shifted);
+            // exp(shifted) → SIMD VML, then sum
+            let mut exp_data = vec![T::from_u32(0); n];
+            Ops::exp_batch(&shifted, &mut exp_data);
+            let exp_sum = Ops::sum(&exp_data);
             let log_sum = exp_sum.log();
-            let result: Vec<T> = shifted.iter().map(|&x| x - log_sum).collect();
+            // result = shifted - log_sum → SIMD
+            let mut result = vec![T::from_u32(0); n];
+            Ops::sub_scalar(&shifted, log_sum, &mut result);
             Self::new_with_shape(result, self.shape.clone())
         } else {
             let last_dim = *self.shape.last().unwrap();
             let num_rows = self.data.len() / last_dim;
-            let mut result = Vec::with_capacity(self.data.len());
+            let mut result = vec![T::from_u32(0); self.data.len()];
             for i in 0..num_rows {
                 let row = &self.data[i * last_dim..(i + 1) * last_dim];
+                let out = &mut result[i * last_dim..(i + 1) * last_dim];
                 let max_val = Ops::max_simd(row);
-                let shifted: Vec<T> = row.iter().map(|&x| x - max_val).collect();
-                let exp_sum: T = shifted
-                    .iter()
-                    .copied()
-                    .fold(T::from_u32(0), |a, b| a + b.exp());
+                // shifted → exp → sum → log → sub, all SIMD
+                let mut shifted = vec![T::from_u32(0); last_dim];
+                Ops::sub_scalar(row, max_val, &mut shifted);
+                let mut exp_data = vec![T::from_u32(0); last_dim];
+                Ops::exp_batch(&shifted, &mut exp_data);
+                let exp_sum = Ops::sum(&exp_data);
                 let log_sum = exp_sum.log();
-                result.extend(shifted.iter().map(|&x| x - log_sum));
+                Ops::sub_scalar(&shifted, log_sum, out);
             }
             Self::new_with_shape(result, self.shape.clone())
         }
