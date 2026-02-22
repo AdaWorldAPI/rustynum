@@ -1,9 +1,9 @@
 # rustynum Technical Debt & Knowledge Transfer Ledger
 
 > **Scope**: PRs #23–#27 merged, full debt lifecycle from discovery through closure  
-> **Date**: 2026-02-22 (updated post-PR #27)  
+> **Date**: 2026-02-22 (updated post-PR #36)  
 > **Repos**: AdaWorldAPI/rustynum, AdaWorldAPI/ladybug-rs, AdaWorldAPI/clam (fork)  
-> **Status**: 0 open issues, 0 open PRs. 30/30 tracked items (D1–D9, N1–N30) closed. 4 unfiled findings (U1–U4) pending triage.
+> **Status**: 0 open issues, 0 open PRs. 30/30 tracked items closed. 7 yellow + 11 green open (U1–U4, P36-1 through P36-4, N2/N6/N16/N21).
 
 ---
 
