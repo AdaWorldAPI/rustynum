@@ -275,9 +275,9 @@ pub struct OrganicWAL {
     /// The X-Trans pattern (shared across all writes).
     pub pattern: XTransPattern,
     /// Known concept templates: [concept_idx][position] → i8
-    known_templates: Vec<Vec<i8>>,
+    pub(crate) known_templates: Vec<Vec<i8>>,
     /// Precomputed template norms for each known concept.
-    template_norms: Vec<f64>,
+    pub(crate) template_norms: Vec<f64>,
     /// Current concept coefficients (updated by projections).
     pub coefficients: Vec<f32>,
     /// Concept IDs (parallel to coefficients and known_templates).
