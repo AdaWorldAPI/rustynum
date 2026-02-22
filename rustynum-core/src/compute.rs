@@ -55,7 +55,9 @@ enum CpuidReg { Eax, Ebx, Ecx, Edx }
 /// Check a specific CPUID feature bit (for AMX detection which lacks stable Rust macros).
 #[cfg(target_arch = "x86_64")]
 fn detect_cpuid_feature(leaf: u32, sub_leaf: u32, reg: CpuidReg, bit: u32) -> bool {
-    #[cfg(target_arch = "x86_64")]
+    // Safety: __cpuid_count is an intrinsic that reads CPUID registers.
+    // The outer #[cfg(target_arch = "x86_64")] on the function guarantees
+    // we only call this on x86_64.
     unsafe {
         let result = core::arch::x86_64::__cpuid_count(leaf, sub_leaf);
         let val = match reg {

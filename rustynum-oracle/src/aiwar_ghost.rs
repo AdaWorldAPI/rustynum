@@ -756,60 +756,6 @@ pub fn probe_entity_ghosts(
     ghosts
 }
 
-/// Probe ghosts between two sets of entities.
-fn probe_pair_ghosts(
-    graph: &AiWarGraph,
-    set_a: &[usize],
-    set_b: &[usize],
-    container: &[i8],
-    residual: &[f32],
-    templates: &[Vec<i8>],
-    base: Base,
-    top_k: usize,
-) -> Vec<GhostConnection> {
-    let mut existing: HashSet<(usize, usize)> = HashSet::new();
-    for edge in &graph.edges {
-        if let (Some(&s), Some(&t)) = (
-            graph.id_to_index.get(&edge.source_id),
-            graph.id_to_index.get(&edge.target_id),
-        ) {
-            existing.insert((s, t));
-            existing.insert((t, s));
-        }
-    }
-
-    let mut ghosts = Vec::new();
-    for &i in set_a {
-        for &j in set_b {
-            if i == j { continue; }
-            if existing.contains(&(i, j)) { continue; }
-
-            let probe = bind(&templates[i], &templates[j], base);
-            let direct_strength = cosine_similarity_i8(&probe, container);
-            let residual_strength = cosine_similarity_mixed(&probe, residual);
-
-            ghosts.push(GhostConnection {
-                entity_a: i,
-                entity_b: j,
-                name_a: graph.entities[i].name.clone(),
-                name_b: graph.entities[j].name.clone(),
-                type_a: graph.entities[i].entity_type.clone(),
-                type_b: graph.entities[j].entity_type.clone(),
-                direct_strength,
-                residual_strength,
-                ghost_signal: residual_strength,
-            });
-        }
-    }
-
-    ghosts.sort_by(|a, b| b.ghost_signal.abs()
-        .partial_cmp(&a.ghost_signal.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
-
-    ghosts.truncate(top_k);
-    ghosts
-}
-
 // ---------------------------------------------------------------------------
 // Part 7b: Dual-Method Ghost Probing (Signed Raw + Organic Residual)
 // ---------------------------------------------------------------------------

@@ -657,7 +657,7 @@ mod tests {
 
 use rustynum_core::bf16_hamming::{
     BF16Weights, BF16StructuralDiff, TRAINING_WEIGHTS,
-    bf16_hamming_scalar, structural_diff, select_bf16_hamming_fn,
+    structural_diff, select_bf16_hamming_fn,
     fp32_to_bf16_bytes,
 };
 

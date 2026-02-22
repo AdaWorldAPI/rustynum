@@ -19,7 +19,6 @@
 //! absent from the OR-mask guarantee a minimum distance contribution.
 
 use std::collections::{BinaryHeap, HashMap};
-use std::cmp::Reverse;
 
 use rustynum_clam::tree::ClamTree;
 use crate::lod_pyramid::{LodAnnotation, or_mask_lower_bound};
@@ -35,7 +34,6 @@ use crate::lod_pyramid::{LodAnnotation, or_mask_lower_bound};
 #[derive(Debug, Clone)]
 pub struct LodIndex {
     annotations: HashMap<usize, LodAnnotation>,
-    vec_bytes: usize,
 }
 
 impl LodIndex {
@@ -46,7 +44,7 @@ impl LodIndex {
     pub fn build(tree: &ClamTree, data: &[u8], vec_bytes: usize) -> Self {
         let mut annotations = HashMap::with_capacity(tree.nodes.len());
         Self::build_recursive(tree, data, vec_bytes, 0, &mut annotations);
-        LodIndex { annotations, vec_bytes }
+        LodIndex { annotations }
     }
 
     fn build_recursive(

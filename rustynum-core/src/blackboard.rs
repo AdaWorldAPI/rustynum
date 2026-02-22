@@ -37,6 +37,7 @@
 
 use std::alloc;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 /// Alignment for all blackboard allocations (AVX-512 = 64 bytes).
 const ALIGNMENT: usize = 64;
@@ -107,12 +108,17 @@ impl Drop for BufferMeta {
 /// For multi-threaded access, wrap in `Mutex<Blackboard>`.
 pub struct Blackboard {
     buffers: HashMap<String, BufferMeta>,
+    /// Explicit `!Send + !Sync` marker.  `BufferMeta` already contains `*mut u8`
+    /// which poisons auto-traits, but this marker guarantees `!Send + !Sync`
+    /// survives any future refactor of `BufferMeta` internals.
+    _not_send_sync: PhantomData<*mut ()>,
 }
 
 impl Blackboard {
     pub fn new() -> Self {
         Self {
             buffers: HashMap::new(),
+            _not_send_sync: PhantomData,
         }
     }
 
@@ -322,7 +328,15 @@ impl Blackboard {
     /// Get the raw pointer and length for a named buffer (for FFI or advanced usage).
     ///
     /// Returns `None` if the buffer doesn't exist.
-    pub fn raw_ptr(&self, name: &str) -> Option<(*mut u8, usize, DType)> {
+    ///
+    /// # Safety
+    ///
+    /// The returned `*mut u8` points to a live allocation owned by this `Blackboard`.
+    /// The caller must not:
+    /// - Dereference the pointer after the buffer is freed or reallocated.
+    /// - Create `&mut` slices from the pointer while any `&`-borrow of the same
+    ///   buffer is alive (use the typed `get_*_mut` methods instead).
+    pub unsafe fn raw_ptr(&self, name: &str) -> Option<(*mut u8, usize, DType)> {
         let meta = self.buffers.get(name)?;
         Some((meta.ptr, meta.len_elements, meta.dtype))
     }
@@ -387,7 +401,7 @@ mod tests {
     fn test_alignment() {
         let mut bb = Blackboard::new();
         bb.alloc_f32("aligned", 256);
-        let (ptr, _, _) = bb.raw_ptr("aligned").unwrap();
+        let (ptr, _, _) = unsafe { bb.raw_ptr("aligned") }.unwrap();
         assert_eq!(ptr as usize % ALIGNMENT, 0, "Buffer not 64-byte aligned");
     }
 
@@ -474,7 +488,7 @@ mod tests {
         let bb = Blackboard::new();
         assert!(bb.get_f32("nonexistent").is_none());
         assert!(bb.len("nonexistent").is_none());
-        assert!(bb.raw_ptr("nonexistent").is_none());
+        assert!(unsafe { bb.raw_ptr("nonexistent") }.is_none());
     }
 
     #[test]

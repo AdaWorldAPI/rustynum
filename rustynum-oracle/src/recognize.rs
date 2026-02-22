@@ -37,18 +37,8 @@ const SHORTLIST_K: usize = 8;
 use rustynum_core::SplitMix64;
 
 // ---------------------------------------------------------------------------
-// Helper: random unit vector and perturbation
+// Helper: perturbation
 // ---------------------------------------------------------------------------
-
-/// Generate a random unit vector of dimension `d` using the provided RNG.
-fn random_unit_vector(d: usize, rng: &mut SplitMix64) -> Vec<f32> {
-    let mut v: Vec<f32> = (0..d).map(|_| rng.next_gaussian() as f32).collect();
-    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-10);
-    for x in v.iter_mut() {
-        *x /= norm;
-    }
-    v
-}
 
 /// Perturb a template by adding Gaussian noise scaled by `noise_level`,
 /// then quantize back to i8 range.
@@ -1063,6 +1053,16 @@ fn run_timing_benchmarks() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Generate a random unit vector of dimension `d` using the provided RNG.
+    fn random_unit_vector(d: usize, rng: &mut SplitMix64) -> Vec<f32> {
+        let mut v: Vec<f32> = (0..d).map(|_| rng.next_gaussian() as f32).collect();
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-10);
+        for x in v.iter_mut() {
+            *x /= norm;
+        }
+        v
+    }
 
     // --- SplitMix64 tests ---
 

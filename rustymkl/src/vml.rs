@@ -38,7 +38,7 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -63,7 +63,7 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -92,7 +92,7 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -117,7 +117,7 @@ pub fn vdln(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -146,7 +146,7 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -171,7 +171,7 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -200,7 +200,7 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -225,7 +225,7 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -254,8 +254,8 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -281,8 +281,8 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -308,8 +308,8 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -342,7 +342,7 @@ pub fn vssin(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -369,7 +369,7 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
     let half_pi = F32Simd::splat(std::f32::consts::FRAC_PI_2);
@@ -398,8 +398,8 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
