@@ -282,73 +282,32 @@ pub fn approx_hamming_candidates(
     distances
 }
 
-/// Two-stage HDC search: INT8 prefilter → exact hamming on shortlist.
+/// Two-stage HDC search: uses HDR cascade engine internally.
 ///
-/// Stage 1: Use first `prefix_bytes` of each vector for approximate
-///           hamming distance (cheap, scans less data).
-/// Stage 2: Compute exact hamming distance on the top-k candidates
-///           from stage 1.
+/// Delegates to `hdr_cascade_search` for hoisted CPUID dispatch and
+/// batch-stroke processing. The `prefix_bytes` and `prefilter_k` parameters
+/// are now handled internally by the cascade's σ-based rejection.
 ///
-/// This saves AVX-512 cycles by only doing full-width hamming on
-/// the candidates that survived the prefix prefilter.
+/// Returns `(index, exact_hamming_distance)` for the top `final_k` matches.
 pub fn two_stage_hamming_search(
     query: &[u8],
     database: &[u8],
     bytes_per_vec: usize,
     n_vectors: usize,
-    prefix_bytes: usize, // how many bytes to use for prefiltering
-    prefilter_k: usize,  // candidates to pass to stage 2
-    final_k: usize,      // final results
+    _prefix_bytes: usize, // now handled internally by cascade
+    _prefilter_k: usize,  // now handled by σ threshold
+    final_k: usize,
 ) -> Vec<(usize, u32)> {
-    let prefix = prefix_bytes.min(bytes_per_vec);
+    // Use a generous threshold: ~50% bit distance
+    let threshold = (bytes_per_vec * 4) as u64;
 
-    // Stage 1: approximate hamming on prefix
-    let mut prefix_dists: Vec<(usize, u32)> = Vec::with_capacity(n_vectors);
-    for v in 0..n_vectors {
-        let vec_data = &database[v * bytes_per_vec..];
-        let mut dist: u32 = 0;
-        for i in 0..prefix {
-            dist += (query[i] ^ vec_data[i]).count_ones();
-        }
-        prefix_dists.push((v, dist));
-    }
+    let mut results = crate::simd::hdr_cascade_search(
+        query, database, bytes_per_vec, n_vectors, threshold, false,
+    );
 
-    // Select top prefilter_k candidates
-    let k = prefilter_k.min(n_vectors);
-    if k < n_vectors {
-        prefix_dists.select_nth_unstable_by_key(k, |&(_, d)| d);
-        prefix_dists.truncate(k);
-    }
-
-    // Stage 2: exact hamming on candidates
-    let mut exact_dists: Vec<(usize, u32)> = prefix_dists
-        .iter()
-        .map(|&(idx, _)| {
-            let vec_data = &database[idx * bytes_per_vec..];
-            let mut dist: u32 = 0;
-
-            let chunks = bytes_per_vec / 64;
-            for c in 0..chunks {
-                let base = c * 64;
-                let q = u8x64::from_slice(&query[base..]);
-                let d = u8x64::from_slice(&vec_data[base..]);
-                let xor = q ^ d;
-                let arr = xor.to_array();
-                for byte in arr {
-                    dist += byte.count_ones();
-                }
-            }
-            for i in chunks * 64..bytes_per_vec {
-                dist += (query[i] ^ vec_data[i]).count_ones();
-            }
-
-            (idx, dist)
-        })
-        .collect();
-
-    exact_dists.sort_unstable_by_key(|&(_, d)| d);
-    exact_dists.truncate(final_k);
-    exact_dists
+    results.sort_unstable_by_key(|r| r.hamming);
+    results.truncate(final_k);
+    results.iter().map(|r| (r.index, r.hamming as u32)).collect()
 }
 
 /// INT8 approximate standard deviation per column.
