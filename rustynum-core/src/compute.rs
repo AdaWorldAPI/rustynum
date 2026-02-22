@@ -117,6 +117,7 @@ pub fn detect() -> &'static ComputeCaps {
 }
 
 /// Check if Intel NPU is available (Meteor Lake+).
+#[allow(dead_code)]
 fn detect_npu() -> bool {
     // Check for /dev/accel* (Intel NPU device nodes on Linux)
     std::path::Path::new("/dev/accel/accel0").exists()
@@ -124,6 +125,7 @@ fn detect_npu() -> bool {
 }
 
 /// Detect Intel GPU via DRI device nodes.
+#[allow(dead_code)]
 fn detect_gpu() -> Option<String> {
     // Check for /dev/dri/renderD128 (Intel GPU render node)
     if std::path::Path::new("/dev/dri/renderD128").exists() {
