@@ -11,7 +11,7 @@
 use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
 use rustynum_core::parallel::parallel_for_chunks;
 use rustynum_core::simd::{self, F32_LANES, F64_LANES, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC, SGEMM_NR, DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR};
-use std::simd::num::SimdFloat;
+use std::simd::StdFloat;
 
 // SIMD vector types selected by feature flag — no runtime branching
 #[cfg(feature = "avx512")]
@@ -393,19 +393,19 @@ fn sgemm_microkernel_6x16(
         let b_vec = if nr >= SGEMM_NR {
             F32Simd::from_slice(&packed_b[b_base..])
         } else {
-            // Partial: pad with zeros — use NR-sized buf
-            let mut tmp = vec![0.0f32; SGEMM_NR];
+            // Partial: pad with zeros — stack array, not heap
+            let mut tmp = [0.0f32; SGEMM_NR];
             for j in 0..nr {
                 tmp[j] = packed_b[b_base + j];
             }
             F32Simd::from_slice(&tmp)
         };
 
-        // Load MR elements of A and broadcast-multiply
+        // Load MR elements of A and broadcast-FMA
         let a_base = p * SGEMM_MR;
         for ir in 0..mr.min(SGEMM_MR) {
             let a_val = F32Simd::splat(packed_a[a_base + ir]);
-            acc[ir] += a_val * b_vec;
+            acc[ir] = a_val.mul_add(b_vec, acc[ir]);
         }
     }
 
@@ -413,10 +413,22 @@ fn sgemm_microkernel_6x16(
     let alpha_v = F32Simd::splat(alpha);
     for ir in 0..mr.min(SGEMM_MR) {
         let result = acc[ir] * alpha_v;
-        let buf = result.to_array();
-        for jr in 0..nr {
-            let idx = layout.index(row + ir, col + jr, ldc);
-            c[idx] += buf[jr];
+        match layout {
+            Layout::RowMajor if nr >= SGEMM_NR => {
+                // Full-width row: SIMD store directly into contiguous C row
+                let base = (row + ir) * ldc + col;
+                let existing = F32Simd::from_slice(&c[base..]);
+                let sum = existing + result;
+                sum.copy_to_slice(&mut c[base..base + SGEMM_NR]);
+            }
+            _ => {
+                // Partial row or ColMajor: scalar fallback
+                let buf = result.to_array();
+                for jr in 0..nr {
+                    let idx = layout.index(row + ir, col + jr, ldc);
+                    c[idx] += buf[jr];
+                }
+            }
         }
     }
 }
@@ -728,27 +740,41 @@ fn dgemm_microkernel_6x8(
         let b_vec = if nr >= DGEMM_NR {
             F64Simd::from_slice(&packed_b[b_base..])
         } else {
-            let mut tmp = vec![0.0f64; DGEMM_NR];
+            // Partial: pad with zeros — stack array, not heap
+            let mut tmp = [0.0f64; DGEMM_NR];
             for j in 0..nr {
                 tmp[j] = packed_b[b_base + j];
             }
             F64Simd::from_slice(&tmp)
         };
 
+        // Broadcast-FMA
         let a_base = p * DGEMM_MR;
         for ir in 0..mr.min(DGEMM_MR) {
             let a_val = F64Simd::splat(packed_a[a_base + ir]);
-            acc[ir] += a_val * b_vec;
+            acc[ir] = a_val.mul_add(b_vec, acc[ir]);
         }
     }
 
     let alpha_v = F64Simd::splat(alpha);
     for ir in 0..mr.min(DGEMM_MR) {
         let result = acc[ir] * alpha_v;
-        let buf = result.to_array();
-        for jr in 0..nr {
-            let idx = layout.index(row + ir, col + jr, ldc);
-            c[idx] += buf[jr];
+        match layout {
+            Layout::RowMajor if nr >= DGEMM_NR => {
+                // Full-width row: SIMD store directly into contiguous C row
+                let base = (row + ir) * ldc + col;
+                let existing = F64Simd::from_slice(&c[base..]);
+                let sum = existing + result;
+                sum.copy_to_slice(&mut c[base..base + DGEMM_NR]);
+            }
+            _ => {
+                // Partial row or ColMajor: scalar fallback
+                let buf = result.to_array();
+                for jr in 0..nr {
+                    let idx = layout.index(row + ir, col + jr, ldc);
+                    c[idx] += buf[jr];
+                }
+            }
         }
     }
 }
