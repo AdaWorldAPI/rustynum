@@ -35,6 +35,7 @@ pub mod tree;
 pub mod search;
 pub mod compress;
 
-pub use tree::{ClamTree, Cluster, Distance, HammingDistance, Lfd};
+pub use tree::{ClamTree, Cluster, Distance, HammingDistance, HammingSIMD, Lfd};
+pub use tree::{hamming_batch_simd, hamming_top_k_simd};
 pub use search::{RhoNnResult, KnnResult, SearchConfig};
 pub use compress::{CompressedTree, CompressionStats};
