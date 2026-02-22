@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 //! # rustynum-arrow
 //!
 //! Optional Arrow/Lance/DataFusion bridge for the rustynum ecosystem.

@@ -325,7 +325,7 @@ pub fn find_similar_pairs(
         }
     }
 
-    pairs.sort_by(|a, b| a.distance.cmp(&b.distance));
+    pairs.sort_by_key(|a| a.distance);
     pairs
 }
 
@@ -430,7 +430,7 @@ mod tests {
         let result = unbind(&bound, &role, Base::Signed(7));
         // unbind(0, -128) should = bind(0, 127) since neg(-128) clamps to 127
         // bind(0, 127) with Signed(7) = (0 + 127).clamp(-3, 3) = 3
-        let expected = bind(&bound, &vec![127i8; 4], Base::Signed(7));
+        let expected = bind(&bound, &[127i8; 4], Base::Signed(7));
         assert_eq!(result, expected, "unbind should negate i8::MIN to 127, not -128");
     }
 
@@ -543,7 +543,7 @@ mod tests {
     fn test_granger_signal_self_prediction() {
         let mut rng = SplitMix64::new(42);
         let d = 256;
-        let base = Base::Binary;
+        let _base = Base::Binary;
         let n = 20;
 
         // Series B with gradual drift: B_{t+1} is a noisy copy of B_t
@@ -555,7 +555,7 @@ mod tests {
             let mut next = prev.clone();
             // Flip ~5% of bits
             for i in 0..d {
-                if rng.next_u64() % 20 == 0 {
+                if rng.next_u64().is_multiple_of(20) {
                     next[i] ^= 1;
                 }
             }
@@ -592,7 +592,7 @@ mod tests {
                 // B[t] = A[t-tau] with ~3% noise
                 let mut b = series_a[t - tau].clone();
                 for i in 0..d {
-                    if rng.next_u64() % 33 == 0 {
+                    if rng.next_u64().is_multiple_of(33) {
                         b[i] ^= 1;
                     }
                 }
@@ -792,7 +792,7 @@ pub fn bf16_granger_causal_map(
         .filter(|(_, &c)| c > 0)
         .map(|(d, &c)| (d, c))
         .collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let granger = if count > 0 {
         (cross_sum - auto_sum) / count as f64
@@ -907,7 +907,7 @@ pub fn bf16_granger_causal_scan(
         .filter(|(_, &c)| c > 0)
         .map(|(d, &c)| (d, c))
         .collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     CausalFeatureMap {
         n_dims,
@@ -1286,7 +1286,7 @@ mod bf16_causal_tests {
     #[test]
     fn test_classify_learning_event_attention_shift() {
         // Create two BF16 vectors where only exponent bits differ significantly
-        let n_dims = 4;
+        let _n_dims = 4;
         let before_f32 = vec![0.1f32, 0.2, 0.3, 0.4];
         let after_f32 = vec![0.1, 0.2, 30.0, 40.0]; // dims 2,3: huge magnitude change
 

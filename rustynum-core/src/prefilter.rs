@@ -62,9 +62,9 @@ pub fn approx_mean_std_f32(data: &[f32]) -> (f32, f32) {
         min_val = vmin.reduce_min();
         max_val = vmax.reduce_max();
     }
-    for i in chunks * 16..len {
-        min_val = min_val.min(data[i]);
-        max_val = max_val.max(data[i]);
+    for &val in &data[chunks * 16..] {
+        min_val = min_val.min(val);
+        max_val = max_val.max(val);
     }
 
     let range = max_val - min_val;
@@ -89,21 +89,21 @@ pub fn approx_mean_std_f32(data: &[f32]) -> (f32, f32) {
 
     for chunk in 0..chunks64 {
         let base = chunk * 64;
-        for i in 0..64 {
-            q_buf[i] = ((data[base + i] - min_val) * inv_scale).round() as u8;
+        for (qi, &di) in q_buf.iter_mut().zip(&data[base..base + 64]) {
+            *qi = ((di - min_val) * inv_scale).round() as u8;
         }
 
         // Accumulate from quantized buffer
-        for i in 0..64 {
-            let val = q_buf[i] as i64;
+        for &qi in &q_buf {
+            let val = qi as i64;
             sum_i64 += val;
             sum_sq_i64 += val * val;
         }
     }
 
     // Scalar tail
-    for i in chunks64 * 64..n_u8 {
-        let q = ((data[i] - min_val) * inv_scale).round() as u8;
+    for &di in &data[chunks64 * 64..] {
+        let q = ((di - min_val) * inv_scale).round() as u8;
         let val = q as i64;
         sum_i64 += val;
         sum_sq_i64 += val * val;

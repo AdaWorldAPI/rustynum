@@ -55,7 +55,7 @@ where
     /// let reshaped_array = array.reshape(&vec![3, 2]);
     /// println!("Reshaped array: {:?}", reshaped_array.get_data());
     /// ```
-    pub fn reshape(&self, new_shape: &Vec<usize>) -> Self {
+    pub fn reshape(&self, new_shape: &[usize]) -> Self {
         let new_size: usize = new_shape.iter().product();
         assert_eq!(
             new_size,
@@ -63,7 +63,7 @@ where
             "New shape must be compatible with data size."
         );
 
-        NumArray::new_with_shape(self.data.clone(), new_shape.clone())
+        NumArray::new_with_shape(self.data.clone(), new_shape.to_owned())
     }
 
     /// Reverses the elements along the specified axis or axis.
@@ -363,8 +363,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{num_array::NumArray, NumArrayF32};
+    use crate::NumArrayF32;
 
     #[test]
     fn test_squeeze() {

@@ -122,8 +122,10 @@ pub fn indexed_cascade_search(
     indices: &CascadeIndices,
     thresholds: [u64; 4],
 ) -> IndexedCascadeResult {
-    let mut stats = IndexedCascadeStats::default();
-    stats.fragments_total = indices.meta_index.num_fragments();
+    let mut stats = IndexedCascadeStats {
+        fragments_total: indices.meta_index.num_fragments(),
+        ..Default::default()
+    };
 
     let q_meta = query.meta.data_slice();
     let q_cam = query.cam.data_slice();

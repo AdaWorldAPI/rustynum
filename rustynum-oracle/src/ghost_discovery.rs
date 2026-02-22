@@ -930,7 +930,7 @@ mod tests {
         h.store(&indices, &amplitudes);
 
         for &v in &h.container {
-            assert!(v >= -3 && v <= 3, "Container out of range: {}", v);
+            assert!((-3..=3).contains(&v), "Container out of range: {}", v);
         }
     }
 

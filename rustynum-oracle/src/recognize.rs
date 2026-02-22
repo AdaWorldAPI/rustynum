@@ -92,7 +92,7 @@ impl Projector64K {
     /// Create a projector with a custom number of hyperplanes.
     /// `num_planes` must be a multiple of 8.
     pub fn with_planes(d: usize, num_planes: usize, seed: u64) -> Self {
-        assert!(num_planes > 0 && num_planes % 8 == 0);
+        assert!(num_planes > 0 && num_planes.is_multiple_of(8));
         let mut rng = SplitMix64::new(seed);
         // Single contiguous allocation for cache-friendly access.
         // Layout: hyperplanes_flat[plane * d + dim]
@@ -180,7 +180,7 @@ impl Projector64K {
     ///
     /// Returns `None` if the buffer doesn't exist, isn't f32, or has wrong length.
     pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Option<Self> {
-        assert!(num_planes > 0 && num_planes % 8 == 0);
+        assert!(num_planes > 0 && num_planes.is_multiple_of(8));
         let buf = bb.get_f32(name)?;
         if buf.len() != num_planes * d {
             return None;
@@ -1416,7 +1416,7 @@ mod tests {
         let fp2 = proj.project(&v2);
         let sim = hamming_similarity_64k(&fp1, &fp2);
 
-        assert!(sim >= 0.0 && sim <= 1.0, "Similarity {} out of [0,1]", sim);
+        assert!((0.0..=1.0).contains(&sim), "Similarity {} out of [0,1]", sim);
     }
 
     #[test]

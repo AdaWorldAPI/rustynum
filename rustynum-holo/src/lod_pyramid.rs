@@ -66,8 +66,8 @@ impl LodLevel {
 /// If the grid has odd dimensions, the last row/col is carried forward
 /// as-is (ceil division).
 pub fn or_reduce_2d(level: &LodLevel) -> LodLevel {
-    let new_rows = (level.rows + 1) / 2;
-    let new_cols = (level.cols + 1) / 2;
+    let new_rows = level.rows.div_ceil(2);
+    let new_cols = level.cols.div_ceil(2);
     let vb = level.vec_bytes;
     let mut data = vec![0u8; new_rows * new_cols * vb];
 

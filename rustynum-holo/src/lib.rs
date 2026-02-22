@@ -1,3 +1,6 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+
 //! # rustynum-holo
 //!
 //! Phase-space holographic operations for CogRecord v3.

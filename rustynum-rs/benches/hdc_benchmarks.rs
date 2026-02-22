@@ -151,7 +151,7 @@ fn bench_bundle(c: &mut Criterion) {
                             let n = vec_refs.len();
                             let threshold = n / 2;
                             let mut out = vec![0u8; len];
-                            for byte_idx in 0..len {
+                            for (byte_idx, out_byte) in out.iter_mut().enumerate().take(len) {
                                 let mut result_byte = 0u8;
                                 for bit in 0..8u8 {
                                     let mut count = 0u32;
@@ -163,7 +163,7 @@ fn bench_bundle(c: &mut Criterion) {
                                         result_byte |= 1 << bit;
                                     }
                                 }
-                                out[byte_idx] = result_byte;
+                                *out_byte = result_byte;
                             }
                             black_box(out)
                         })

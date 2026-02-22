@@ -1,3 +1,6 @@
+// Tree traversal and compress/search routines use index loops for clarity.
+#![allow(clippy::needless_range_loop)]
+
 //! # rustynum-clam
 //!
 //! CLAM (Clustering, Learning and Approximation of Manifolds) integration

@@ -431,16 +431,16 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// 4. Scale by 2^n via IEEE 754 exponent bit manipulation (ldexp)
 #[inline(always)]
 fn simd_exp_f32(x: F32Simd) -> F32Simd {
-    let ln2_inv = F32Simd::splat(1.442695040888963f32); // 1/ln(2)
-    let ln2_hi = F32Simd::splat(0.693145751953125f32);
-    let ln2_lo = F32Simd::splat(1.428606765330187e-6f32);
+    let ln2_inv = F32Simd::splat(std::f32::consts::LOG2_E);
+    let ln2_hi = F32Simd::splat(0.693_145_75_f32);
+    let ln2_lo = F32Simd::splat(1.428_606_8e-6_f32);
 
     // Polynomial coefficients (minimax on [-ln2/2, ln2/2])
     let c1 = F32Simd::splat(1.0);
     let c2 = F32Simd::splat(0.5);
-    let c3 = F32Simd::splat(0.16666666666666666);
-    let c4 = F32Simd::splat(0.041666666666666664);
-    let c5 = F32Simd::splat(0.008333333333333333);
+    let c3 = F32Simd::splat(0.166_666_67);
+    let c4 = F32Simd::splat(0.041_666_668);
+    let c5 = F32Simd::splat(0.008_333_334);
 
     // Clamp to avoid overflow
     let x_clamped = x.simd_max(F32Simd::splat(-87.0)).simd_min(F32Simd::splat(88.0));
@@ -472,7 +472,7 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
 /// ldexp via IEEE 754 f64 exponent bit manipulation.
 #[inline(always)]
 fn simd_exp_f64(x: F64Simd) -> F64Simd {
-    let ln2_inv = F64Simd::splat(1.4426950408889634f64);
+    let ln2_inv = F64Simd::splat(std::f64::consts::LOG2_E);
     let ln2_hi = F64Simd::splat(6.93145751953125e-1f64);
     let ln2_lo = F64Simd::splat(1.42860676533018e-6f64);
 
@@ -601,7 +601,7 @@ fn simd_sin_f32(x: F32Simd) -> F32Simd {
 
     // Cody-Waite constants for π (hi + lo = π to ~24 digits)
     let pi_hi = F32Simd::splat(3.140625f32);
-    let pi_lo = F32Simd::splat(9.67653589793e-4f32);
+    let pi_lo = F32Simd::splat(9.676_536e-4_f32);
 
     // Range reduction: n = round(x/π)
     let n = (x * inv_pi + F32Simd::splat(0.5)).floor();

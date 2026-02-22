@@ -1,3 +1,7 @@
+// Oracle/sweep functions carry many configuration parameters by design.
+// Numeric loops on projections/amplitudes/scores use index access for clarity.
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+
 //! # rustynum-oracle
 //!
 //! Three-temperature holographic oracle with exhaustive capacity sweep.

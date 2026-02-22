@@ -34,6 +34,7 @@ impl<T> SendMutPtr<T> {
     }
 
     /// Get a mutable slice. Safety: caller ensures no aliasing.
+    #[allow(clippy::mut_from_ref)] // Intentional: raw pointer interior mutability for parallel tiling.
     unsafe fn as_mut_slice(&self) -> &mut [T] {
         std::slice::from_raw_parts_mut(self.ptr, self.len)
     }
@@ -220,8 +221,8 @@ fn sgemm_blocked(
     let kc = SGEMM_KC.min(k);
 
     // Packed buffers — padded to MR/NR boundaries for microkernel alignment
-    let mc_padded = ((mc + SGEMM_MR - 1) / SGEMM_MR) * SGEMM_MR;
-    let nc_padded = ((nc + SGEMM_NR - 1) / SGEMM_NR) * SGEMM_NR;
+    let mc_padded = mc.div_ceil(SGEMM_MR) * SGEMM_MR;
+    let nc_padded = nc.div_ceil(SGEMM_NR) * SGEMM_NR;
 
     let use_parallel = m * n > SGEMM_PARALLEL_THRESHOLD;
     let num_threads = if use_parallel {
@@ -250,7 +251,7 @@ fn sgemm_blocked(
                 // We wrap C's pointer in SendPtr so threads can write to
                 // non-overlapping regions — the blackboard borrow-mut pattern.
                 let c_send = SendMutPtr::new(c);
-                let rows_per_thread = ((m + num_threads - 1) / num_threads + SGEMM_MR - 1) / SGEMM_MR * SGEMM_MR;
+                let rows_per_thread = m.div_ceil(num_threads).div_ceil(SGEMM_MR) * SGEMM_MR;
 
                 // Collect work items (row ranges) upfront
                 let mut work_items = Vec::new();
@@ -378,8 +379,8 @@ fn sgemm_macrokernel(
     nb: usize,
     kb: usize,
 ) {
-    let mr_blocks = (mb + SGEMM_MR - 1) / SGEMM_MR;
-    let nr_blocks = (nb + SGEMM_NR - 1) / SGEMM_NR;
+    let mr_blocks = mb.div_ceil(SGEMM_MR);
+    let nr_blocks = nb.div_ceil(SGEMM_NR);
 
     for jr in 0..nr_blocks {
         let nr = SGEMM_NR.min(nb - jr * SGEMM_NR);
@@ -439,9 +440,7 @@ fn sgemm_microkernel_6x16(
         } else {
             // Partial: pad with zeros — stack array, not heap
             let mut tmp = [0.0f32; SGEMM_NR];
-            for j in 0..nr {
-                tmp[j] = packed_b[b_base + j];
-            }
+            tmp[..nr].copy_from_slice(&packed_b[b_base..b_base + nr]);
             F32Simd::from_slice(&tmp)
         };
 
@@ -629,8 +628,8 @@ fn dgemm_blocked(
     let nc = DGEMM_NC.min(n);
     let kc = DGEMM_KC.min(k);
 
-    let mc_padded = ((mc + DGEMM_MR - 1) / DGEMM_MR) * DGEMM_MR;
-    let nc_padded = ((nc + DGEMM_NR - 1) / DGEMM_NR) * DGEMM_NR;
+    let mc_padded = mc.div_ceil(DGEMM_MR) * DGEMM_MR;
+    let nc_padded = nc.div_ceil(DGEMM_NR) * DGEMM_NR;
 
     let use_parallel = m * n > DGEMM_PARALLEL_THRESHOLD;
     let num_threads = if use_parallel {
@@ -653,7 +652,7 @@ fn dgemm_blocked(
 
             if num_threads > 1 {
                 let c_send = SendMutPtr::new(c);
-                let rows_per_thread = ((m + num_threads - 1) / num_threads + DGEMM_MR - 1) / DGEMM_MR * DGEMM_MR;
+                let rows_per_thread = m.div_ceil(num_threads).div_ceil(DGEMM_MR) * DGEMM_MR;
 
                 let mut work_items = Vec::new();
                 let mut row = 0;
@@ -777,8 +776,8 @@ fn dgemm_macrokernel(
     nb: usize,
     kb: usize,
 ) {
-    let mr_blocks = (mb + DGEMM_MR - 1) / DGEMM_MR;
-    let nr_blocks = (nb + DGEMM_NR - 1) / DGEMM_NR;
+    let mr_blocks = mb.div_ceil(DGEMM_MR);
+    let nr_blocks = nb.div_ceil(DGEMM_NR);
 
     for jr in 0..nr_blocks {
         let nr = DGEMM_NR.min(nb - jr * DGEMM_NR);
@@ -824,9 +823,7 @@ fn dgemm_microkernel_6x8(
         } else {
             // Partial: pad with zeros — stack array, not heap
             let mut tmp = [0.0f64; DGEMM_NR];
-            for j in 0..nr {
-                tmp[j] = packed_b[b_base + j];
-            }
+            tmp[..nr].copy_from_slice(&packed_b[b_base..b_base + nr]);
             F64Simd::from_slice(&tmp)
         };
 

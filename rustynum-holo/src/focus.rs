@@ -534,6 +534,12 @@ pub struct FocusRegistry {
     pub entries: Vec<(u64, u64)>,
 }
 
+impl Default for FocusRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FocusRegistry {
     pub fn new() -> Self {
         Self { entries: Vec::new() }
@@ -703,7 +709,7 @@ mod tests {
         let mut c1 = vec![0u8; 2048];
         let mut c2 = vec![0u8; 2048];
         let v1: Vec<u8> = (0..2048).map(|i| (i * 13 % 256) as u8).collect();
-        let v2: Vec<u8> = (0..2048).map(|i| (i * 41 + 7 % 256) as u8).collect();
+        let v2: Vec<u8> = (0..2048).map(|i| ((i * 41 + 7) % 256) as u8).collect();
 
         let mx = 0x03u8;
         let my = 0x0Cu8;
@@ -920,7 +926,7 @@ mod tests {
 
         // Check overlap of a new concept
         let (nmx, nmy, nmz) = concept_to_focus(99999, FocusDensity::Sparse);
-        let overlaps = reg.check_overlap(nmx, nmy, nmz);
+        let _overlaps = reg.check_overlap(nmx, nmy, nmz);
         // Sparse masks are very unlikely to overlap
         // (but not impossible — just verify the method runs correctly)
         assert_eq!(reg.len(), 5);

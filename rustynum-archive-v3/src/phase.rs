@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn test_phase_bind_inverse_round_trip() {
         let a: Vec<u8> = (0..2048).map(|i| (i * 13 % 256) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|i| (i * 7 + 42 % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| (i * 7 + 42) as u8).collect();
         let bound = phase_bind_i8(&a, &b);
         let inv_b = phase_inverse_i8(&b);
         let recovered = phase_bind_i8(&bound, &inv_b);
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn test_phase_unbind_exact_round_trip() {
         let a: Vec<u8> = (0..2048).map(|i| (i * 41 % 256) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|i| (i * 59 + 7 % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| (i * 59 + 7) as u8).collect();
         let bound = phase_bind_i8(&a, &b);
         let recovered = phase_unbind_i8(&bound, &b);
         assert_eq!(recovered, a);
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn test_phase_unbind_equals_bind_inverse() {
         let a: Vec<u8> = (0..256).map(|i| i as u8).collect();
-        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 17 % 256) as u8).collect();
+        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 17) as u8).collect();
         let unbind_result = phase_unbind_i8(&a, &b);
         let bind_inv_result = phase_bind_i8(&a, &phase_inverse_i8(&b));
         assert_eq!(unbind_result, bind_inv_result);
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn test_circular_distance_symmetry() {
         let a: Vec<u8> = (0..256).map(|i| i as u8).collect();
-        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 100 % 256) as u8).collect();
+        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 100) as u8).collect();
         assert_eq!(circular_distance_i8(&a, &b), circular_distance_i8(&b, &a));
     }
 
@@ -511,7 +511,7 @@ mod tests {
         phase_bundle_circular(&[&a, &b], &mut out);
         // Circular mean of 254 and 2 should be approximately 0 (±1 due to rounding)
         for &v in &out {
-            assert!(v <= 1 || v >= 255, "expected ~0, got {}", v);
+            assert!(v <= 1 || v == 255, "expected ~0, got {}", v);
         }
     }
 

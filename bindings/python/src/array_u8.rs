@@ -22,56 +22,56 @@ impl PyNumArrayU8 {
     }
 
     fn add_scalar(&self, scalar: u8) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner + scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn add_array(&self, other: PyRef<PyNumArrayU8>) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner + &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn sub_scalar(&self, scalar: u8) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner - scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn sub_array(&self, other: PyRef<PyNumArrayU8>) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner - &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn mul_scalar(&self, scalar: u8) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner * scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn mul_array(&self, other: PyRef<PyNumArrayU8>) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner * &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn div_scalar(&self, scalar: u8) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner / scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
     }
 
     fn div_array(&self, other: PyRef<PyNumArrayU8>) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner / &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayU8 { inner: result })
         })
@@ -102,7 +102,7 @@ impl PyNumArrayU8 {
     }
 
     fn flip_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayU8> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let axis_vec: Vec<usize> = match axis {
                 Some(list) => list.extract()?,
                 None => vec![],

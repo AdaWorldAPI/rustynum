@@ -503,6 +503,90 @@ pub fn int8_gemm_per_channel_f32(
 }
 
 // ============================================================================
+// INT4 Quantization
+// ============================================================================
+
+/// Quantize f32 data to int4 (packed: 2 values per byte).
+///
+/// 1024D embedding → 512 bytes (quarter of Container 3).
+/// 2048D embedding → 1024 bytes (half of Container 3).
+///
+/// Uses symmetric quantization: scale = max(|x|) / 7
+/// Values are clamped to [-8, 7] and packed as signed 4-bit nibbles.
+///
+/// Packing: high nibble = even index, low nibble = odd index.
+///
+/// SIMD is used for abs_max reduction and scale/clamp computation.
+/// Nibble packing remains scalar (inherently byte-level interleave).
+pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
+    if data.is_empty() {
+        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+    }
+
+    // SIMD abs_max reduction
+    let abs_max = simd_abs_max(data);
+    let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
+    let inv_scale = 1.0 / scale;
+
+    // Pre-compute all scaled+clamped values using SIMD, then pack nibbles scalar
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let inv_scale_v = f32x16::splat(inv_scale);
+    let lo_v = f32x16::splat(-8.0);
+    let hi_v = f32x16::splat(7.0);
+
+    let mut scaled_vals = vec![0i8; len];
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let s = (v * inv_scale_v).round();
+        let clamped = s.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast::<i32>();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            scaled_vals[base + j] = arr[j] as i8;
+        }
+    }
+
+    // Scalar tail for remaining elements
+    for i in (chunks * F32_LANES)..len {
+        scaled_vals[i] = (data[i] * inv_scale).round().clamp(-8.0, 7.0) as i8;
+    }
+
+    // Nibble packing (scalar — inherently byte-level interleave)
+    let packed_len = len.div_ceil(2); // ceil(len / 2)
+    let mut packed = vec![0u8; packed_len];
+
+    for i in (0..len).step_by(2) {
+        let v0 = scaled_vals[i];
+        let v1 = if i + 1 < len { scaled_vals[i + 1] } else { 0 };
+        packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
+    }
+
+    (packed, QuantParams { scale, zero_point: 0 })
+}
+
+/// Dequantize int4 packed data back to f32.
+pub fn dequantize_i4_to_f32(packed: &[u8], params: &QuantParams, len: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(len);
+
+    for i in 0..packed.len() {
+        // High nibble (even index)
+        let hi = ((packed[i] >> 4) as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(hi as f32 * params.scale);
+        if out.len() >= len { break; }
+
+        // Low nibble (odd index)
+        let lo = (packed[i] as i8) << 4 >> 4; // sign-extend 4-bit
+        out.push(lo as f32 * params.scale);
+        if out.len() >= len { break; }
+    }
+
+    out
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -649,88 +733,4 @@ mod tests {
         let (packed, _params) = quantize_f32_to_i4(&data);
         assert_eq!(packed.len(), 4); // 8 values × 4 bits / 8 bits per byte = 4 bytes
     }
-}
-
-// ============================================================================
-// INT4 Quantization
-// ============================================================================
-
-/// Quantize f32 data to int4 (packed: 2 values per byte).
-///
-/// 1024D embedding → 512 bytes (quarter of Container 3).
-/// 2048D embedding → 1024 bytes (half of Container 3).
-///
-/// Uses symmetric quantization: scale = max(|x|) / 7
-/// Values are clamped to [-8, 7] and packed as signed 4-bit nibbles.
-///
-/// Packing: high nibble = even index, low nibble = odd index.
-///
-/// SIMD is used for abs_max reduction and scale/clamp computation.
-/// Nibble packing remains scalar (inherently byte-level interleave).
-pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
-    if data.is_empty() {
-        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
-    }
-
-    // SIMD abs_max reduction
-    let abs_max = simd_abs_max(data);
-    let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
-    let inv_scale = 1.0 / scale;
-
-    // Pre-compute all scaled+clamped values using SIMD, then pack nibbles scalar
-    let len = data.len();
-    let chunks = len / F32_LANES;
-    let inv_scale_v = f32x16::splat(inv_scale);
-    let lo_v = f32x16::splat(-8.0);
-    let hi_v = f32x16::splat(7.0);
-
-    let mut scaled_vals = vec![0i8; len];
-
-    for i in 0..chunks {
-        let base = i * F32_LANES;
-        let v = f32x16::from_slice(&data[base..]);
-        let s = (v * inv_scale_v).round();
-        let clamped = s.simd_clamp(lo_v, hi_v);
-        let as_i32 = clamped.cast::<i32>();
-        let arr = as_i32.to_array();
-        for j in 0..F32_LANES {
-            scaled_vals[base + j] = arr[j] as i8;
-        }
-    }
-
-    // Scalar tail for remaining elements
-    for i in (chunks * F32_LANES)..len {
-        scaled_vals[i] = (data[i] * inv_scale).round().clamp(-8.0, 7.0) as i8;
-    }
-
-    // Nibble packing (scalar — inherently byte-level interleave)
-    let packed_len = (len + 1) / 2; // ceil(len / 2)
-    let mut packed = vec![0u8; packed_len];
-
-    for i in (0..len).step_by(2) {
-        let v0 = scaled_vals[i];
-        let v1 = if i + 1 < len { scaled_vals[i + 1] } else { 0 };
-        packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
-    }
-
-    (packed, QuantParams { scale, zero_point: 0 })
-}
-
-/// Dequantize int4 packed data back to f32.
-pub fn dequantize_i4_to_f32(packed: &[u8], params: &QuantParams, len: usize) -> Vec<f32> {
-    let mut out = Vec::with_capacity(len);
-
-    for i in 0..packed.len() {
-        // High nibble (even index)
-        let hi = ((packed[i] >> 4) as i8) << 4 >> 4; // sign-extend 4-bit
-        out.push(hi as f32 * params.scale);
-        if out.len() >= len { break; }
-
-        // Low nibble (odd index)
-        let lo = (packed[i] as i8) << 4 >> 4; // sign-extend 4-bit
-        out.push(lo as f32 * params.scale);
-        if out.len() >= len { break; }
-    }
-
-    out
 }

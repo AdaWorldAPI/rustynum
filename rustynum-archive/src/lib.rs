@@ -22,6 +22,7 @@
 //! and backward compatibility.
 
 #![feature(portable_simd)]
+#![allow(clippy::needless_range_loop)]
 
 pub mod cogrecord;
 pub mod hdc;

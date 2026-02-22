@@ -85,7 +85,7 @@ mod tests {
         let mut rng = SplitMix64::new(42);
         for _ in 0..1000 {
             let v = rng.next_f64();
-            assert!(v >= 0.0 && v < 1.0, "next_f64() = {} out of [0, 1)", v);
+            assert!((0.0..1.0).contains(&v), "next_f64() = {} out of [0, 1)", v);
         }
     }
 
@@ -112,7 +112,7 @@ mod tests {
         let mut rng = SplitMix64::new(42);
         for _ in 0..1000 {
             let v = rng.gen_range_i8(-3, 3);
-            assert!(v >= -3 && v <= 3, "gen_range_i8(-3, 3) = {}", v);
+            assert!((-3..=3).contains(&v), "gen_range_i8(-3, 3) = {}", v);
         }
     }
 }

@@ -22,6 +22,7 @@ pub struct Fingerprint<const N: usize> {
     pub words: [u64; N],
 }
 
+#[allow(clippy::needless_range_loop)] // Const-generic [u64; N] — index loops are natural here.
 impl<const N: usize> Fingerprint<N> {
     /// Total number of bits in this fingerprint.
     pub const BITS: usize = N * 64;
@@ -105,6 +106,7 @@ impl<const N: usize> Fingerprint<N> {
 
 // XOR group operations — the algebraic foundation for delta layers.
 
+#[allow(clippy::needless_range_loop)]
 impl<const N: usize> BitXor for Fingerprint<N> {
     type Output = Self;
 
@@ -118,6 +120,7 @@ impl<const N: usize> BitXor for Fingerprint<N> {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
 impl<const N: usize> BitXor for &Fingerprint<N> {
     type Output = Fingerprint<N>;
 
@@ -149,6 +152,7 @@ impl<const N: usize> BitXorAssign<&Fingerprint<N>> for Fingerprint<N> {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
 impl<const N: usize> BitAnd for &Fingerprint<N> {
     type Output = Fingerprint<N>;
 
@@ -171,6 +175,7 @@ impl<const N: usize> BitAndAssign<&Fingerprint<N>> for Fingerprint<N> {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
 impl<const N: usize> BitOr for &Fingerprint<N> {
     type Output = Fingerprint<N>;
 
@@ -193,6 +198,7 @@ impl<const N: usize> BitOrAssign<&Fingerprint<N>> for Fingerprint<N> {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
 impl<const N: usize> Not for &Fingerprint<N> {
     type Output = Fingerprint<N>;
 

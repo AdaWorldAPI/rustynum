@@ -175,7 +175,7 @@ impl VerbCodebook {
             let recovered = decode_target_with_offset(edge, src, *offset);
             for (ci, candidate) in candidates.iter().enumerate() {
                 let dist = recovered.hamming_distance(candidate);
-                if best.as_ref().map_or(true, |(_, _, d)| dist < *d) {
+                if best.as_ref().is_none_or(|(_, _, d)| dist < *d) {
                     best = Some((verb.clone(), ci, dist));
                 }
             }
@@ -293,7 +293,7 @@ mod tests {
         // When src == tgt, the encoding is still asymmetric due to different
         // permutation slots, but less so than random vectors
         // The key test is that it returns a valid score
-        assert!(score >= 0.0 && score <= 0.5);
+        assert!((0.0..=0.5).contains(&score));
     }
 
     #[test]
@@ -336,7 +336,7 @@ mod tests {
         let flagged = cb.find_non_causal_edges(&edges, 0.6);
         // Random vectors should have asymmetry ~0.5, so with threshold 0.6
         // they should be flagged
-        assert!(!flagged.is_empty() || true); // At least tests the API works
+        let _ = flagged; // At least tests the API works
     }
 
     #[test]

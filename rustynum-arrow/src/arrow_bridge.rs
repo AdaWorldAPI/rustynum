@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_f64_round_trip() {
-        let data = vec![1.0f64, -2.5, 3.14159, 0.0];
+        let data = vec![1.0f64, -2.5, std::f64::consts::PI, 0.0];
         let arr = NumArrayF64::new(data.clone());
         let arrow = arr.into_arrow();
         assert_eq!(arrow.len(), 4);

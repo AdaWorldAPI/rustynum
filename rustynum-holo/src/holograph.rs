@@ -31,6 +31,9 @@
 use crate::focus::{FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z};
 use crate::carrier::{CARRIER_FREQUENCIES, CarrierBasis, carrier_encode, carrier_decode};
 
+/// A migration entry: (concept_index, old_position, new_position).
+pub type Migration = (usize, (f32, f32, f32), (f32, f32, f32));
+
 // ============================================================================
 // GaussianLUT — Envelope lookup table
 // ============================================================================
@@ -508,6 +511,12 @@ pub struct Overlay {
     snapshots: Vec<Vec<u8>>,
 }
 
+impl Default for Overlay {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Overlay {
     /// Create a zeroed overlay.
     pub fn new() -> Self {
@@ -726,7 +735,7 @@ impl SpectralMap {
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
                     let nz = z as i32 + dz;
-                    if nx < 0 || nx >= 8 || ny < 0 || ny >= 8 || nz < 0 || nz >= 32 {
+                    if !(0..8).contains(&nx) || !(0..8).contains(&ny) || !(0..32).contains(&nz) {
                         continue;
                     }
                     let nidx = nx as usize * 256 + ny as usize * 32 + nz as usize;
@@ -1006,6 +1015,12 @@ pub struct FastArchetypeDetector {
     pub sample_z: u8,
 }
 
+impl Default for FastArchetypeDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FastArchetypeDetector {
     pub fn new() -> Self {
         Self { sample_z: 16 }
@@ -1028,11 +1043,10 @@ impl FastArchetypeDetector {
                         container, lut, x, y, self.sample_z,
                         CARRIER_FREQUENCIES[f as usize] as f32,
                     );
-                    if amp > threshold {
-                        if self.is_xy_local_max(container, lut, x, y, f, amp) {
+                    if amp > threshold
+                        && self.is_xy_local_max(container, lut, x, y, f, amp) {
                             peaks.push((x, y, f, amp, phase));
                         }
-                    }
                 }
             }
         }
@@ -1051,7 +1065,7 @@ impl FastArchetypeDetector {
                 if dx == 0 && dy == 0 { continue; }
                 let nx = x as i32 + dx;
                 let ny = y as i32 + dy;
-                if nx < 0 || nx >= 8 || ny < 0 || ny >= 8 { continue; }
+                if !(0..8).contains(&nx) || !(0..8).contains(&ny) { continue; }
                 let (_, neighbor_amp) = gabor_read(
                     container, lut,
                     nx as u8, ny as u8, self.sample_z,
@@ -1138,6 +1152,12 @@ pub fn spectral_analysis_blas(
 pub struct GaborBatch {
     templates: Vec<Vec<f32>>,
     amplitudes: Vec<f32>,
+}
+
+impl Default for GaborBatch {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GaborBatch {
@@ -1578,7 +1598,7 @@ pub fn incremental_axis_update(
     crystallizer: &mut AxisCrystallizer,
     new_matrix: &CooccurrenceMatrix,
     rotation_rate: f32,
-) -> Vec<(usize, (f32, f32, f32), (f32, f32, f32))> {
+) -> Vec<Migration> {
     let new_crystal = AxisCrystallizer::crystallize(new_matrix);
     let aligned_axes = align_eigenvectors(&crystallizer.axes, &new_crystal.axes);
 
@@ -1644,7 +1664,7 @@ fn align_eigenvectors(old: &[Vec<f32>; 3], new: &[Vec<f32>; 3]) -> [Vec<f32>; 3]
 /// Re-position concepts that moved after axis rotation.
 pub fn apply_migrations(
     container: &mut [i8],
-    migrations: &[(usize, (f32, f32, f32), (f32, f32, f32))],
+    migrations: &[Migration],
     freq_assignments: &[usize],
     lut: &GaussianLUT,
 ) {
@@ -1765,7 +1785,7 @@ mod tests {
         let center_val = container[center_idx].abs();
 
         // Check that it decays away from center
-        let edge_idx = 0 * 256 + 0 * 32 + 0; // far corner
+        let edge_idx = 0; // far corner
         let edge_val = container[edge_idx].abs();
 
         assert!(
@@ -1889,7 +1909,7 @@ mod tests {
     fn test_gabor_phase_sweep() {
         // Test multiple phase values to verify no systematic bias
         let lut = GaussianLUT::new(2.0);
-        let test_phases = [0.0f32, 0.5, 1.0, 2.0, 3.14, 4.0, 5.5, 6.0];
+        let test_phases = [0.0f32, 0.5, 1.0, 2.0, std::f32::consts::PI, 4.0, 5.5, 6.0];
 
         for &target in &test_phases {
             let mut container = vec![0i8; 2048];
@@ -1916,7 +1936,7 @@ mod tests {
     #[test]
     fn test_delta_cube_xor_self_inverse() {
         let a: Vec<u8> = (0..2048).map(|i| (i * 13 % 256) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|i| (i * 41 + 7 % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| ((i * 41 + 7) % 256) as u8).collect();
         let mut delta = vec![0u8; 2048];
         delta_cube_xor(&a, &b, &mut delta);
 
@@ -1928,14 +1948,14 @@ mod tests {
     #[test]
     fn test_delta_cube_recover_xor_round_trip() {
         // Create two fields
-        let lut = GaussianLUT::new(2.0);
+        let _lut = GaussianLUT::new(2.0);
         let mut field_a = vec![0u8; 2048];
         let mut field_b = vec![0u8; 2048];
 
         // Fill with some deterministic data
         for i in 0..2048 {
             field_a[i] = (i * 31 % 256) as u8;
-            field_b[i] = (i * 47 + 13 % 256) as u8;
+            field_b[i] = ((i * 47 + 13) % 256) as u8;
         }
 
         // Create delta
@@ -1970,7 +1990,7 @@ mod tests {
 
         // Content
         let content: Vec<i8> = (0..2048).map(|i| (i as i8).wrapping_mul(11)).collect();
-        let mut stored: Vec<i8> = delta.iter().zip(content.iter())
+        let stored: Vec<i8> = delta.iter().zip(content.iter())
             .map(|(&d, &c)| d.wrapping_add(c))
             .collect();
 
@@ -1999,7 +2019,7 @@ mod tests {
         // Try reading content from field_a alone — should get noise
         let (_, amp_from_a) = gabor_read(&field_a, &lut, 4, 4, 16, 7.0);
         // Try reading from the stored delta — this has content + interference
-        let (rec_phase, rec_amp) = delta_cube_read_gabor(&delta, &lut, 4, 4, 16, 7.0);
+        let (_rec_phase, rec_amp) = delta_cube_read_gabor(&delta, &lut, 4, 4, 16, 7.0);
 
         // Content should be recoverable from delta
         assert!(
@@ -2789,8 +2809,8 @@ mod tests {
         gabor_write(&mut container, &lut, 4, 4, 16, 3.0, 1.5, 7.0);
 
         let basis = CarrierBasis::new();
-        let spec = SpectralMap::analyze(&container, &basis, &[lut.clone()]);
-        let clean = spec.resynthesize(0.3, &[lut.clone()], 2.0);
+        let spec = SpectralMap::analyze(&container, &basis, std::slice::from_ref(&lut));
+        let clean = spec.resynthesize(0.3, std::slice::from_ref(&lut), 2.0);
 
         let (rec, amp) = gabor_read(&clean, &lut, 4, 4, 16, 3.0);
         assert!(
@@ -3151,7 +3171,7 @@ mod tests {
         for i in 0..4 {
             let (x, y, z) = crystal.coords[i];
             let freq = CARRIER_FREQUENCIES[result.freq_assignments[i]] as f32;
-            let (rec, amp) = gabor_read(
+            let (_rec, amp) = gabor_read(
                 &container, &lut,
                 x.round().clamp(0.0, 7.0) as u8,
                 y.round().clamp(0.0, 7.0) as u8,

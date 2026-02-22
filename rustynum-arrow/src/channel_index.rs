@@ -148,7 +148,7 @@ mod tests {
         let mut data = Vec::with_capacity(n * vec_len);
         for i in 0..n {
             let val = (i * 31 % 256) as u8;
-            data.extend(std::iter::repeat(val).take(vec_len));
+            data.extend(std::iter::repeat_n(val, vec_len));
         }
         data
     }

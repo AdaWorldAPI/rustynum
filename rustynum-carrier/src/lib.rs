@@ -1,3 +1,6 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+
 //! # rustynum-carrier
 //!
 //! Frozen snapshot of the CogRecordV3 + carrier waveform model from `rustynum-holo`,

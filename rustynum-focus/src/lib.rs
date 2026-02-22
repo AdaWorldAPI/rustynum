@@ -1,3 +1,6 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+
 //! # rustynum-focus
 //!
 //! Frozen snapshot of the CogRecordV3 + carrier + focus-gating model from

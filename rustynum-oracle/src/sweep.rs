@@ -88,7 +88,7 @@ impl Base {
 
     /// Storage in bytes for D dimensions × N axes.
     pub fn storage_bytes(&self, d: usize, axes: usize) -> usize {
-        (self.storage_bits(d) * axes + 7) / 8
+        (self.storage_bits(d) * axes).div_ceil(8)
     }
 
     /// String name for CSV output.
@@ -691,14 +691,14 @@ mod tests {
     fn test_generate_template_signed_range() {
         let mut rng = seeded_rng();
         let t = generate_template(1000, Base::Signed(5), &mut rng);
-        assert!(t.iter().all(|&v| v >= -2 && v <= 2));
+        assert!(t.iter().all(|&v| (-2..=2).contains(&v)));
     }
 
     #[test]
     fn test_generate_template_unsigned_range() {
         let mut rng = seeded_rng();
         let t = generate_template(1000, Base::Unsigned(7), &mut rng);
-        assert!(t.iter().all(|&v| v >= 0 && v <= 6));
+        assert!(t.iter().all(|&v| (0..=6).contains(&v)));
     }
 
     // -- Binding --

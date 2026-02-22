@@ -1421,7 +1421,7 @@ mod tests {
         let graph = load_graph_from_file(&test_graph_path());
         // 114 develops + 79 deploys + 95 connection + 22 people + 21 place = 331
         let total = graph.edge_count();
-        assert!(total >= 300 && total <= 400,
+        assert!((300..=400).contains(&total),
             "Expected ~331 edges, got {}", total);
 
         let develops = graph.edges.iter()
@@ -1524,10 +1524,8 @@ mod tests {
             "Organic container should not be all zeros");
 
         // Signed(7) container should be within [-3, 3]
-        for &v in &enc.container {
-            assert!(v >= -128 && v <= 127,
-                "Container value {} out of i8 range", v);
-        }
+        // i8 is always in [-128, 127] — this assertion documents intent
+        assert!(!enc.container.is_empty(), "Container should not be empty");
 
         // Absorption should be healthy
         assert!(enc.absorption_avg > 0.9,

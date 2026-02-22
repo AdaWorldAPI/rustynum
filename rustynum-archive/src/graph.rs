@@ -175,7 +175,7 @@ impl VerbCodebook {
             let recovered = decode_target_with_offset(edge, src, *offset);
             for (ci, candidate) in candidates.iter().enumerate() {
                 let dist = recovered.hamming_distance(candidate);
-                if best.as_ref().map_or(true, |(_, _, d)| dist < *d) {
+                if best.as_ref().is_none_or(|(_, _, d)| dist < *d) {
                     best = Some((verb.clone(), ci, dist));
                 }
             }

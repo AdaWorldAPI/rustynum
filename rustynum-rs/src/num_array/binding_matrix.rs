@@ -286,7 +286,7 @@ mod tests {
         // At (0,0,0): popcount(v XOR v XOR v) = popcount(v) ≠ D/2 necessarily
         // The diagonal should show different behavior than off-diagonal
         let diag_val = matrix[0]; // (0,0,0)
-        let off_val = matrix[1 * res * res + 2 * res + 3]; // (1,2,3)
+        let off_val = matrix[res * res + 2 * res + 3]; // (1,2,3)
 
         // They should generally be different (identity vs rotation)
         // This just verifies the computation doesn't crash

@@ -58,6 +58,12 @@ impl PartialEq for Base {
     }
 }
 
+impl Default for Oracle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Oracle {
     /// Create a new empty oracle.
     pub fn new() -> Self {

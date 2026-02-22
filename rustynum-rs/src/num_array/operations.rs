@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<'a, T, Ops> Add<T> for &'a NumArray<T, Ops>
+impl<T, Ops> Add<T> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -96,7 +96,7 @@ where
     }
 }
 
-impl<'a, 'b, T, Ops> Add<&'b NumArray<T, Ops>> for &'a NumArray<T, Ops>
+impl<'b, T, Ops> Add<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -154,7 +154,7 @@ where
     }
 }
 
-impl<'a, T, Ops> Sub<T> for &'a NumArray<T, Ops>
+impl<T, Ops> Sub<T> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -212,7 +212,7 @@ where
     }
 }
 
-impl<'a, 'b, T, Ops> Sub<&'b NumArray<T, Ops>> for &'a NumArray<T, Ops>
+impl<'b, T, Ops> Sub<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -270,7 +270,7 @@ where
     }
 }
 
-impl<'a, T, Ops> Mul<T> for &'a NumArray<T, Ops>
+impl<T, Ops> Mul<T> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -328,7 +328,7 @@ where
     }
 }
 
-impl<'a, 'b, T, Ops> Mul<&'b NumArray<T, Ops>> for &'a NumArray<T, Ops>
+impl<'b, T, Ops> Mul<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -386,7 +386,7 @@ where
     }
 }
 
-impl<'a, T, Ops> Div<T> for &'a NumArray<T, Ops>
+impl<T, Ops> Div<T> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -444,7 +444,7 @@ where
     }
 }
 
-impl<'a, 'b, T, Ops> Div<&'b NumArray<T, Ops>> for &'a NumArray<T, Ops>
+impl<'b, T, Ops> Div<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
 where
     T: Clone
         + Mul<Output = T>
@@ -505,8 +505,6 @@ where
 mod tests {
 
     use crate::{NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
-
-    use super::*;
 
     #[test]
     fn test_add_scalar_u8() {
@@ -644,11 +642,9 @@ mod tests {
         assert_eq!(result.shape(), &[3, 3]);
 
         // Check first row values
-        let expected_first_row = vec![
-            1.0 / 14.0_f32.sqrt(),
+        let expected_first_row = [1.0 / 14.0_f32.sqrt(),
             2.0 / 14.0_f32.sqrt(),
-            3.0 / 14.0_f32.sqrt(),
-        ];
+            3.0 / 14.0_f32.sqrt()];
 
         for i in 0..3 {
             assert!(

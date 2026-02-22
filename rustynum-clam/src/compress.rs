@@ -138,6 +138,7 @@ pub enum CompressionMode {
 
 /// Per-cluster compression metadata.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ClusterCompression {
     mode: CompressionMode,
     unitary_cost: usize,
@@ -380,6 +381,12 @@ impl CompressedTree {
 /// sharing the same cluster center.
 pub struct DistanceCache {
     entries: std::collections::HashMap<usize, u64>,
+}
+
+impl Default for DistanceCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DistanceCache {

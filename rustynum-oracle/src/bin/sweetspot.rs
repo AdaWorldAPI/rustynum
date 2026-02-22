@@ -75,8 +75,8 @@ fn main() {
         oracle.surgical_cool(&hot, &lib);
 
         let mut max_err = 0.0f32;
-        for i in 0..k {
-            let err = (oracle.coefficients[i] - original_coeffs[i]).abs();
+        for (oc, orig) in oracle.coefficients[..k].iter().zip(&original_coeffs[..k]) {
+            let err = (oc - orig).abs();
             max_err = max_err.max(err);
         }
 

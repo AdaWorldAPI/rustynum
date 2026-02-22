@@ -17,7 +17,7 @@
 //! - Twiddle factors are pre-computed once per butterfly stage (not per k-group).
 //! - For later stages (half >= F32_LANES/2 for f32, half >= F64_LANES/2 for f64),
 //!   butterfly pairs are processed in SIMD-width batches using complex multiply:
-//!     twiddle = wr*odd + wi_sign*odd_swapped
+//!   twiddle = wr*odd + wi_sign*odd_swapped
 //!   where odd_swapped has re/im swapped and wi_sign alternates [-sin, +sin].
 //! - ifft conjugate and scale loops use SIMD sign-mask and broadcast multiply.
 

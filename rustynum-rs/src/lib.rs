@@ -1,3 +1,6 @@
+// Numeric array operations use index loops and many-argument SIMD dispatch patterns.
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+
 //! # RustyNum-Rs
 //!
 //! `rustynum-rs` is a numerical library for Rust, focusing on operations that can be vectorized using SIMD.

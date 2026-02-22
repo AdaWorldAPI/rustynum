@@ -219,8 +219,8 @@ pub fn scal_f32(alpha: f32, x: &mut [f32]) {
         result.copy_to_slice(&mut x[base..base + F32_LANES]);
     }
 
-    for i in (chunks * F32_LANES)..len {
-        x[i] *= alpha;
+    for xi in &mut x[chunks * F32_LANES..] {
+        *xi *= alpha;
     }
 }
 
@@ -238,8 +238,8 @@ pub fn scal_f64(alpha: f64, x: &mut [f64]) {
         result.copy_to_slice(&mut x[base..base + F64_LANES]);
     }
 
-    for i in (chunks * F64_LANES)..len {
-        x[i] *= alpha;
+    for xi in &mut x[chunks * F64_LANES..] {
+        *xi *= alpha;
     }
 }
 
@@ -257,8 +257,8 @@ pub fn asum_f32(x: &[f32]) -> f32 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F32_LANES)..len {
-        sum += x[i].abs();
+    for &xi in &x[chunks * F32_LANES..] {
+        sum += xi.abs();
     }
     sum
 }
@@ -277,8 +277,8 @@ pub fn asum_f64(x: &[f64]) -> f64 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F64_LANES)..len {
-        sum += x[i].abs();
+    for &xi in &x[chunks * F64_LANES..] {
+        sum += xi.abs();
     }
     sum
 }
@@ -297,8 +297,8 @@ pub fn nrm2_f32(x: &[f32]) -> f32 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F32_LANES)..len {
-        sum += x[i] * x[i];
+    for &xi in &x[chunks * F32_LANES..] {
+        sum += xi * xi;
     }
     sum.sqrt()
 }
@@ -317,8 +317,8 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F64_LANES)..len {
-        sum += x[i] * x[i];
+    for &xi in &x[chunks * F64_LANES..] {
+        sum += xi * xi;
     }
     sum.sqrt()
 }
@@ -645,8 +645,8 @@ unsafe fn popcount_vpopcntdq(a: &[u8]) -> u64 {
     let mut sum: u64 = vals.iter().map(|&v| v as u64).sum();
 
     // Scalar tail
-    for i in (chunks * 64)..len {
-        sum += a[i].count_ones() as u64;
+    for &byte in &a[chunks * 64..] {
+        sum += byte.count_ones() as u64;
     }
 
     sum
@@ -712,8 +712,8 @@ unsafe fn popcount_avx2(a: &[u8]) -> u64 {
     let mut sum: u64 = arr.iter().map(|&v| v as u64).sum();
 
     // Scalar tail
-    for i in (chunks * 32)..len {
-        sum += a[i].count_ones() as u64;
+    for &byte in &a[chunks * 32..] {
+        sum += byte.count_ones() as u64;
     }
 
     sum
@@ -745,8 +745,8 @@ fn popcount_scalar(a: &[u8]) -> u64 {
         sum += w.count_ones() as u64;
     }
 
-    for i in u64_chunks * 8..len {
-        sum += a[i].count_ones() as u64;
+    for &byte in &a[u64_chunks * 8..] {
+        sum += byte.count_ones() as u64;
     }
 
     sum
@@ -1415,7 +1415,7 @@ fn apply_precision_tier(
     query: &[u8],
     database: &[u8],
     vec_bytes: usize,
-    finalists: &mut Vec<HdrResult>,
+    finalists: &mut [HdrResult],
     precise_mode: PreciseMode,
 ) {
     match precise_mode {
@@ -1655,14 +1655,14 @@ mod tests {
         let query = vec![0xAAu8; 16];
         let mut database = vec![0u8; 16 * 4]; // 4 rows of 16 bytes
         // Row 0: identical → 0
-        for i in 0..16 { database[i] = 0xAA; }
+        database[..16].fill(0xAA);
         // Row 1: all different → 16*8 = 128
-        for i in 16..32 { database[i] = 0x55; }
+        database[16..32].fill(0x55);
         // Row 2: half different → 64
-        for i in 32..40 { database[i] = 0xAA; }
-        for i in 40..48 { database[i] = 0x55; }
+        database[32..40].fill(0xAA);
+        database[40..48].fill(0x55);
         // Row 3: one byte different → 8
-        for i in 48..64 { database[i] = 0xAA; }
+        database[48..64].fill(0xAA);
         database[48] = 0x55;
 
         let distances = hamming_batch(&query, &database, 4, 16);
@@ -1735,8 +1735,8 @@ mod tests {
         let mut db = vec![0u8; vec_len * total];
 
         // Fill with pseudo-random data
-        for i in 0..num_random * vec_len {
-            db[i] = ((i * 7 + 13) % 256) as u8;
+        for (i, byte) in db[..num_random * vec_len].iter_mut().enumerate() {
+            *byte = ((i * 7 + 13) % 256) as u8;
         }
 
         let query = vec![0xAA; vec_len];
@@ -1785,8 +1785,8 @@ mod tests {
         let mut cand_a = query.clone();
         let mut cand_b = query.clone();
         // Flip same NUMBER of bits but different byte positions
-        for i in 0..30 { cand_a[i] ^= 0xFF; }
-        for i in 500..530 { cand_b[i] ^= 0xFF; }
+        for byte in &mut cand_a[..30] { *byte ^= 0xFF; }
+        for byte in &mut cand_b[500..530] { *byte ^= 0xFF; }
 
         let mut db = Vec::new();
         db.extend_from_slice(&cand_a);
@@ -1949,7 +1949,7 @@ mod tests {
         close[0] = 0x80; // sign flip on dim 0
 
         // vec 1: many bytes flipped → large distance
-        let mut far = vec![0xFF; vec_len];
+        let far = vec![0xFF; vec_len];
         let _ = &far; // all bits differ from query
 
         let mut db = Vec::new();

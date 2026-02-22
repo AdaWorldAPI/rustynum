@@ -21,6 +21,8 @@
 //! that provides an alternative encoding for phase containers. This archive
 //! preserves the pure random-phase implementation for reference.
 
+#![allow(clippy::needless_range_loop)]
+
 pub mod phase;
 pub mod cogrecord_v3;
 

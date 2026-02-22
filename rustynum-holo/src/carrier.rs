@@ -56,6 +56,12 @@ pub struct CarrierBasis {
     pub basis_sin: [[i8; 2048]; 16],
 }
 
+impl Default for CarrierBasis {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CarrierBasis {
     /// Generate deterministically using Chebyshev recurrence.
     ///

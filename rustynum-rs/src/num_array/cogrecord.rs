@@ -52,18 +52,15 @@ pub struct CogRecord {
 
 /// Sweep mode for batch CogRecord queries.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum SweepMode {
     /// Pure Hamming distance across all 4 containers.
+    #[default]
     Hamming,
     /// Hamming for META/CAM/BTREE, int8 cosine for EMBED.
     Hybrid,
 }
 
-impl Default for SweepMode {
-    fn default() -> Self {
-        Self::Hamming
-    }
-}
 
 /// Result of a 4-channel sweep: distances per container.
 #[derive(Clone, Debug, Default)]

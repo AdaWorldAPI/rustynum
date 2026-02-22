@@ -1,3 +1,7 @@
+// LAPACK/FFT functions have many parameters matching standard API signatures.
+// Numeric kernels use index loops for clarity.
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+
 //! # RustyMKL
 //!
 //! Pure Rust Intel MKL replacement with AVX-512 SIMD.

@@ -93,7 +93,7 @@ pub const TRAINING_WEIGHTS: BF16Weights = BF16Weights {
 /// Returns weighted distance.
 pub fn bf16_hamming_scalar(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     assert_eq!(a.len(), b.len());
-    assert!(a.len() % 2 == 0, "BF16 data must be even number of bytes");
+    assert!(a.len().is_multiple_of(2), "BF16 data must be even number of bytes");
 
     let mut total: u64 = 0;
 
@@ -227,12 +227,15 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 // Dispatch
 // ---------------------------------------------------------------------------
 
+/// Function pointer type for BF16 Hamming implementations.
+pub type BF16HammingFn = fn(&[u8], &[u8], &BF16Weights) -> u64;
+
 /// Select the fastest BF16-structured Hamming implementation for this CPU.
 ///
 /// The result is cached in a `OnceLock` — the CPUID probe runs at most once.
 /// Safe to call in hot loops.
-pub fn select_bf16_hamming_fn() -> fn(&[u8], &[u8], &BF16Weights) -> u64 {
-    static FN: OnceLock<fn(&[u8], &[u8], &BF16Weights) -> u64> = OnceLock::new();
+pub fn select_bf16_hamming_fn() -> BF16HammingFn {
+    static FN: OnceLock<BF16HammingFn> = OnceLock::new();
     *FN.get_or_init(|| {
         #[cfg(target_arch = "x86_64")]
         {
@@ -268,7 +271,7 @@ pub fn fp32_to_bf16_bytes(floats: &[f32]) -> Vec<u8> {
 ///
 /// Lossless in the BF16 → FP32 direction (just adds zero mantissa bits).
 pub fn bf16_bytes_to_fp32(bytes: &[u8]) -> Vec<f32> {
-    assert!(bytes.len() % 2 == 0);
+    assert!(bytes.len().is_multiple_of(2));
     let mut out = Vec::with_capacity(bytes.len() / 2);
     for chunk in bytes.chunks_exact(2) {
         let bf16 = u16::from_le_bytes([chunk[0], chunk[1]]);
@@ -306,7 +309,7 @@ pub struct BF16StructuralDiff {
 
 pub fn structural_diff(a: &[u8], b: &[u8]) -> BF16StructuralDiff {
     assert_eq!(a.len(), b.len());
-    assert!(a.len() % 2 == 0);
+    assert!(a.len().is_multiple_of(2));
 
     let mut diff = BF16StructuralDiff::default();
     let n_dims = a.len() / 2;

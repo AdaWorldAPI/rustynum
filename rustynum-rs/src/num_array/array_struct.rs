@@ -119,6 +119,11 @@ where
         self.shape.len()
     }
 
+    /// Returns true if the array has no elements.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     /// Returns the total number of elements in the array.
     pub fn len(&self) -> usize {
         // Note: self.data.len() is also correct if data is always appropriately sized.
@@ -254,12 +259,12 @@ where
         let mut stride = 1;
         let mut accumulated_strides = 1;
 
-        for (_i, (&original_dim, &reduced_dim)) in self
+        for (&original_dim, &reduced_dim) in self
             .shape
             .iter()
             .zip(reduction_shape.iter())
             .rev()
-            .enumerate()
+            
         {
             let index_in_dim = (index / stride) % original_dim;
 
@@ -1550,7 +1555,7 @@ mod tests {
         let array = NumArrayF32::new(vec![0.0, 1.0, 2.0]);
         let exp_array = array.exp();
         // Using approximate values for floating-point comparisons
-        let expected = vec![1.0, 2.7182817, 7.389056];
+        let expected = [1.0, 2.7182817, 7.389056];
         for (computed, &exp_val) in exp_array.get_data().iter().zip(expected.iter()) {
             assert!(
                 (computed - exp_val).abs() < 1e-5,
@@ -1566,7 +1571,7 @@ mod tests {
         let array = NumArrayF32::new(vec![1.0, 2.7182817, 7.389056]);
         let log_array = array.log();
         // Using approximate values for floating-point comparisons
-        let expected = vec![0.0, 1.0, 2.0];
+        let expected = [0.0, 1.0, 2.0];
         for (computed, &log_val) in log_array.get_data().iter().zip(expected.iter()) {
             assert!(
                 (computed - log_val).abs() < 1e-5,
@@ -1589,7 +1594,7 @@ mod tests {
         let array = NumArrayF32::new(vec![0.0, 2.0, -2.0]);
         let sigmoid_array = array.sigmoid();
         // Using approximate values for floating-point comparisons
-        let expected = vec![0.5, 0.880797, 0.119203];
+        let expected = [0.5, 0.880797, 0.119203];
         for (computed, &exp_val) in sigmoid_array.get_data().iter().zip(expected.iter()) {
             assert!(
                 (computed - exp_val).abs() < 1e-5,
@@ -1713,18 +1718,18 @@ mod tests {
         let norm_axis0 = c.norm(2, Some(&[0]), Some(false));
         assert_eq!(norm_axis0.shape(), &[3]);
         assert!(
-            (norm_axis0.get(&[0]) - 1.41421356).abs() < 1e-5,
+            (norm_axis0.get(&[0]) - std::f32::consts::SQRT_2).abs() < 1e-5,
             "Expected ~1.41421356, got {}",
             norm_axis0.get(&[0])
         );
-        assert!((norm_axis0.get(&[1]) - 2.23606798).abs() < 1e-5);
+        assert!((norm_axis0.get(&[1]) - 2.236_068).abs() < 1e-5);
         assert!((norm_axis0.get(&[2]) - 5.0).abs() < 1e-5);
 
         // axis=1 (row norms)
         let norm_axis1 = c.norm(2, Some(&[1]), Some(false));
         assert_eq!(norm_axis1.shape(), &[2]);
-        assert!((norm_axis1.get(&[0]) - 3.74165739).abs() < 1e-5);
-        assert!((norm_axis1.get(&[1]) - 4.24264069).abs() < 1e-5);
+        assert!((norm_axis1.get(&[0]) - 3.741_657_5).abs() < 1e-5);
+        assert!((norm_axis1.get(&[1]) - 4.242_640_5).abs() < 1e-5);
 
         // ord=1 (sum of absolute values)
         let l1_norm = c.norm(1, None, Some(false));
@@ -1785,11 +1790,9 @@ mod tests {
         assert_eq!(normalized.shape(), &[3, 3]);
 
         // Verify some normalized values (comparing with NumPy results)
-        let expected_first_row = vec![
-            1.0 / (14.0_f32).sqrt(),
+        let expected_first_row = [1.0 / (14.0_f32).sqrt(),
             2.0 / (14.0_f32).sqrt(),
-            3.0 / (14.0_f32).sqrt(),
-        ];
+            3.0 / (14.0_f32).sqrt()];
 
         for i in 0..3 {
             assert!(

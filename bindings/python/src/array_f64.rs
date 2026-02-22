@@ -29,63 +29,63 @@ impl PyNumArrayF64 {
     }
 
     fn add_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner + scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn add_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner + &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn sub_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner - scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn sub_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner - &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn mul_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner * scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn mul_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner * &other.inner; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn div_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner / scalar; // Leveraging Rust's Add implementation
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn div_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = &self.inner / &other.inner;
             Ok(PyNumArrayF64 { inner: result })
         })
     }
 
     fn mean_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = match axis {
                 Some(axis_list) => {
                     let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -98,7 +98,7 @@ impl PyNumArrayF64 {
     }
 
     fn median_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = match axis {
                 Some(axis_list) => {
                     let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -116,7 +116,7 @@ impl PyNumArrayF64 {
         axis: Option<&PyList>,
         keepdims: Option<bool>,
     ) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = match axis {
                 Some(axis_list) => {
                     let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -153,7 +153,7 @@ impl PyNumArrayF64 {
     }
 
     fn flip_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let axis_vec: Vec<usize> = match axis {
                 Some(list) => list.extract()?,
                 None => vec![],
@@ -186,7 +186,7 @@ impl PyNumArrayF64 {
     }
 
     fn min_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = match axis {
                 Some(axis_list) => {
                     let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -199,7 +199,7 @@ impl PyNumArrayF64 {
     }
 
     fn max_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let result = match axis {
                 Some(axis_list) => {
                     let axis_vec: Vec<usize> = axis_list.extract()?;

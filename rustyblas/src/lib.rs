@@ -1,3 +1,7 @@
+// BLAS functions match CBLAS signatures — many parameters are inherent to the API.
+// Numeric kernels use index loops on packed arrays where iterators hurt readability.
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+
 //! # RustyBLAS
 //!
 //! Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement.

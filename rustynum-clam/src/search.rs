@@ -58,19 +58,13 @@ pub struct KnnResult {
 
 /// Configuration for search.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct SearchConfig {
     /// For Repeated ρ-NN: initial radius as fraction of root radius.
     /// Default: 1/n where n = dataset cardinality.
     pub initial_radius_fraction: Option<f64>,
 }
 
-impl Default for SearchConfig {
-    fn default() -> Self {
-        SearchConfig {
-            initial_radius_fraction: None,
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // ρ-NN search (Algorithms 2 + 3 from CHESS/CAKES)
@@ -238,7 +232,7 @@ pub fn knn_repeated_rho(
             // Collect LFDs from overlapping leaf clusters
             let mean_inv_lfd = estimate_local_lfd(tree, data, vec_len, query, rho);
             let ratio = k as f64 / result.hits.len() as f64;
-            let factor = ratio.powf(mean_inv_lfd).min(2.0).max(1.1);
+            let factor = ratio.powf(mean_inv_lfd).clamp(1.1, 2.0);
             rho = ((rho as f64) * factor).ceil() as u64;
         }
 

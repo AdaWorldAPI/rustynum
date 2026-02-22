@@ -402,9 +402,7 @@ pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
         x[..n].swap_with_slice(&mut y[..n]);
     } else {
         for i in 0..n {
-            let tmp = x[i * incx];
-            x[i * incx] = y[i * incy];
-            y[i * incy] = tmp;
+            std::mem::swap(&mut x[i * incx], &mut y[i * incy]);
         }
     }
 }
@@ -425,9 +423,7 @@ pub fn dswap(n: usize, x: &mut [f64], incx: usize, y: &mut [f64], incy: usize) {
         x[..n].swap_with_slice(&mut y[..n]);
     } else {
         for i in 0..n {
-            let tmp = x[i * incx];
-            x[i * incx] = y[i * incy];
-            y[i * incy] = tmp;
+            std::mem::swap(&mut x[i * incx], &mut y[i * incy]);
         }
     }
 }

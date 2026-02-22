@@ -142,7 +142,7 @@ impl NumArrayU8 {
 
         // ── Ripple-carry path for large n ──
         let u64_lanes = len / 8;
-        let has_tail = len % 8 != 0;
+        let has_tail = !len.is_multiple_of(8);
         let counter_bits = (usize::BITS - n.leading_zeros()) as usize;
 
         let mut out = vec![0u8; len];
@@ -157,7 +157,7 @@ impl NumArrayU8 {
                 // ── Blackboard borrow-mut scheme ──
                 // Split output into disjoint mutable regions. Each thread
                 // writes exclusively to its own slice — no locks.
-                let lanes_per_thread = (u64_lanes + n_threads - 1) / n_threads;
+                let lanes_per_thread = u64_lanes.div_ceil(n_threads);
                 let lanes_per_thread = (lanes_per_thread + 7) & !7; // align to u64x8
 
                 std::thread::scope(|s| {

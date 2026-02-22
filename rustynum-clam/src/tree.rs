@@ -360,6 +360,7 @@ impl ClamTree {
     /// Operates on `indices[start..end]` — the subset of dataset indices
     /// belonging to this cluster. Modifies `indices` in place to achieve
     /// depth-first ordering.
+    #[allow(clippy::too_many_arguments)]
     fn partition(
         data: &[u8],
         vec_len: usize,

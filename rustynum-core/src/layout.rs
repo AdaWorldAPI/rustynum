@@ -4,37 +4,27 @@
 //! rustynum ecosystem. This matches the CBLAS API convention.
 
 /// Memory layout for matrices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum Layout {
     /// Row-major (C-style): elements in a row are contiguous.
+    #[default]
     RowMajor = 101,
     /// Column-major (Fortran-style): elements in a column are contiguous.
     ColMajor = 102,
 }
 
-impl Default for Layout {
-    fn default() -> Self {
-        Self::RowMajor
-    }
-}
-
 /// Transpose operation for matrices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum Transpose {
     /// No transpose.
+    #[default]
     NoTrans = 111,
     /// Transpose.
     Trans = 112,
     /// Conjugate transpose (for complex types).
     ConjTrans = 113,
-}
-
-impl Default for Transpose {
-    fn default() -> Self {
-        Self::NoTrans
-    }
 }
 
 impl Layout {
@@ -58,43 +48,28 @@ impl Layout {
 }
 
 /// BLAS triangle specifier (upper/lower).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum Uplo {
+    #[default]
     Upper = 121,
     Lower = 122,
 }
 
-impl Default for Uplo {
-    fn default() -> Self {
-        Self::Upper
-    }
-}
-
 /// BLAS side specifier (left/right multiplication).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum Side {
+    #[default]
     Left = 141,
     Right = 142,
 }
 
-impl Default for Side {
-    fn default() -> Self {
-        Self::Left
-    }
-}
-
 /// BLAS diagonal specifier (unit/non-unit).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum Diag {
+    #[default]
     NonUnit = 131,
     Unit = 132,
-}
-
-impl Default for Diag {
-    fn default() -> Self {
-        Self::NonUnit
-    }
 }
