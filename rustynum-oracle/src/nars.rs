@@ -12,7 +12,7 @@
 //! is broken (noise floor).
 //!
 //! Granger signal G(A→B,τ) = d(A_t, B_{t+τ}) - d(B_t, B_{t+τ})
-//! gives directionality: G > 0 ⇒ A predicts B.
+//! gives directionality: G < 0 ⇒ A predicts B (A is closer to future B).
 
 use crate::sweep::{Base, bind};
 
@@ -125,7 +125,7 @@ fn nearest_entity(candidate: &[i8], entities: &[Entity]) -> (u32, u64) {
     let mut best_dist = u64::MAX;
 
     for e in entities {
-        let dist = hamming_i8(candidate, &e.vector);
+        let dist = symbol_distance(candidate, &e.vector);
         if dist < best_dist {
             best_dist = dist;
             best_id = e.id;
@@ -140,7 +140,7 @@ fn nearest_entity(candidate: &[i8], entities: &[Entity]) -> (u32, u64) {
 /// Counts positions where `a[i] != b[i]`. This is the correct distance
 /// for holographic vectors where each i8 is a discrete symbol (not a byte
 /// to be decomposed into bits).
-fn hamming_i8(a: &[i8], b: &[i8]) -> u64 {
+fn symbol_distance(a: &[i8], b: &[i8]) -> u64 {
     assert_eq!(a.len(), b.len());
     let mut dist = 0u64;
     for i in 0..a.len() {
@@ -217,8 +217,9 @@ pub fn reverse_trace(
 ///
 /// G(A→B, τ) = d(A_t, B_{t+τ}) - d(B_t, B_{t+τ})
 ///
-/// If G > 0: A_t is closer to B_{t+τ} than B_t is — A predicts B.
-/// If G < 0: B predicts itself better — no causal signal from A.
+/// If G < 0: A_t is closer to B_{t+τ} than B_t is — A predicts B.
+/// If G > 0: B_t is closer to future B than A_t — no causal signal from A.
+/// If G ≈ 0: A and B are equidistant from future B — inconclusive.
 ///
 /// Returns the mean Granger signal across all valid time steps.
 pub fn granger_signal(
@@ -236,8 +237,8 @@ pub fn granger_signal(
     let mut count = 0usize;
 
     for t in 0..(n - tau) {
-        let d_ab = hamming_i8(&series_a[t], &series_b[t + tau]) as f64;
-        let d_bb = hamming_i8(&series_b[t], &series_b[t + tau]) as f64;
+        let d_ab = symbol_distance(&series_a[t], &series_b[t + tau]) as f64;
+        let d_bb = symbol_distance(&series_b[t], &series_b[t + tau]) as f64;
         sum += d_ab - d_bb;
         count += 1;
     }
@@ -247,16 +248,8 @@ pub fn granger_signal(
 
 /// Scan multiple lags to find the strongest Granger signal.
 ///
-/// Returns (best_lag, signal) where signal is the most negative value
-/// of G(A→B, τ) — more negative means A is a stronger predictor of B.
-/// (Convention: lower distance = more similar, so G < 0 means A predicts B
-/// better than B predicts itself.)
-///
-/// Wait — let me clarify the convention:
-///   G = d(A_t, B_{t+τ}) - d(B_t, B_{t+τ})
-///   G < 0  ⟹  A_t is CLOSER to future B than B_t is  ⟹  A predicts B
-///   G > 0  ⟹  B_t is closer to future B than A_t is  ⟹  no causal signal
-///   G ≈ 0  ⟹  A and B are equidistant from future B  ⟹  inconclusive
+/// Returns (best_lag, signal) where signal is the most negative G(A→B, τ).
+/// More negative means A is a stronger predictor of B at that lag.
 pub fn granger_scan(
     series_a: &[Vec<i8>],
     series_b: &[Vec<i8>],
@@ -277,13 +270,13 @@ pub fn granger_scan(
 }
 
 // ---------------------------------------------------------------------------
-// Contradiction Detection — Tactic #11 (pairwise similarity screening)
+// SimilarPair Detection — Tactic #11 (pairwise similarity screening)
 // ---------------------------------------------------------------------------
 
 /// A detected contradiction: two entities with high structural similarity
 /// but opposing truth values.
 #[derive(Clone, Debug)]
-pub struct Contradiction {
+pub struct SimilarPair {
     pub entity_a: u32,
     pub entity_b: u32,
     pub distance: u64,
@@ -299,7 +292,7 @@ pub struct Contradiction {
 pub fn find_similar_pairs(
     entities: &[Entity],
     radius_threshold: f64,
-) -> Vec<Contradiction> {
+) -> Vec<SimilarPair> {
     let mut pairs = Vec::new();
     let n = entities.len();
     if n == 0 {
@@ -310,10 +303,10 @@ pub fn find_similar_pairs(
 
     for i in 0..n {
         for j in (i + 1)..n {
-            let dist = hamming_i8(&entities[i].vector, &entities[j].vector);
+            let dist = symbol_distance(&entities[i].vector, &entities[j].vector);
             let norm = dist as f64 / total_dims;
             if norm < radius_threshold {
-                pairs.push(Contradiction {
+                pairs.push(SimilarPair {
                     entity_a: entities[i].id,
                     entity_b: entities[j].id,
                     distance: dist,
@@ -578,7 +571,7 @@ mod tests {
             "Best lag should be {}, got {} (G={})", tau, best_lag, best_g);
     }
 
-    // --- Contradiction detection ---
+    // --- SimilarPair detection ---
 
     #[test]
     fn test_find_similar_pairs_identical() {
