@@ -65,7 +65,7 @@ impl Distance for HammingDistance {
     type Point = [u8];
 
     fn distance(&self, a: &[u8], b: &[u8]) -> u64 {
-        debug_assert_eq!(a.len(), b.len(), "Hamming distance requires equal lengths");
+        assert_eq!(a.len(), b.len(), "Hamming distance requires equal lengths");
         hamming_inline(a, b)
     }
 
@@ -89,7 +89,7 @@ impl Distance for HammingSIMD {
     type Point = [u8];
 
     fn distance(&self, a: &[u8], b: &[u8]) -> u64 {
-        debug_assert_eq!(a.len(), b.len(), "Hamming distance requires equal lengths");
+        assert_eq!(a.len(), b.len(), "Hamming distance requires equal lengths");
         rustynum_core::simd::hamming_distance(a, b)
     }
 
@@ -347,7 +347,7 @@ impl ClamTree {
 
         let mut indices: Vec<usize> = (0..count).collect();
         let mut nodes = Vec::with_capacity(2 * count); // upper bound
-        let mut rng_state: u64 = 0xDEAD_BEEF_CAFE_BABE; // SplitMix64
+        let mut rng = rustynum_core::SplitMix64::new(0xDEAD_BEEF_CAFE_BABE);
 
         Self::partition(
             data,
@@ -358,7 +358,7 @@ impl ClamTree {
             0,       // depth
             config,
             &mut nodes,
-            &mut rng_state,
+            &mut rng,
         );
 
         // Compute summary statistics
@@ -398,7 +398,7 @@ impl ClamTree {
         depth: usize,
         config: &BuildConfig,
         nodes: &mut Vec<Cluster>,
-        rng: &mut u64,
+        rng: &mut rustynum_core::SplitMix64,
     ) -> usize {
         let n = end - start;
         let node_idx = nodes.len();
@@ -410,7 +410,7 @@ impl ClamTree {
         // Fisher-Yates partial shuffle for seed selection
         let working = &mut indices[start..end];
         for i in 0..num_seeds.min(working.len()) {
-            let j = i + (splitmix64(rng) as usize % (working.len() - i));
+            let j = i + (rng.next_u64() as usize % (working.len() - i));
             working.swap(i, j);
         }
 
@@ -644,15 +644,6 @@ pub struct LfdStats {
     pub mean: f64,
 }
 
-/// SplitMix64 PRNG — deterministic, fast, no external deps.
-fn splitmix64(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9E3779B97F4A7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
-    z ^ (z >> 31)
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────
@@ -660,13 +651,14 @@ fn splitmix64(state: &mut u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustynum_core::SplitMix64;
 
     /// Create a simple dataset of 100 random 64-byte vectors.
     fn make_test_data(n: usize, vec_len: usize) -> Vec<u8> {
-        let mut rng: u64 = 42;
+        let mut rng = SplitMix64::new(42);
         let mut data = vec![0u8; n * vec_len];
         for byte in data.iter_mut() {
-            *byte = (splitmix64(&mut rng) & 0xFF) as u8;
+            *byte = (rng.next_u64() & 0xFF) as u8;
         }
         data
     }
@@ -839,9 +831,9 @@ mod tests {
     #[test]
     fn test_hamming_simd_matches_inline() {
         // Verify SIMD path produces identical results to scalar path
-        let mut rng: u64 = 12345;
-        let a: Vec<u8> = (0..2048).map(|_| (splitmix64(&mut rng) & 0xFF) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|_| (splitmix64(&mut rng) & 0xFF) as u8).collect();
+        let mut rng = SplitMix64::new(12345);
+        let a: Vec<u8> = (0..2048).map(|_| (rng.next_u64() & 0xFF) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|_| (rng.next_u64() & 0xFF) as u8).collect();
 
         let inline_result = hamming_inline(&a, &b);
         let simd_result = HammingSIMD.distance(&a, &b);

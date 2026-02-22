@@ -36,48 +36,14 @@ const NOVELTY_RESIDUAL_THRESHOLD: f32 = 0.85;
 /// Default shortlist size for two-stage recognition.
 const SHORTLIST_K: usize = 8;
 
-// ---------------------------------------------------------------------------
-// SimpleRng with Gaussian support
-// ---------------------------------------------------------------------------
-
-struct SimpleRng(u64);
-
-fn simple_rng(seed: u64) -> SimpleRng {
-    SimpleRng(seed | 1)
-}
-
-impl SimpleRng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    fn gen_range(&mut self, min: i8, max: i8) -> i8 {
-        let range = (max as i16 - min as i16 + 1) as u64;
-        (min as i64 + (self.next() % range) as i64) as i8
-    }
-
-    /// Uniform f64 in [0, 1).
-    fn next_f64(&mut self) -> f64 {
-        (self.next() >> 11) as f64 / (1u64 << 53) as f64
-    }
-
-    /// Box-Muller transform: generate a standard normal sample.
-    fn next_gaussian(&mut self) -> f64 {
-        let u1 = self.next_f64().max(1e-15); // avoid log(0)
-        let u2 = self.next_f64();
-        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
-    }
-}
+use rustynum_core::SplitMix64;
 
 // ---------------------------------------------------------------------------
 // Helper: random unit vector and perturbation
 // ---------------------------------------------------------------------------
 
 /// Generate a random unit vector of dimension `d` using the provided RNG.
-fn random_unit_vector(d: usize, rng: &mut SimpleRng) -> Vec<f32> {
+fn random_unit_vector(d: usize, rng: &mut SplitMix64) -> Vec<f32> {
     let mut v: Vec<f32> = (0..d).map(|_| rng.next_gaussian() as f32).collect();
     let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-10);
     for x in v.iter_mut() {
@@ -88,7 +54,7 @@ fn random_unit_vector(d: usize, rng: &mut SimpleRng) -> Vec<f32> {
 
 /// Perturb a template by adding Gaussian noise scaled by `noise_level`,
 /// then quantize back to i8 range.
-fn perturb(template: &[i8], noise_level: f32, rng: &mut SimpleRng) -> Vec<i8> {
+fn perturb(template: &[i8], noise_level: f32, rng: &mut SplitMix64) -> Vec<i8> {
     template
         .iter()
         .map(|&v| {
@@ -138,7 +104,7 @@ impl Projector64K {
     /// `num_planes` must be a multiple of 64.
     pub fn with_planes(d: usize, num_planes: usize, seed: u64) -> Self {
         assert!(num_planes > 0 && num_planes % BITS_PER_WORD == 0);
-        let mut rng = simple_rng(seed);
+        let mut rng = SplitMix64::new(seed);
         let hyperplanes: Vec<Vec<f32>> = (0..num_planes)
             .map(|_| random_unit_vector(d, &mut rng))
             .collect();
@@ -197,11 +163,21 @@ impl Projector64K {
 // Part 2: Hamming Distance on 64K-bit Fingerprints
 // ---------------------------------------------------------------------------
 
-/// Hamming distance between two binary fingerprints.
+/// Hamming distance between two binary fingerprints stored as `u64` slices.
 ///
-/// Counts the number of differing bits using popcount.
+/// For `Fingerprint64K` (1024 words), delegates to `Fingerprint::hamming_distance`.
+/// For other sizes, uses an equivalent inline popcount loop.
 pub fn hamming_64k(a: &[u64], b: &[u64]) -> u32 {
     assert_eq!(a.len(), b.len());
+
+    if a.len() == 1024 {
+        // Delegate to Fingerprint64K for the common case.
+        // SAFETY: Fingerprint<1024> is #[repr(Rust)] with a single field [u64; 1024].
+        // from_word_slice copies the data, no aliasing issues.
+        let fa = rustynum_core::Fingerprint64K::from_word_slice(a);
+        let fb = rustynum_core::Fingerprint64K::from_word_slice(b);
+        return fa.hamming_distance(&fb);
+    }
 
     let mut dist = 0u32;
     for i in 0..a.len() {
@@ -359,15 +335,8 @@ impl Recognizer {
             .map(|&v| v.round().clamp(-128.0, 127.0) as i8)
             .collect();
 
-        // Update the WAL's template (overwrite)
-        for j in 0..d {
-            self.wal.known_templates[class_idx][j] = quantized[j];
-        }
-        // Recompute norm
-        self.wal.template_norms[class_idx] = quantized
-            .iter()
-            .map(|&v| (v as f64) * (v as f64))
-            .sum();
+        // Update the WAL's template and norm
+        self.wal.update_template(class_idx, &quantized);
 
         // Update fingerprint
         self.fingerprints[class_idx] = self.projector.project_signed(&quantized);
@@ -436,12 +405,12 @@ impl Recognizer {
         let mut scores = vec![0.0f32; k];
 
         for i in 0..k {
-            let norm = self.wal.template_norms[i];
+            let norm = self.wal.template_norm(i);
             if norm < 1e-10 {
                 continue;
             }
 
-            let known = &self.wal.known_templates[i];
+            let known = self.wal.template(i);
             let mut dot = 0.0f64;
             for j in 0..d {
                 dot += residual[j] as f64 * known[j] as f64;
@@ -522,12 +491,12 @@ impl Recognizer {
         let mut scores = vec![0.0f32; k];
 
         for &i in &shortlist {
-            let norm = self.wal.template_norms[i];
+            let norm = self.wal.template_norm(i);
             if norm < 1e-10 {
                 continue;
             }
 
-            let known = &self.wal.known_templates[i];
+            let known = self.wal.template(i);
             let mut dot = 0.0f64;
             for j in 0..d {
                 dot += residual[j] as f64 * known[j] as f64;
@@ -579,11 +548,11 @@ impl Recognizer {
         let query_energy: f32 = residual.iter().map(|x| x * x).sum();
 
         for i in 0..self.num_classes() {
-            let norm = self.wal.template_norms[i];
+            let norm = self.wal.template_norm(i);
             if norm < 1e-10 {
                 continue;
             }
-            let known = &self.wal.known_templates[i];
+            let known = self.wal.template(i);
             let mut dot = 0.0f64;
             for j in 0..d {
                 dot += residual[j] as f64 * known[j] as f64;
@@ -649,7 +618,7 @@ fn run_recognition_experiment_inner(
     seed: u64,
     num_planes: usize,
 ) -> ExperimentResult {
-    let mut rng = simple_rng(seed);
+    let mut rng = SplitMix64::new(seed);
 
     // Generate class templates
     let half = match base {
@@ -665,7 +634,7 @@ fn run_recognition_experiment_inner(
 
     let templates: Vec<Vec<i8>> = (0..num_classes)
         .map(|_| {
-            (0..d).map(|_| rng.gen_range(min_val, half)).collect()
+            (0..d).map(|_| rng.gen_range_i8(min_val, half)).collect()
         })
         .collect();
 
@@ -724,7 +693,7 @@ fn run_recognition_experiment_inner(
     let novelty_tests = 20;
     let mut novelty_detected = 0u32;
     for _ in 0..novelty_tests {
-        let novel: Vec<i8> = (0..d).map(|_| rng.gen_range(min_val, half)).collect();
+        let novel: Vec<i8> = (0..d).map(|_| rng.gen_range_i8(min_val, half)).collect();
         let pr = recognizer.recognize_orthogonal(&novel);
         if pr.is_novel {
             novelty_detected += 1;
@@ -883,20 +852,20 @@ pub fn run_recognition() {
 mod tests {
     use super::*;
 
-    // --- SimpleRng tests ---
+    // --- SplitMix64 tests ---
 
     #[test]
     fn test_rng_deterministic() {
-        let mut a = simple_rng(42);
-        let mut b = simple_rng(42);
+        let mut a = SplitMix64::new(42);
+        let mut b = SplitMix64::new(42);
         for _ in 0..100 {
-            assert_eq!(a.next(), b.next());
+            assert_eq!(a.next_u64(), b.next_u64());
         }
     }
 
     #[test]
     fn test_rng_gaussian_distribution() {
-        let mut rng = simple_rng(12345);
+        let mut rng = SplitMix64::new(12345);
         let n = 10_000;
         let samples: Vec<f64> = (0..n).map(|_| rng.next_gaussian()).collect();
 
@@ -951,7 +920,7 @@ mod tests {
     #[test]
     fn test_projector_similar_vectors_close() {
         let proj = Projector64K::with_planes(256, TEST_PLANES, 99);
-        let mut rng = simple_rng(77);
+        let mut rng = SplitMix64::new(77);
 
         let v: Vec<f32> = (0..256).map(|_| rng.next_gaussian() as f32).collect();
 
@@ -1025,12 +994,12 @@ mod tests {
     // Use TEST_PLANES for all recognizer tests to keep memory low.
 
     fn make_test_recognizer(d: usize, num_classes: usize) -> (Recognizer, Vec<Vec<i8>>) {
-        let mut rng = simple_rng(42);
+        let mut rng = SplitMix64::new(42);
         let channels = (num_classes * 2).max(8);
         let mut recognizer = Recognizer::with_planes(d, channels, TEST_PLANES, 99);
 
         let templates: Vec<Vec<i8>> = (0..num_classes)
-            .map(|_| (0..d).map(|_| rng.gen_range(-3, 3)).collect())
+            .map(|_| (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect())
             .collect();
 
         for (i, t) in templates.iter().enumerate() {
@@ -1092,7 +1061,7 @@ mod tests {
     #[test]
     fn test_recognizer_noisy_recognition() {
         let (recognizer, templates) = make_test_recognizer(512, 4);
-        let mut rng = simple_rng(999);
+        let mut rng = SplitMix64::new(999);
 
         let mut correct = 0;
         let trials = 20;
@@ -1118,12 +1087,12 @@ mod tests {
     fn test_recognizer_learn_improves() {
         let d = 512;
         let num_classes = 4;
-        let mut rng = simple_rng(42);
+        let mut rng = SplitMix64::new(42);
         let channels = num_classes * 2;
         let mut recognizer = Recognizer::with_planes(d, channels, TEST_PLANES, 99);
 
         let templates: Vec<Vec<i8>> = (0..num_classes)
-            .map(|_| (0..d).map(|_| rng.gen_range(-3, 3)).collect())
+            .map(|_| (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect())
             .collect();
 
         for (i, t) in templates.iter().enumerate() {
@@ -1158,10 +1127,10 @@ mod tests {
     #[test]
     fn test_novelty_detection_random_query() {
         let (recognizer, _) = make_test_recognizer(512, 8);
-        let mut rng = simple_rng(777);
+        let mut rng = SplitMix64::new(777);
 
         // Random vector should be detected as novel
-        let novel: Vec<i8> = (0..512).map(|_| rng.gen_range(-3, 3)).collect();
+        let novel: Vec<i8> = (0..512).map(|_| rng.gen_range_i8(-3, 3)).collect();
         let result = recognizer.recognize_orthogonal(&novel);
 
         // With 8 classes in 512-D, a random vector should have high residual
@@ -1211,7 +1180,7 @@ mod tests {
     #[test]
     fn test_hamming_similarity_range() {
         let proj = Projector64K::with_planes(128, TEST_PLANES, 42);
-        let mut rng = simple_rng(11);
+        let mut rng = SplitMix64::new(11);
 
         let v1: Vec<f32> = (0..128).map(|_| rng.next_gaussian() as f32).collect();
         let v2: Vec<f32> = (0..128).map(|_| rng.next_gaussian() as f32).collect();
@@ -1241,15 +1210,15 @@ mod tests {
 
     #[test]
     fn test_perturb_preserves_range() {
-        let mut rng = simple_rng(42);
-        let template: Vec<i8> = (0..256).map(|_| rng.gen_range(-3, 3)).collect();
+        let mut rng = SplitMix64::new(42);
+        let template: Vec<i8> = (0..256).map(|_| rng.gen_range_i8(-3, 3)).collect();
         let noisy = perturb(&template, 2.0, &mut rng);
         assert_eq!(noisy.len(), 256);
     }
 
     #[test]
     fn test_random_unit_vector_norm() {
-        let mut rng = simple_rng(42);
+        let mut rng = SplitMix64::new(42);
         let v = random_unit_vector(256, &mut rng);
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!(
@@ -1284,12 +1253,12 @@ mod tests {
         // Stress test with 32 classes
         let d = 512;
         let num_classes = 32;
-        let mut rng = simple_rng(42);
+        let mut rng = SplitMix64::new(42);
         let channels = 64;
         let mut recognizer = Recognizer::with_planes(d, channels, TEST_PLANES, 99);
 
         let templates: Vec<Vec<i8>> = (0..num_classes)
-            .map(|_| (0..d).map(|_| rng.gen_range(-3, 3)).collect())
+            .map(|_| (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect())
             .collect();
 
         for (i, t) in templates.iter().enumerate() {

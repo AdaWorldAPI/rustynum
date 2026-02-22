@@ -417,20 +417,13 @@ pub fn knn_dfs_sieve(
 mod tests {
     use super::*;
     use crate::tree::{BuildConfig, ClamTree};
-
-    fn splitmix64(state: &mut u64) -> u64 {
-        *state = state.wrapping_add(0x9E3779B97F4A7C15);
-        let mut z = *state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
-        z ^ (z >> 31)
-    }
+    use rustynum_core::SplitMix64;
 
     fn make_test_data(n: usize, vec_len: usize, seed: u64) -> Vec<u8> {
-        let mut rng = seed;
+        let mut rng = SplitMix64::new(seed);
         let mut data = vec![0u8; n * vec_len];
         for byte in data.iter_mut() {
-            *byte = (splitmix64(&mut rng) & 0xFF) as u8;
+            *byte = (rng.next_u64() & 0xFF) as u8;
         }
         data
     }

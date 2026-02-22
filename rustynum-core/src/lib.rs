@@ -17,6 +17,7 @@ pub mod compute;
 pub mod fingerprint;
 pub mod layout;
 pub mod parallel;
+pub mod rng;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
@@ -33,3 +34,4 @@ pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use fingerprint::{Fingerprint, Fingerprint2K, Fingerprint1K, Fingerprint64K};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
+pub use rng::SplitMix64;

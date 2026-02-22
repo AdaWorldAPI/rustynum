@@ -41,6 +41,20 @@ impl<const N: usize> Fingerprint<N> {
         Self { words: [u64::MAX; N] }
     }
 
+    /// Create from a word array.
+    #[inline]
+    pub fn from_words(words: [u64; N]) -> Self {
+        Self { words }
+    }
+
+    /// Create from a word slice. Panics if `slice.len() != N`.
+    pub fn from_word_slice(slice: &[u64]) -> Self {
+        assert_eq!(slice.len(), N, "need exactly {} words, got {}", N, slice.len());
+        let mut words = [0u64; N];
+        words.copy_from_slice(slice);
+        Self { words }
+    }
+
     /// Create from a byte slice. Panics if `bytes.len() < N * 8`.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         assert!(bytes.len() >= N * 8, "need at least {} bytes, got {}", N * 8, bytes.len());

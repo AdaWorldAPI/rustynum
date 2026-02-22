@@ -275,9 +275,9 @@ pub struct OrganicWAL {
     /// The X-Trans pattern (shared across all writes).
     pub pattern: XTransPattern,
     /// Known concept templates: [concept_idx][position] → i8
-    pub(crate) known_templates: Vec<Vec<i8>>,
+    known_templates: Vec<Vec<i8>>,
     /// Precomputed template norms for each known concept.
-    pub(crate) template_norms: Vec<f64>,
+    template_norms: Vec<f64>,
     /// Current concept coefficients (updated by projections).
     pub coefficients: Vec<f32>,
     /// Concept IDs (parallel to coefficients and known_templates).
@@ -525,6 +525,25 @@ impl OrganicWAL {
     /// Get a reference to a registered concept's template.
     pub fn template(&self, concept_idx: usize) -> &[i8] {
         &self.known_templates[concept_idx]
+    }
+
+    /// Get the precomputed squared norm of a concept's template.
+    pub fn template_norm(&self, concept_idx: usize) -> f64 {
+        self.template_norms[concept_idx]
+    }
+
+    /// Replace a concept's template and recompute its norm.
+    ///
+    /// Used by the recognizer's incremental learning: running average is
+    /// quantized back to i8, then the WAL template is updated in-place.
+    pub fn update_template(&mut self, concept_idx: usize, template: &[i8]) {
+        let d = self.known_templates[concept_idx].len();
+        assert_eq!(template.len(), d);
+        self.known_templates[concept_idx].copy_from_slice(template);
+        self.template_norms[concept_idx] = template
+            .iter()
+            .map(|&v| (v as f64) * (v as f64))
+            .sum();
     }
 
     /// Compute the residual: container minus reconstructed known-concept contributions.
