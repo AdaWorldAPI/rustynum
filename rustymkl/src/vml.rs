@@ -302,7 +302,9 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
     // exp(r) ≈ 1 + r + r^2/2 + r^3/6 + r^4/24 + r^5/120
     let poly = c1 + r * (c1 + r * (c2 + r * (c3 + r * (c4 + r * c5))));
 
-    // Scale by 2^n via scalar path (portable across lane widths)
+    // TODO(simd): REFACTOR — the 2^n scaling exits to scalar via to_array()/powi().
+    // This defeats the SIMD polynomial pipeline. Needs ldexp via
+    // integer manipulation of f32 exponent bits (bit_cast + add to exponent).
     let n_arr = n.to_array();
     let mut out = poly.to_array();
     for i in 0..out.len() {

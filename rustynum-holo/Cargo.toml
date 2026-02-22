@@ -5,12 +5,12 @@ edition = "2021"
 description = "Phase-space holographic operations for CogRecord v3: phase bind/unbind, Wasserstein, circular distance, 5D projection"
 
 [features]
-default = ["avx512"]
+default = []
 avx512 = ["rustynum-core/avx512"]
 avx2 = ["rustynum-core/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core", default-features = false }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 rustynum-rs = { path = "../rustynum-rs" }
 
 [dev-dependencies]

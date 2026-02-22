@@ -626,68 +626,23 @@ impl NumArrayU8 {
 
 // ── Adaptive search helpers ──
 
-/// Inline fused XOR+popcount for a byte slice pair.
-/// Uses 4× unrolled u64 POPCNT, same as hamming_chunk in simd_ops but
-/// inlined here to avoid cross-module call overhead in the hot cascade path.
+/// Hamming distance with 3-tier SIMD dispatch via rustynum_core.
+///
+/// Dispatch chain: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
+/// Replaces the previous scalar-only u64 POPCNT implementation.
 #[inline(always)]
 fn hamming_chunk_inline(a: &[u8], b: &[u8]) -> u64 {
-    let len = a.len();
-    let u64_chunks = len / 8;
-    let full_quads = u64_chunks / 4;
-    let mut total: u64 = 0;
-
-    for q in 0..full_quads {
-        let base = q * 32;
-        let w0 = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        let w1 = u64::from_ne_bytes(a[base + 8..base + 16].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 8..base + 16].try_into().unwrap());
-        let w2 = u64::from_ne_bytes(a[base + 16..base + 24].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 16..base + 24].try_into().unwrap());
-        let w3 = u64::from_ne_bytes(a[base + 24..base + 32].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 24..base + 32].try_into().unwrap());
-        total += w0.count_ones() as u64
-            + w1.count_ones() as u64
-            + w2.count_ones() as u64
-            + w3.count_ones() as u64;
-    }
-
-    for i in full_quads * 4..u64_chunks {
-        let base = i * 8;
-        let w = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        total += w.count_ones() as u64;
-    }
-
-    for i in u64_chunks * 8..len {
-        total += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    total
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
-/// Int8 dot product on raw byte slices. Same logic as NumArrayU8::dot_i8
-/// but operates on slices for the cascade filter's incremental computation.
+/// Int8 dot product with VNNI dispatch via rustynum_core.
+///
+/// Dispatch chain: AVX-512 VNNI (VPDPBUSD, 64 MACs/instr) → scalar.
+/// Uses signed×signed correction (XOR-0x80 bias) for true i8×i8 semantics.
+/// Replaces the previous scalar-only 32-element chunk loop.
 #[inline(always)]
 fn dot_i8_slice(a: &[u8], b: &[u8]) -> i64 {
-    let len = a.len();
-    let chunks = len / 32;
-    let mut total: i64 = 0;
-
-    for c in 0..chunks {
-        let base = c * 32;
-        let mut acc: i32 = 0;
-        for i in 0..32 {
-            acc += (a[base + i] as i8 as i32) * (b[base + i] as i8 as i32);
-        }
-        total += acc as i64;
-    }
-
-    for i in (chunks * 32)..len {
-        total += (a[i] as i8 as i64) * (b[i] as i8 as i64);
-    }
-
-    total
+    rustynum_core::simd::dot_i8(a, b)
 }
 
 // ── Bundle implementations ──

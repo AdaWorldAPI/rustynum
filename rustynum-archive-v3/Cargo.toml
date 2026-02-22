@@ -5,12 +5,12 @@ edition = "2021"
 description = "Archive of CogRecordV3 phase-space model (pre-carrier): 8 phase operations + hybrid binary/phase containers. Frozen snapshot before carrier waveform extension."
 
 [features]
-default = ["avx512"]
+default = []
 avx512 = ["rustynum-core/avx512"]
 avx2 = ["rustynum-core/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core", default-features = false }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 rustynum-rs = { path = "../rustynum-rs" }
 
 [dev-dependencies]

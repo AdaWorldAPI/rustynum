@@ -1,3 +1,6 @@
+// TODO(refactor): Return Result instead of panicking on dimension mismatch.
+// Current: assert!/panic! in public API with 0 Result returns.
+// This is hostile to library consumers who can't recover from invalid inputs.
 use super::NumArray;
 use crate::simd_ops::SimdOps;
 use crate::traits::{ExpLog, FromU32, FromUsize, NumOps};
@@ -28,7 +31,9 @@ where
     type Output = Self;
 
     fn add(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x + rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::add_scalar(data, rhs, &mut result_data);
         Self::new(result_data)
     }
 }
@@ -50,12 +55,14 @@ where
         + Neg<Output = T>
         + Default
         + Debug,
-    Ops: SimdOps<T>, // Ensure Ops is appropriate for T
+    Ops: SimdOps<T>,
 {
     type Output = NumArray<T, Ops>;
 
     fn add(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x + rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::add_scalar(data, rhs, &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -82,12 +89,9 @@ where
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let result_data: Vec<T> = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x + y)
-            .collect();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::add_array(data, rhs.get_data(), &mut result_data);
         Self::new(result_data)
     }
 }
@@ -114,12 +118,9 @@ where
     type Output = NumArray<T, Ops>;
 
     fn add(self, rhs: &'b NumArray<T, Ops>) -> Self::Output {
-        let result_data = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x + y)
-            .collect::<Vec<T>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::add_array(data, rhs.get_data(), &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -146,7 +147,9 @@ where
     type Output = Self;
 
     fn sub(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x - rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::sub_scalar(data, rhs, &mut result_data);
         Self::new(result_data)
     }
 }
@@ -168,12 +171,14 @@ where
         + Neg<Output = T>
         + Default
         + Debug,
-    Ops: SimdOps<T>, // Ensure Ops is appropriate for T
+    Ops: SimdOps<T>,
 {
     type Output = NumArray<T, Ops>;
 
     fn sub(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x - rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::sub_scalar(data, rhs, &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -200,12 +205,9 @@ where
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        let result_data: Vec<T> = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x - y)
-            .collect();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::sub_array(data, rhs.get_data(), &mut result_data);
         Self::new(result_data)
     }
 }
@@ -232,12 +234,9 @@ where
     type Output = NumArray<T, Ops>;
 
     fn sub(self, rhs: &'b NumArray<T, Ops>) -> Self::Output {
-        let result_data = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x - y)
-            .collect::<Vec<T>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::sub_array(data, rhs.get_data(), &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -264,7 +263,9 @@ where
     type Output = Self;
 
     fn mul(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x * rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::mul_scalar(data, rhs, &mut result_data);
         Self::new(result_data)
     }
 }
@@ -286,12 +287,14 @@ where
         + Neg<Output = T>
         + Default
         + Debug,
-    Ops: SimdOps<T>, // Ensure Ops is appropriate for T
+    Ops: SimdOps<T>,
 {
     type Output = NumArray<T, Ops>;
 
     fn mul(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x * rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::mul_scalar(data, rhs, &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -318,12 +321,9 @@ where
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let result_data: Vec<T> = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x * y)
-            .collect();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::mul_array(data, rhs.get_data(), &mut result_data);
         Self::new(result_data)
     }
 }
@@ -350,12 +350,9 @@ where
     type Output = NumArray<T, Ops>;
 
     fn mul(self, rhs: &'b NumArray<T, Ops>) -> Self::Output {
-        let result_data = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x * y)
-            .collect::<Vec<T>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::mul_array(data, rhs.get_data(), &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -382,7 +379,9 @@ where
     type Output = Self;
 
     fn div(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x / rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::div_scalar(data, rhs, &mut result_data);
         Self::new(result_data)
     }
 }
@@ -404,12 +403,14 @@ where
         + Neg<Output = T>
         + Default
         + Debug,
-    Ops: SimdOps<T>, // Ensure Ops is appropriate for T
+    Ops: SimdOps<T>,
 {
     type Output = NumArray<T, Ops>;
 
     fn div(self, rhs: T) -> Self::Output {
-        let result_data = self.get_data().iter().map(|&x| x / rhs).collect::<Vec<_>>();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::div_scalar(data, rhs, &mut result_data);
         NumArray::new(result_data)
     }
 }
@@ -436,12 +437,9 @@ where
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
-        let result_data: Vec<T> = self
-            .get_data()
-            .iter()
-            .zip(rhs.get_data().iter())
-            .map(|(&x, &y)| x / y)
-            .collect();
+        let data = self.get_data();
+        let mut result_data = vec![T::default(); data.len()];
+        Ops::div_array(data, rhs.get_data(), &mut result_data);
         Self::new(result_data)
     }
 }
@@ -468,14 +466,11 @@ where
     type Output = NumArray<T, Ops>;
 
     fn div(self, rhs: &'b NumArray<T, Ops>) -> Self::Output {
-        // Same shape case - use existing implementation
+        // Same shape case — SIMD element-wise division
         if self.shape() == rhs.shape() {
-            let result_data = self
-                .get_data()
-                .iter()
-                .zip(rhs.get_data().iter())
-                .map(|(&x, &y)| x / y)
-                .collect::<Vec<T>>();
+            let data = self.get_data();
+            let mut result_data = vec![T::default(); data.len()];
+            Ops::div_array(data, rhs.get_data(), &mut result_data);
             return NumArray::new_with_shape(result_data, self.shape().to_vec());
         }
 

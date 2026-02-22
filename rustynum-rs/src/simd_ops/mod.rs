@@ -74,6 +74,23 @@ pub trait SimdOps<T> {
     fn max_simd(a: &[T]) -> T;
     fn l1_norm(a: &[T]) -> T;
     fn l2_norm(a: &[T]) -> T;
+
+    /// Element-wise: out[i] = a[i] + scalar
+    fn add_scalar(a: &[T], scalar: T, out: &mut [T]);
+    /// Element-wise: out[i] = a[i] - scalar
+    fn sub_scalar(a: &[T], scalar: T, out: &mut [T]);
+    /// Element-wise: out[i] = a[i] * scalar
+    fn mul_scalar(a: &[T], scalar: T, out: &mut [T]);
+    /// Element-wise: out[i] = a[i] / scalar
+    fn div_scalar(a: &[T], scalar: T, out: &mut [T]);
+    /// Element-wise: out[i] = a[i] + b[i]
+    fn add_array(a: &[T], b: &[T], out: &mut [T]);
+    /// Element-wise: out[i] = a[i] - b[i]
+    fn sub_array(a: &[T], b: &[T], out: &mut [T]);
+    /// Element-wise: out[i] = a[i] * b[i]
+    fn mul_array(a: &[T], b: &[T], out: &mut [T]);
+    /// Element-wise: out[i] = a[i] / b[i]
+    fn div_array(a: &[T], b: &[T], out: &mut [T]);
 }
 
 /// AVX512-optimized bitwise operations for integer SIMD types.
@@ -262,6 +279,83 @@ impl SimdOps<u8> for u8x64 {
     fn l2_norm(_a: &[u8]) -> u8 {
         unimplemented!("Norm operations are not supported for u8")
     }
+
+    fn add_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
+        let s = u8x64::splat(scalar);
+        let chunks = a.len() / LANES_8;
+        for i in 0..chunks {
+            let base = i * LANES_8;
+            let v = u8x64::from_slice(&a[base..]);
+            (v + s).copy_to_slice(&mut out[base..base + LANES_8]);
+        }
+        for i in (chunks * LANES_8)..a.len() {
+            out[i] = a[i].wrapping_add(scalar);
+        }
+    }
+
+    fn sub_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
+        let s = u8x64::splat(scalar);
+        let chunks = a.len() / LANES_8;
+        for i in 0..chunks {
+            let base = i * LANES_8;
+            let v = u8x64::from_slice(&a[base..]);
+            (v - s).copy_to_slice(&mut out[base..base + LANES_8]);
+        }
+        for i in (chunks * LANES_8)..a.len() {
+            out[i] = a[i].wrapping_sub(scalar);
+        }
+    }
+
+    fn mul_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
+        // u8 SIMD mul not directly available — scalar loop (auto-vectorized)
+        for i in 0..a.len() {
+            out[i] = a[i].wrapping_mul(scalar);
+        }
+    }
+
+    fn div_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
+        for i in 0..a.len() {
+            out[i] = a[i] / scalar;
+        }
+    }
+
+    fn add_array(a: &[u8], b: &[u8], out: &mut [u8]) {
+        let chunks = a.len() / LANES_8;
+        for i in 0..chunks {
+            let base = i * LANES_8;
+            let va = u8x64::from_slice(&a[base..]);
+            let vb = u8x64::from_slice(&b[base..]);
+            (va + vb).copy_to_slice(&mut out[base..base + LANES_8]);
+        }
+        for i in (chunks * LANES_8)..a.len() {
+            out[i] = a[i].wrapping_add(b[i]);
+        }
+    }
+
+    fn sub_array(a: &[u8], b: &[u8], out: &mut [u8]) {
+        let chunks = a.len() / LANES_8;
+        for i in 0..chunks {
+            let base = i * LANES_8;
+            let va = u8x64::from_slice(&a[base..]);
+            let vb = u8x64::from_slice(&b[base..]);
+            (va - vb).copy_to_slice(&mut out[base..base + LANES_8]);
+        }
+        for i in (chunks * LANES_8)..a.len() {
+            out[i] = a[i].wrapping_sub(b[i]);
+        }
+    }
+
+    fn mul_array(a: &[u8], b: &[u8], out: &mut [u8]) {
+        for i in 0..a.len() {
+            out[i] = a[i].wrapping_mul(b[i]);
+        }
+    }
+
+    fn div_array(a: &[u8], b: &[u8], out: &mut [u8]) {
+        for i in 0..a.len() {
+            out[i] = a[i] / b[i];
+        }
+    }
 }
 
 impl SimdOps<f32> for f32x16 {
@@ -423,6 +517,110 @@ impl SimdOps<f32> for f32x16 {
 
         scalar_sum.sqrt()
     }
+
+    fn add_scalar(a: &[f32], scalar: f32, out: &mut [f32]) {
+        let s = f32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = f32x16::from_slice(&a[base..]);
+            (v + s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] + scalar;
+        }
+    }
+
+    fn sub_scalar(a: &[f32], scalar: f32, out: &mut [f32]) {
+        let s = f32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = f32x16::from_slice(&a[base..]);
+            (v - s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] - scalar;
+        }
+    }
+
+    fn mul_scalar(a: &[f32], scalar: f32, out: &mut [f32]) {
+        let s = f32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = f32x16::from_slice(&a[base..]);
+            (v * s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] * scalar;
+        }
+    }
+
+    fn div_scalar(a: &[f32], scalar: f32, out: &mut [f32]) {
+        let s = f32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = f32x16::from_slice(&a[base..]);
+            (v / s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] / scalar;
+        }
+    }
+
+    fn add_array(a: &[f32], b: &[f32], out: &mut [f32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = f32x16::from_slice(&a[base..]);
+            let vb = f32x16::from_slice(&b[base..]);
+            (va + vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] + b[i];
+        }
+    }
+
+    fn sub_array(a: &[f32], b: &[f32], out: &mut [f32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = f32x16::from_slice(&a[base..]);
+            let vb = f32x16::from_slice(&b[base..]);
+            (va - vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] - b[i];
+        }
+    }
+
+    fn mul_array(a: &[f32], b: &[f32], out: &mut [f32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = f32x16::from_slice(&a[base..]);
+            let vb = f32x16::from_slice(&b[base..]);
+            (va * vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] * b[i];
+        }
+    }
+
+    fn div_array(a: &[f32], b: &[f32], out: &mut [f32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = f32x16::from_slice(&a[base..]);
+            let vb = f32x16::from_slice(&b[base..]);
+            (va / vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] / b[i];
+        }
+    }
 }
 
 impl SimdOps<f64> for f64x8 {
@@ -580,6 +778,110 @@ impl SimdOps<f64> for f64x8 {
 
         scalar_sum.sqrt()
     }
+
+    fn add_scalar(a: &[f64], scalar: f64, out: &mut [f64]) {
+        let s = f64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = f64x8::from_slice(&a[base..]);
+            (v + s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] + scalar;
+        }
+    }
+
+    fn sub_scalar(a: &[f64], scalar: f64, out: &mut [f64]) {
+        let s = f64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = f64x8::from_slice(&a[base..]);
+            (v - s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] - scalar;
+        }
+    }
+
+    fn mul_scalar(a: &[f64], scalar: f64, out: &mut [f64]) {
+        let s = f64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = f64x8::from_slice(&a[base..]);
+            (v * s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] * scalar;
+        }
+    }
+
+    fn div_scalar(a: &[f64], scalar: f64, out: &mut [f64]) {
+        let s = f64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = f64x8::from_slice(&a[base..]);
+            (v / s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] / scalar;
+        }
+    }
+
+    fn add_array(a: &[f64], b: &[f64], out: &mut [f64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = f64x8::from_slice(&a[base..]);
+            let vb = f64x8::from_slice(&b[base..]);
+            (va + vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] + b[i];
+        }
+    }
+
+    fn sub_array(a: &[f64], b: &[f64], out: &mut [f64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = f64x8::from_slice(&a[base..]);
+            let vb = f64x8::from_slice(&b[base..]);
+            (va - vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] - b[i];
+        }
+    }
+
+    fn mul_array(a: &[f64], b: &[f64], out: &mut [f64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = f64x8::from_slice(&a[base..]);
+            let vb = f64x8::from_slice(&b[base..]);
+            (va * vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] * b[i];
+        }
+    }
+
+    fn div_array(a: &[f64], b: &[f64], out: &mut [f64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = f64x8::from_slice(&a[base..]);
+            let vb = f64x8::from_slice(&b[base..]);
+            (va / vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] / b[i];
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -714,6 +1016,110 @@ impl SimdOps<i32> for i32x16 {
         }
         (scalar_sum as f64).sqrt() as i32
     }
+
+    fn add_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
+        let s = i32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = i32x16::from_slice(&a[base..]);
+            (v + s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] + scalar;
+        }
+    }
+
+    fn sub_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
+        let s = i32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = i32x16::from_slice(&a[base..]);
+            (v - s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] - scalar;
+        }
+    }
+
+    fn mul_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
+        let s = i32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = i32x16::from_slice(&a[base..]);
+            (v * s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] * scalar;
+        }
+    }
+
+    fn div_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
+        let s = i32x16::splat(scalar);
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let v = i32x16::from_slice(&a[base..]);
+            (v / s).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] / scalar;
+        }
+    }
+
+    fn add_array(a: &[i32], b: &[i32], out: &mut [i32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = i32x16::from_slice(&a[base..]);
+            let vb = i32x16::from_slice(&b[base..]);
+            (va + vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] + b[i];
+        }
+    }
+
+    fn sub_array(a: &[i32], b: &[i32], out: &mut [i32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = i32x16::from_slice(&a[base..]);
+            let vb = i32x16::from_slice(&b[base..]);
+            (va - vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] - b[i];
+        }
+    }
+
+    fn mul_array(a: &[i32], b: &[i32], out: &mut [i32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = i32x16::from_slice(&a[base..]);
+            let vb = i32x16::from_slice(&b[base..]);
+            (va * vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] * b[i];
+        }
+    }
+
+    fn div_array(a: &[i32], b: &[i32], out: &mut [i32]) {
+        let chunks = a.len() / LANES_32;
+        for i in 0..chunks {
+            let base = i * LANES_32;
+            let va = i32x16::from_slice(&a[base..]);
+            let vb = i32x16::from_slice(&b[base..]);
+            (va / vb).copy_to_slice(&mut out[base..base + LANES_32]);
+        }
+        for i in (chunks * LANES_32)..a.len() {
+            out[i] = a[i] / b[i];
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -847,6 +1253,110 @@ impl SimdOps<i64> for i64x8 {
             scalar_sum += a[i] * a[i];
         }
         (scalar_sum as f64).sqrt() as i64
+    }
+
+    fn add_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
+        let s = i64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = i64x8::from_slice(&a[base..]);
+            (v + s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] + scalar;
+        }
+    }
+
+    fn sub_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
+        let s = i64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = i64x8::from_slice(&a[base..]);
+            (v - s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] - scalar;
+        }
+    }
+
+    fn mul_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
+        let s = i64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = i64x8::from_slice(&a[base..]);
+            (v * s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] * scalar;
+        }
+    }
+
+    fn div_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
+        let s = i64x8::splat(scalar);
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let v = i64x8::from_slice(&a[base..]);
+            (v / s).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] / scalar;
+        }
+    }
+
+    fn add_array(a: &[i64], b: &[i64], out: &mut [i64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = i64x8::from_slice(&a[base..]);
+            let vb = i64x8::from_slice(&b[base..]);
+            (va + vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] + b[i];
+        }
+    }
+
+    fn sub_array(a: &[i64], b: &[i64], out: &mut [i64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = i64x8::from_slice(&a[base..]);
+            let vb = i64x8::from_slice(&b[base..]);
+            (va - vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] - b[i];
+        }
+    }
+
+    fn mul_array(a: &[i64], b: &[i64], out: &mut [i64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = i64x8::from_slice(&a[base..]);
+            let vb = i64x8::from_slice(&b[base..]);
+            (va * vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] * b[i];
+        }
+    }
+
+    fn div_array(a: &[i64], b: &[i64], out: &mut [i64]) {
+        let chunks = a.len() / LANES_64;
+        for i in 0..chunks {
+            let base = i * LANES_64;
+            let va = i64x8::from_slice(&a[base..]);
+            let vb = i64x8::from_slice(&b[base..]);
+            (va / vb).copy_to_slice(&mut out[base..base + LANES_64]);
+        }
+        for i in (chunks * LANES_64)..a.len() {
+            out[i] = a[i] / b[i];
+        }
     }
 }
 
@@ -1776,51 +2286,13 @@ impl HammingSimdOps for u8x64 {
     }
 }
 
-/// Fused XOR+popcount on a chunk, returning total hamming distance.
+/// Fused XOR+popcount with 3-tier SIMD dispatch via rustynum_core.
 ///
-/// Uses u64::count_ones() which maps to the hardware POPCNT instruction.
-/// With 4× unrolling across 8-byte words, each iteration processes 32 bytes
-/// with 4 independent POPCNT instructions for full pipeline saturation.
-///
-/// For 8192-byte arrays: 8192 / 8 = 1024 u64 words, 1024 / 4 = 256 iterations.
+/// Dispatch chain: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
+/// All callers in this module get the fastest available path automatically.
 #[inline(always)]
 fn hamming_chunk(a: &[u8], b: &[u8]) -> u64 {
-    let len = a.len();
-    let u64_chunks = len / 8;
-    let full_quads = u64_chunks / 4;
-    let mut total: u64 = 0;
-
-    // 4× unrolled POPCNT loop over u64 words
-    for q in 0..full_quads {
-        let base = q * 32; // 4 × 8 bytes
-        let w0 = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        let w1 = u64::from_ne_bytes(a[base + 8..base + 16].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 8..base + 16].try_into().unwrap());
-        let w2 = u64::from_ne_bytes(a[base + 16..base + 24].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 16..base + 24].try_into().unwrap());
-        let w3 = u64::from_ne_bytes(a[base + 24..base + 32].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 24..base + 32].try_into().unwrap());
-        total += w0.count_ones() as u64
-            + w1.count_ones() as u64
-            + w2.count_ones() as u64
-            + w3.count_ones() as u64;
-    }
-
-    // Remaining full u64 words
-    for i in full_quads * 4..u64_chunks {
-        let base = i * 8;
-        let w = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        total += w.count_ones() as u64;
-    }
-
-    // Scalar tail (< 8 bytes)
-    for i in u64_chunks * 8..len {
-        total += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    total
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
 /// Popcount for a single chunk of u8 data.

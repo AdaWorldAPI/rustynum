@@ -4611,6 +4611,7 @@ dependencies = [
 name = "rustynum-archive"
 version = "0.1.0"
 dependencies = [
+ "rustynum-core",
  "rustynum-rs",
 ]
 
@@ -4630,6 +4631,7 @@ dependencies = [
  "datafusion",
  "futures",
  "lance",
+ "rustynum-core",
  "rustynum-rs",
  "tempfile",
  "tokio",
@@ -4686,6 +4688,7 @@ dependencies = [
  "criterion 0.3.6",
  "nalgebra",
  "ndarray",
+ "rustynum-core",
 ]
 
 [[package]]

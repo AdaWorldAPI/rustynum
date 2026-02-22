@@ -13,6 +13,7 @@ lance = ["dep:lance", "dep:tokio", "dep:futures", "arrow"]
 
 [dependencies]
 rustynum-rs = { path = "../rustynum-rs" }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 arrow = { version = "57", optional = true, default-features = false, features = [
     "ffi",
 ] }

@@ -11,6 +11,8 @@
 //! - **CBLAS layout types**: Row-major / column-major layout abstractions.
 
 #![cfg_attr(any(feature = "avx512", feature = "avx2"), feature(portable_simd))]
+#![cfg_attr(feature = "avx512", feature(stdarch_x86_avx512))]
+#![cfg_attr(feature = "avx512", feature(avx512_target_feature))]
 
 pub mod blackboard;
 pub mod compute;

@@ -783,6 +783,10 @@ fn dgemm_microkernel_6x8(
 // ============================================================================
 
 /// Single-precision SYRK: C := alpha * A * A^T + beta * C (or A^T * A)
+// TODO(simd): ssyrk/dsyrk/ssymm/dsymm are naive scalar triple loops.
+// No SIMD, no cache blocking, no parallelism.
+// These should use SIMD-accelerated GEMM microkernels (6x16 f32, 6x8 f64).
+// Also missing: dtrsm (only strsm exists).
 pub fn ssyrk(
     layout: Layout,
     uplo: Uplo,

@@ -334,10 +334,12 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
 /// Hamming distance between two byte arrays (number of differing bits).
 ///
 /// Computes `popcount(a XOR b)` — the total bit-level difference.
-/// Runtime dispatches to VPOPCNTDQ (64 bytes/iter, ~8x scalar) when available,
-/// otherwise falls back to scalar POPCNT on u64 chunks (~4x naive).
+/// 3-tier runtime dispatch:
+///   1. AVX-512 VPOPCNTDQ: 64 bytes/iter, ~8x scalar (server CPUs, Ice Lake+)
+///   2. AVX2 Harley-Seal vpshufb popcount: 32 bytes/iter, ~4x scalar (all CPUs since 2013)
+///   3. Scalar POPCNT on u64 chunks: 8 bytes/iter (universal fallback)
 ///
-/// For a 2KB CogRecord container: 32 VPOPCNTDQ iterations vs 256 scalar POPCNTs.
+/// For a 2KB CogRecord container: 32 VPOPCNTDQ or 64 AVX2 iterations.
 #[inline]
 pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
     assert_eq!(a.len(), b.len());
@@ -346,6 +348,9 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
     {
         if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
             return unsafe { hamming_vpopcntdq(a, b) };
+        }
+        if is_x86_feature_detected!("avx2") {
+            return unsafe { hamming_avx2(a, b) };
         }
     }
 
@@ -357,6 +362,7 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
 /// `database` is a flat byte array with `num_rows` rows of `row_bytes` each.
 /// Returns a Vec of Hamming distances, one per row.
 ///
+/// CPUID is checked once at batch level, not per-row.
 /// 4x unrolled for ILP — processes 4 database rows per outer iteration.
 #[inline]
 pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
@@ -365,17 +371,34 @@ pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: 
 
     let mut distances = vec![0u64; num_rows];
 
-    // 4x unrolled
+    // Dispatch once at batch level — avoids N redundant CPUID checks.
+    let hamming_fn: fn(&[u8], &[u8]) -> u64 = {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
+                hamming_vpopcntdq_safe
+            } else if is_x86_feature_detected!("avx2") {
+                hamming_avx2_safe
+            } else {
+                hamming_scalar_popcnt
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            hamming_scalar_popcnt
+        }
+    };
+
     let full = num_rows / 4;
     for i in 0..full {
         let base = i * 4;
-        distances[base] = hamming_distance(query, &database[base * row_bytes..(base + 1) * row_bytes]);
-        distances[base + 1] = hamming_distance(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
-        distances[base + 2] = hamming_distance(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
-        distances[base + 3] = hamming_distance(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
+        distances[base]     = hamming_fn(query, &database[base * row_bytes..(base + 1) * row_bytes]);
+        distances[base + 1] = hamming_fn(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
+        distances[base + 2] = hamming_fn(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
+        distances[base + 3] = hamming_fn(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
     }
     for i in (full * 4)..num_rows {
-        distances[i] = hamming_distance(query, &database[i * row_bytes..(i + 1) * row_bytes]);
+        distances[i] = hamming_fn(query, &database[i * row_bytes..(i + 1) * row_bytes]);
     }
 
     distances
@@ -397,6 +420,90 @@ pub fn hamming_top_k(query: &[u8], database: &[u8], num_rows: usize, row_bytes: 
 
     let top_distances: Vec<u64> = indices.iter().map(|&i| distances[i]).collect();
     (indices, top_distances)
+}
+
+/// Safe wrapper for hamming_vpopcntdq (coerces to fn pointer).
+#[cfg(target_arch = "x86_64")]
+fn hamming_vpopcntdq_safe(a: &[u8], b: &[u8]) -> u64 {
+    unsafe { hamming_vpopcntdq(a, b) }
+}
+
+/// Safe wrapper for hamming_avx2 (coerces to fn pointer).
+#[cfg(target_arch = "x86_64")]
+fn hamming_avx2_safe(a: &[u8], b: &[u8]) -> u64 {
+    unsafe { hamming_avx2(a, b) }
+}
+
+/// AVX2 Hamming distance using Harley-Seal vpshufb popcount.
+/// ~4x faster than scalar on any machine with AVX2 (2013+).
+///
+/// Uses nibble lookup table (vpshufb) for byte-level popcount,
+/// then vpsadbw for horizontal sum within each 256-bit lane.
+/// Processes in blocks of 8 to avoid u8 accumulator saturation.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn hamming_avx2(a: &[u8], b: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+
+    let len = a.len();
+    let chunks = len / 32; // 256 bits = 32 bytes per __m256i
+
+    // Nibble lookup table for popcount
+    let low_mask = _mm256_set1_epi8(0x0f);
+    let lookup = _mm256_setr_epi8(
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+    );
+
+    let mut total = _mm256_setzero_si256();
+
+    // Process in blocks of 8 to avoid u8 counter saturation (max 255)
+    let blocks = chunks / 8;
+    for block in 0..blocks {
+        let mut local = _mm256_setzero_si256();
+        for i in 0..8 {
+            let idx = (block * 8 + i) * 32;
+            let av = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+            let bv = _mm256_loadu_si256(b[idx..].as_ptr() as *const __m256i);
+            let xored = _mm256_xor_si256(av, bv);
+
+            let lo = _mm256_and_si256(xored, low_mask);
+            let hi = _mm256_and_si256(_mm256_srli_epi16(xored, 4), low_mask);
+            let popcnt_lo = _mm256_shuffle_epi8(lookup, lo);
+            let popcnt_hi = _mm256_shuffle_epi8(lookup, hi);
+            local = _mm256_add_epi8(local, popcnt_lo);
+            local = _mm256_add_epi8(local, popcnt_hi);
+        }
+        // Widen u8 counts to u64 via vpsadbw
+        total = _mm256_add_epi64(total, _mm256_sad_epu8(local, _mm256_setzero_si256()));
+    }
+
+    // Remaining full chunks
+    let mut local = _mm256_setzero_si256();
+    for i in (blocks * 8)..chunks {
+        let idx = i * 32;
+        let av = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+        let bv = _mm256_loadu_si256(b[idx..].as_ptr() as *const __m256i);
+        let xored = _mm256_xor_si256(av, bv);
+        let lo = _mm256_and_si256(xored, low_mask);
+        let hi = _mm256_and_si256(_mm256_srli_epi16(xored, 4), low_mask);
+        local = _mm256_add_epi8(local, _mm256_shuffle_epi8(lookup, lo));
+        local = _mm256_add_epi8(local, _mm256_shuffle_epi8(lookup, hi));
+    }
+    total = _mm256_add_epi64(total, _mm256_sad_epu8(local, _mm256_setzero_si256()));
+
+    // Horizontal sum 4 × i64
+    let mut vals = [0i64; 4];
+    _mm256_storeu_si256(vals.as_mut_ptr() as *mut __m256i, total);
+    let mut sum = (vals[0] + vals[1] + vals[2] + vals[3]) as u64;
+
+    // Scalar tail
+    for i in (chunks * 32)..len {
+        sum += (a[i] ^ b[i]).count_ones() as u64;
+    }
+
+    sum
 }
 
 /// VPOPCNTDQ fast path: 64 bytes per iteration.
@@ -464,6 +571,413 @@ fn hamming_scalar_popcnt(a: &[u8], b: &[u8]) -> u64 {
     }
 
     sum
+}
+
+// ============================================================================
+// VNNI: INT8 dot product (VPDPBUSD) for embedding containers
+// ============================================================================
+
+/// Signed int8 dot product: treats both byte slices as signed i8, returns sum of products.
+///
+/// Runtime dispatches to AVX-512 VNNI (`VPDPBUSD`) when available.
+/// VPDPBUSD is unsigned×signed, so signed×signed uses the XOR-0x80 correction:
+///   signed_result = dpbusd(a XOR 0x80, b) − 128 × sum(b)
+///
+/// For a 2KB CogRecord container: 32 VPDPBUSD iterations vs 2048 scalar multiplies.
+#[inline]
+pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
+    assert_eq!(a.len(), b.len());
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512f") {
+            return unsafe { dot_i8_vnni(a, b) };
+        }
+    }
+
+    dot_i8_scalar(a, b)
+}
+
+/// VPDPBUSD fast path: 64 bytes per iteration.
+///
+/// Uses unsigned×signed multiply-accumulate with bias correction for signed×signed:
+///   a_unsigned = a_signed XOR 0x80  (shifts signed range [−128,127] to unsigned [0,255])
+///   dpbusd_result = Σ(a_unsigned × b_signed)
+///   signed_result = dpbusd_result − 128 × Σ(b_signed)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vnni")]
+#[inline]
+unsafe fn dot_i8_vnni(a: &[u8], b: &[u8]) -> i64 {
+    use core::arch::x86_64::*;
+
+    let len = a.len();
+    let chunks = len / 64;
+
+    // Bias mask: XOR with 0x80 per byte to convert signed→unsigned
+    let bias = _mm512_set1_epi32(0x80808080u32 as i32);
+    // Ones vector for computing sum(b) via VPDPBUSD(ones, b)
+    let ones = _mm512_set1_epi32(0x01010101u32 as i32);
+
+    let mut acc = _mm512_setzero_si512();
+    let mut b_sum = _mm512_setzero_si512();
+
+    for i in 0..chunks {
+        let base = i * 64;
+        let av = _mm512_loadu_si512(a[base..].as_ptr() as *const __m512i);
+        let bv = _mm512_loadu_si512(b[base..].as_ptr() as *const __m512i);
+
+        // Convert a from signed to unsigned-with-bias
+        let av_u = _mm512_xor_si512(av, bias);
+
+        // VPDPBUSD: acc += Σ(a_unsigned[j] × b_signed[j]) per 4-byte group
+        acc = _mm512_dpbusd_epi32(acc, av_u, bv);
+
+        // Accumulate sum(b_signed) for correction
+        b_sum = _mm512_dpbusd_epi32(b_sum, ones, bv);
+    }
+
+    // Horizontal sum of acc (16 × i32 → i64)
+    let mut acc_vals = [0i32; 16];
+    _mm512_storeu_si512(acc_vals.as_mut_ptr() as *mut __m512i, acc);
+    let total_biased: i64 = acc_vals.iter().map(|&v| v as i64).sum();
+
+    // Horizontal sum of b_sum
+    let mut bsum_vals = [0i32; 16];
+    _mm512_storeu_si512(bsum_vals.as_mut_ptr() as *mut __m512i, b_sum);
+    let total_b: i64 = bsum_vals.iter().map(|&v| v as i64).sum();
+
+    // Correction: biased_result = signed_result + 128 * sum(b)
+    let mut result = total_biased - 128 * total_b;
+
+    // Scalar tail
+    for i in (chunks * 64)..len {
+        result += (a[i] as i8 as i64) * (b[i] as i8 as i64);
+    }
+
+    result
+}
+
+/// Portable fallback: scalar int8 dot product.
+#[inline]
+fn dot_i8_scalar(a: &[u8], b: &[u8]) -> i64 {
+    let len = a.len();
+    let chunks = len / 32;
+    let mut total: i64 = 0;
+
+    for c in 0..chunks {
+        let base = c * 32;
+        let mut acc: i32 = 0;
+        for i in 0..32 {
+            acc += (a[base + i] as i8 as i32) * (b[base + i] as i8 as i32);
+        }
+        total += acc as i64;
+    }
+
+    for i in (chunks * 32)..len {
+        total += (a[i] as i8 as i64) * (b[i] as i8 as i64);
+    }
+
+    total
+}
+
+// ============================================================================
+// SIMD element-wise operations (f32/f64)
+// ============================================================================
+
+/// SIMD f32 element-wise add with scalar: out[i] = a[i] + scalar
+#[inline]
+pub fn add_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    let sv = f32x16::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        (av + sv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] + scalar;
+    }
+    out
+}
+
+/// SIMD f32 element-wise subtract scalar: out[i] = a[i] - scalar
+#[inline]
+pub fn sub_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    let sv = f32x16::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        (av - sv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] - scalar;
+    }
+    out
+}
+
+/// SIMD f32 element-wise multiply with scalar: out[i] = a[i] * scalar
+#[inline]
+pub fn mul_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    let sv = f32x16::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        (av * sv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] * scalar;
+    }
+    out
+}
+
+/// SIMD f32 element-wise divide by scalar: out[i] = a[i] / scalar
+#[inline]
+pub fn div_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    let sv = f32x16::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        (av / sv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] / scalar;
+    }
+    out
+}
+
+/// SIMD f32 element-wise vector add: out[i] = a[i] + b[i]
+#[inline]
+pub fn add_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        let bv = f32x16::from_slice(&b[base..]);
+        (av + bv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] + b[i];
+    }
+    out
+}
+
+/// SIMD f32 element-wise vector subtract: out[i] = a[i] - b[i]
+#[inline]
+pub fn sub_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        let bv = f32x16::from_slice(&b[base..]);
+        (av - bv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] - b[i];
+    }
+    out
+}
+
+/// SIMD f32 element-wise vector multiply: out[i] = a[i] * b[i]
+#[inline]
+pub fn mul_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        let bv = f32x16::from_slice(&b[base..]);
+        (av * bv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] * b[i];
+    }
+    out
+}
+
+/// SIMD f32 element-wise vector divide: out[i] = a[i] / b[i]
+#[inline]
+pub fn div_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f32; len];
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let av = f32x16::from_slice(&a[base..]);
+        let bv = f32x16::from_slice(&b[base..]);
+        (av / bv).copy_to_slice(&mut out[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] / b[i];
+    }
+    out
+}
+
+/// SIMD f64 element-wise add with scalar: out[i] = a[i] + scalar
+#[inline]
+pub fn add_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    let sv = f64x8::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        (av + sv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] + scalar;
+    }
+    out
+}
+
+/// SIMD f64 element-wise subtract scalar: out[i] = a[i] - scalar
+#[inline]
+pub fn sub_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    let sv = f64x8::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        (av - sv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] - scalar;
+    }
+    out
+}
+
+/// SIMD f64 element-wise multiply with scalar: out[i] = a[i] * scalar
+#[inline]
+pub fn mul_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    let sv = f64x8::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        (av * sv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] * scalar;
+    }
+    out
+}
+
+/// SIMD f64 element-wise divide by scalar: out[i] = a[i] / scalar
+#[inline]
+pub fn div_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    let sv = f64x8::splat(scalar);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        (av / sv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] / scalar;
+    }
+    out
+}
+
+/// SIMD f64 element-wise vector add: out[i] = a[i] + b[i]
+#[inline]
+pub fn add_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        let bv = f64x8::from_slice(&b[base..]);
+        (av + bv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] + b[i];
+    }
+    out
+}
+
+/// SIMD f64 element-wise vector subtract: out[i] = a[i] - b[i]
+#[inline]
+pub fn sub_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        let bv = f64x8::from_slice(&b[base..]);
+        (av - bv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] - b[i];
+    }
+    out
+}
+
+/// SIMD f64 element-wise vector multiply: out[i] = a[i] * b[i]
+#[inline]
+pub fn mul_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        let bv = f64x8::from_slice(&b[base..]);
+        (av * bv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] * b[i];
+    }
+    out
+}
+
+/// SIMD f64 element-wise vector divide: out[i] = a[i] / b[i]
+#[inline]
+pub fn div_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+    let mut out = vec![0.0f64; len];
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let av = f64x8::from_slice(&a[base..]);
+        let bv = f64x8::from_slice(&b[base..]);
+        (av / bv).copy_to_slice(&mut out[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        out[i] = a[i] / b[i];
+    }
+    out
 }
 
 #[cfg(test)]
