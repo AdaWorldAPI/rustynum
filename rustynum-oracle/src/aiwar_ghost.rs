@@ -288,32 +288,18 @@ pub fn load_graph_from_file(path: &str) -> AiWarGraph {
 // Part 4: Deterministic seeded RNG (reproducible from entity ID)
 // ---------------------------------------------------------------------------
 
-struct SimpleRng {
-    state: u64,
-}
+/// Thin `rand::RngCore` adapter around `rustynum_core::SplitMix64`.
+struct SeededRng(rustynum_core::SplitMix64);
 
-impl SimpleRng {
+impl SeededRng {
     fn new(seed: u64) -> Self {
-        Self { state: seed.wrapping_add(1) }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        // SplitMix64
-        self.state = self.state.wrapping_add(0x9e3779b97f4a7c15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
-        z ^ (z >> 31)
-    }
-
-    fn next_u32(&mut self) -> u32 {
-        self.next_u64() as u32
+        Self(rustynum_core::SplitMix64::new(seed.wrapping_add(1)))
     }
 }
 
-impl rand::RngCore for SimpleRng {
-    fn next_u32(&mut self) -> u32 { self.next_u32() }
-    fn next_u64(&mut self) -> u64 { self.next_u64() }
+impl rand::RngCore for SeededRng {
+    fn next_u32(&mut self) -> u32 { self.0.next_u64() as u32 }
+    fn next_u64(&mut self) -> u64 { self.0.next_u64() }
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         for chunk in dest.chunks_mut(8) {
             let val = self.next_u64().to_le_bytes();
@@ -339,7 +325,7 @@ fn hash_string(s: &str) -> u64 {
 }
 
 fn generate_from_seed(d: usize, base: Base, seed: u64) -> Vec<i8> {
-    let mut rng = SimpleRng::new(seed);
+    let mut rng = SeededRng::new(seed);
     generate_template(d, base, &mut rng)
 }
 

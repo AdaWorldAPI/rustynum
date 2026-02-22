@@ -20,6 +20,7 @@ pub mod organic;
 pub mod aiwar_ghost;
 pub mod ghost_discovery;
 pub mod recognize;
+pub mod nars;
 
 pub use linalg::{
     cholesky_solve, condition_number,
@@ -55,6 +56,14 @@ pub use organic::{
     ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
 };
 pub use organic::FlushAction as OrganicFlushAction;
+
+pub use nars::{
+    unbind, forward_bind, reverse_unbind,
+    Entity as NarsEntity, Role as NarsRole,
+    reverse_trace, CausalTrace, TraceStep,
+    granger_signal, granger_scan,
+    find_similar_pairs, Contradiction,
+};
 
 pub use recognize::{
     Projector64K, Recognizer, RecognitionResult, RecognitionMethod,

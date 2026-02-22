@@ -120,29 +120,7 @@ pub const DOMAINS: &[(&str, usize, usize)] = &[
     ("comm",  46, 52),
 ];
 
-// ---------------------------------------------------------------------------
-// Deterministic RNG (xorshift64)
-// ---------------------------------------------------------------------------
-
-struct SimpleRng(u64);
-
-fn simple_rng(seed: u64) -> SimpleRng {
-    SimpleRng(seed | 1)
-}
-
-impl SimpleRng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    fn gen_range(&mut self, min: i8, max: i8) -> i8 {
-        let range = (max as i16 - min as i16 + 1) as u64;
-        (min as i64 + (self.next() % range) as i64) as i8
-    }
-}
+use rustynum_core::SplitMix64;
 
 // ---------------------------------------------------------------------------
 // Organic template generation (3-layer)
@@ -156,10 +134,10 @@ fn hash_string(s: &str) -> u64 {
 }
 
 /// Generate a random vector from an RNG at the given base.
-fn generate_from_rng(d: usize, base: Base, rng: &mut SimpleRng) -> Vec<i8> {
+fn generate_from_rng(d: usize, base: Base, rng: &mut SplitMix64) -> Vec<i8> {
     let min = base.min_val();
     let max = base.max_val();
-    (0..d).map(|_| rng.gen_range(min, max)).collect()
+    (0..d).map(|_| rng.gen_range_i8(min, max)).collect()
 }
 
 /// Number of coarse τ bins for the proximity manifold.
@@ -189,15 +167,15 @@ fn generate_tau_basis(tau: u8, d: usize, base: Base) -> Vec<i8> {
     // Each bin has a deterministic random vector seeded by bin index
     let seed_lo = 0xDEAD_BEEF_u64.wrapping_mul(bin_lo as u64 + 1);
     let seed_hi = 0xDEAD_BEEF_u64.wrapping_mul(bin_hi as u64 + 1);
-    let mut rng_lo = simple_rng(seed_lo);
-    let mut rng_hi = simple_rng(seed_hi);
+    let mut rng_lo = SplitMix64::new(seed_lo);
+    let mut rng_hi = SplitMix64::new(seed_hi);
 
     let min_val = base.min_val() as f64;
     let max_val = base.max_val() as f64;
 
     (0..d).map(|_| {
-        let lo = rng_lo.gen_range(base.min_val(), base.max_val()) as f64;
-        let hi = rng_hi.gen_range(base.min_val(), base.max_val()) as f64;
+        let lo = rng_lo.gen_range_i8(base.min_val(), base.max_val()) as f64;
+        let hi = rng_hi.gen_range_i8(base.min_val(), base.max_val()) as f64;
         let blended = lo * (1.0 - frac) + hi * frac;
         blended.round().clamp(min_val, max_val) as i8
     }).collect()
@@ -228,7 +206,7 @@ pub fn generate_organic_template(
 
     // Layer 1: Domain basis
     let domain_seed = hash_string(concept.domain);
-    let mut domain_rng = simple_rng(domain_seed);
+    let mut domain_rng = SplitMix64::new(domain_seed);
     let domain_basis = generate_from_rng(d, base, &mut domain_rng);
 
     // Layer 2: Tau proximity manifold
@@ -236,7 +214,7 @@ pub fn generate_organic_template(
 
     // Layer 3: Individual component
     let concept_seed = hash_string(concept.id);
-    let mut concept_rng = simple_rng(concept_seed);
+    let mut concept_rng = SplitMix64::new(concept_seed);
     let individual = generate_from_rng(d, base, &mut concept_rng);
 
     // Blend
