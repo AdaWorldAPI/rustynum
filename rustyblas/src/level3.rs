@@ -67,6 +67,20 @@ pub fn sgemm(
     c: &mut [f32],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_sgemm(
+                layout as i32, trans_a as i32, trans_b as i32,
+                m as i32, n as i32, k as i32,
+                alpha, a.as_ptr(), lda as i32,
+                b.as_ptr(), ldb as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     // Scale C by beta
     if beta == 0.0 {
         for i in 0..m {
@@ -484,6 +498,20 @@ pub fn dgemm(
     c: &mut [f64],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dgemm(
+                layout as i32, trans_a as i32, trans_b as i32,
+                m as i32, n as i32, k as i32,
+                alpha, a.as_ptr(), lda as i32,
+                b.as_ptr(), ldb as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     // Scale C by beta
     if beta == 0.0 {
         for i in 0..m {
@@ -855,6 +883,19 @@ pub fn ssyrk(
     c: &mut [f32],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_ssyrk(
+                layout as i32, uplo as i32, trans as i32,
+                n as i32, k as i32, alpha,
+                a.as_ptr(), lda as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     use rustynum_core::simd;
 
     // Scale C by beta
@@ -934,6 +975,19 @@ pub fn dsyrk(
     c: &mut [f64],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dsyrk(
+                layout as i32, uplo as i32, trans as i32,
+                n as i32, k as i32, alpha,
+                a.as_ptr(), lda as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     use rustynum_core::simd;
 
     for i in 0..n {
@@ -1019,6 +1073,20 @@ pub fn strsm(
     b: &mut [f32],
     ldb: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_strsm(
+                layout as i32, side as i32, uplo as i32,
+                trans as i32, diag as i32,
+                m as i32, n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                b.as_mut_ptr(), ldb as i32,
+            );
+        }
+        return;
+    }
+
     use rustynum_core::simd;
     let unit = diag == Diag::Unit;
 
@@ -1132,6 +1200,20 @@ pub fn ssymm(
     c: &mut [f32],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_ssymm(
+                layout as i32, side as i32, uplo as i32,
+                m as i32, n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                b.as_ptr(), ldb as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     use rustynum_core::simd;
 
     for i in 0..m {
@@ -1223,6 +1305,20 @@ pub fn dsymm(
     c: &mut [f64],
     ldc: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dsymm(
+                layout as i32, side as i32, uplo as i32,
+                m as i32, n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                b.as_ptr(), ldb as i32,
+                beta, c.as_mut_ptr(), ldc as i32,
+            );
+        }
+        return;
+    }
+
     use rustynum_core::simd;
 
     for i in 0..m {

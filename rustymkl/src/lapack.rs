@@ -46,6 +46,23 @@ pub fn sgetrf(
     lda: usize,
     ipiv: &mut [usize],
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let min_mn = m.min(n);
+        let mut ipiv_i32 = vec![0i32; min_mn];
+        let lapacke_layout = layout as i32;
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_sgetrf(
+                lapacke_layout, m as i32, n as i32,
+                a.as_mut_ptr(), lda as i32, ipiv_i32.as_mut_ptr(),
+            )
+        };
+        // Convert 1-based LAPACKE ipiv to 0-based Rust ipiv
+        for i in 0..min_mn {
+            ipiv[i] = (ipiv_i32[i] - 1) as usize;
+        }
+        return info;
+    }
     let min_mn = m.min(n);
 
     for k in 0..min_mn {
@@ -83,6 +100,21 @@ pub fn dgetrf(
     lda: usize,
     ipiv: &mut [usize],
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let min_mn = m.min(n);
+        let mut ipiv_i32 = vec![0i32; min_mn];
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_dgetrf(
+                layout as i32, m as i32, n as i32,
+                a.as_mut_ptr(), lda as i32, ipiv_i32.as_mut_ptr(),
+            )
+        };
+        for i in 0..min_mn {
+            ipiv[i] = (ipiv_i32[i] - 1) as usize;
+        }
+        return info;
+    }
     let min_mn = m.min(n);
 
     for k in 0..min_mn {
@@ -403,6 +435,18 @@ pub fn sgetrs(
     b: &mut [f32],
     ldb: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        let mut ipiv_i32: Vec<i32> = ipiv.iter().map(|&p| (p + 1) as i32).collect();
+        unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_sgetrs(
+                layout as i32, b'N', n as i32, nrhs as i32,
+                a.as_ptr(), lda as i32, ipiv_i32.as_ptr(),
+                b.as_mut_ptr(), ldb as i32,
+            );
+        }
+        return;
+    }
     // Apply row interchanges to B
     for k in 0..n {
         if ipiv[k] != k {
@@ -504,6 +548,18 @@ pub fn dgetrs(
     b: &mut [f64],
     ldb: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        let ipiv_i32: Vec<i32> = ipiv.iter().map(|&p| (p + 1) as i32).collect();
+        unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_dgetrs(
+                layout as i32, b'N', n as i32, nrhs as i32,
+                a.as_ptr(), lda as i32, ipiv_i32.as_ptr(),
+                b.as_mut_ptr(), ldb as i32,
+            );
+        }
+        return;
+    }
     for k in 0..n {
         if ipiv[k] != k {
             swap_rows_f64(b, layout, k, ipiv[k], nrhs, ldb);
@@ -600,6 +656,20 @@ pub fn spotrf(
     a: &mut [f32],
     lda: usize,
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let uplo_char = match uplo {
+            rustynum_core::layout::Uplo::Upper => b'U',
+            rustynum_core::layout::Uplo::Lower => b'L',
+        };
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_spotrf(
+                layout as i32, uplo_char, n as i32,
+                a.as_mut_ptr(), lda as i32,
+            )
+        };
+        return info;
+    }
     match uplo {
         rustynum_core::layout::Uplo::Lower => {
             spotrf_lower(layout, n, a, lda)
@@ -726,6 +796,20 @@ pub fn dpotrf(
     a: &mut [f64],
     lda: usize,
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let uplo_char = match uplo {
+            rustynum_core::layout::Uplo::Upper => b'U',
+            rustynum_core::layout::Uplo::Lower => b'L',
+        };
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_dpotrf(
+                layout as i32, uplo_char, n as i32,
+                a.as_mut_ptr(), lda as i32,
+            )
+        };
+        return info;
+    }
     match uplo {
         rustynum_core::layout::Uplo::Lower => dpotrf_lower(layout, n, a, lda),
         rustynum_core::layout::Uplo::Upper => dpotrf_upper(layout, n, a, lda),
@@ -848,6 +932,21 @@ pub fn spotrs(
     b: &mut [f32],
     ldb: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        let uplo_char = match uplo {
+            rustynum_core::layout::Uplo::Upper => b'U',
+            rustynum_core::layout::Uplo::Lower => b'L',
+        };
+        unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_spotrs(
+                layout as i32, uplo_char, n as i32, nrhs as i32,
+                a.as_ptr(), lda as i32,
+                b.as_mut_ptr(), ldb as i32,
+            );
+        }
+        return;
+    }
     match uplo {
         rustynum_core::layout::Uplo::Lower => {
             // Forward substitution: L * Y = B
@@ -1070,6 +1169,16 @@ pub fn sgeqrf(
     lda: usize,
     tau: &mut [f32],
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_sgeqrf(
+                layout as i32, m as i32, n as i32,
+                a.as_mut_ptr(), lda as i32, tau.as_mut_ptr(),
+            )
+        };
+        return info;
+    }
     let min_mn = m.min(n);
 
     for k in 0..min_mn {
@@ -1187,6 +1296,16 @@ pub fn dgeqrf(
     lda: usize,
     tau: &mut [f64],
 ) -> i32 {
+    #[cfg(feature = "mkl")]
+    {
+        let info = unsafe {
+            rustynum_core::mkl_ffi::LAPACKE_dgeqrf(
+                layout as i32, m as i32, n as i32,
+                a.as_mut_ptr(), lda as i32, tau.as_mut_ptr(),
+            )
+        };
+        return info;
+    }
     let min_mn = m.min(n);
 
     for k in 0..min_mn {

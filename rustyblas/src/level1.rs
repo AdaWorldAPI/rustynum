@@ -48,6 +48,14 @@ fn scatter_f64(buf: &[f64], dst: &mut [f64], n: usize, inc: usize) {
 /// Single-precision dot product: result = x^T * y
 #[inline]
 pub fn sdot(n: usize, x: &[f32], incx: usize, y: &[f32], incy: usize) -> f32 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_sdot(
+                n as i32, x.as_ptr(), incx as i32, y.as_ptr(), incy as i32,
+            )
+        };
+    }
     if incx == 1 && incy == 1 {
         simd::dot_f32(&x[..n], &y[..n])
     } else {
@@ -61,6 +69,14 @@ pub fn sdot(n: usize, x: &[f32], incx: usize, y: &[f32], incy: usize) -> f32 {
 /// Double-precision dot product: result = x^T * y
 #[inline]
 pub fn ddot(n: usize, x: &[f64], incx: usize, y: &[f64], incy: usize) -> f64 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_ddot(
+                n as i32, x.as_ptr(), incx as i32, y.as_ptr(), incy as i32,
+            )
+        };
+    }
     if incx == 1 && incy == 1 {
         simd::dot_f64(&x[..n], &y[..n])
     } else {
@@ -77,6 +93,15 @@ pub fn ddot(n: usize, x: &[f64], incx: usize, y: &[f64], incy: usize) -> f64 {
 /// Single-precision axpy: y := alpha * x + y
 #[inline]
 pub fn saxpy(n: usize, alpha: f32, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_saxpy(
+                n as i32, alpha, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if alpha == 0.0 {
         return;
     }
@@ -94,6 +119,15 @@ pub fn saxpy(n: usize, alpha: f32, x: &[f32], incx: usize, y: &mut [f32], incy: 
 /// Double-precision axpy: y := alpha * x + y
 #[inline]
 pub fn daxpy(n: usize, alpha: f64, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_daxpy(
+                n as i32, alpha, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if alpha == 0.0 {
         return;
     }
@@ -114,6 +148,13 @@ pub fn daxpy(n: usize, alpha: f64, x: &[f64], incx: usize, y: &mut [f64], incy: 
 /// Single-precision scal: x := alpha * x
 #[inline]
 pub fn sscal(n: usize, alpha: f32, x: &mut [f32], incx: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_sscal(n as i32, alpha, x.as_mut_ptr(), incx as i32);
+        }
+        return;
+    }
     if incx == 1 {
         simd::scal_f32(alpha, &mut x[..n]);
     } else {
@@ -127,6 +168,13 @@ pub fn sscal(n: usize, alpha: f32, x: &mut [f32], incx: usize) {
 /// Double-precision scal: x := alpha * x
 #[inline]
 pub fn dscal(n: usize, alpha: f64, x: &mut [f64], incx: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dscal(n as i32, alpha, x.as_mut_ptr(), incx as i32);
+        }
+        return;
+    }
     if incx == 1 {
         simd::scal_f64(alpha, &mut x[..n]);
     } else {
@@ -143,6 +191,12 @@ pub fn dscal(n: usize, alpha: f64, x: &mut [f64], incx: usize) {
 /// Single-precision nrm2: ||x||_2
 #[inline]
 pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_snrm2(n as i32, x.as_ptr(), incx as i32)
+        };
+    }
     if incx == 1 {
         simd::nrm2_f32(&x[..n])
     } else {
@@ -154,6 +208,12 @@ pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
 /// Double-precision nrm2: ||x||_2
 #[inline]
 pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_dnrm2(n as i32, x.as_ptr(), incx as i32)
+        };
+    }
     if incx == 1 {
         simd::nrm2_f64(&x[..n])
     } else {
@@ -169,6 +229,12 @@ pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
 /// Single-precision asum: sum(|x_i|)
 #[inline]
 pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_sasum(n as i32, x.as_ptr(), incx as i32)
+        };
+    }
     if incx == 1 {
         simd::asum_f32(&x[..n])
     } else {
@@ -180,6 +246,12 @@ pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
 /// Double-precision asum: sum(|x_i|)
 #[inline]
 pub fn dasum(n: usize, x: &[f64], incx: usize) -> f64 {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_dasum(n as i32, x.as_ptr(), incx as i32)
+        };
+    }
     if incx == 1 {
         simd::asum_f64(&x[..n])
     } else {
@@ -199,6 +271,12 @@ pub fn dasum(n: usize, x: &[f64], incx: usize) -> f64 {
 /// then does a single-pass argmax. For strided arrays, gathers first.
 #[inline]
 pub fn isamax(n: usize, x: &[f32], incx: usize) -> usize {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_isamax(n as i32, x.as_ptr(), incx as i32) as usize
+        };
+    }
     if n == 0 {
         return 0;
     }
@@ -228,6 +306,12 @@ pub fn isamax(n: usize, x: &[f32], incx: usize) -> usize {
 /// Double-precision iamax: index of max |x_i|
 #[inline]
 pub fn idamax(n: usize, x: &[f64], incx: usize) -> usize {
+    #[cfg(feature = "mkl")]
+    {
+        return unsafe {
+            rustynum_core::mkl_ffi::cblas_idamax(n as i32, x.as_ptr(), incx as i32) as usize
+        };
+    }
     if n == 0 {
         return 0;
     }
@@ -259,6 +343,15 @@ pub fn idamax(n: usize, x: &[f64], incx: usize) -> usize {
 /// Single-precision copy: y := x
 #[inline]
 pub fn scopy(n: usize, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_scopy(
+                n as i32, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if incx == 1 && incy == 1 {
         y[..n].copy_from_slice(&x[..n]);
     } else {
@@ -271,6 +364,15 @@ pub fn scopy(n: usize, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
 /// Double-precision copy: y := x
 #[inline]
 pub fn dcopy(n: usize, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dcopy(
+                n as i32, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if incx == 1 && incy == 1 {
         y[..n].copy_from_slice(&x[..n]);
     } else {
@@ -287,6 +389,15 @@ pub fn dcopy(n: usize, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
 /// Single-precision swap: x <-> y
 #[inline]
 pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_sswap(
+                n as i32, x.as_mut_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if incx == 1 && incy == 1 {
         x[..n].swap_with_slice(&mut y[..n]);
     } else {
@@ -301,6 +412,15 @@ pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
 /// Double-precision swap: x <-> y
 #[inline]
 pub fn dswap(n: usize, x: &mut [f64], incx: usize, y: &mut [f64], incy: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dswap(
+                n as i32, x.as_mut_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
     if incx == 1 && incy == 1 {
         x[..n].swap_with_slice(&mut y[..n]);
     } else {

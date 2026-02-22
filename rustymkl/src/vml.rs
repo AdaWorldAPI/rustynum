@@ -31,6 +31,13 @@ use std::simd::{u32x8 as U32Simd, u64x4 as U64Simd};
 ///
 /// Uses polynomial approximation for SIMD lanes, scalar fallback for tail.
 pub fn vsexp(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsExp(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -49,6 +56,13 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
 
 /// Vectorized double-precision exp: out[i] = e^(x[i])
 pub fn vdexp(x: &[f64], out: &mut [f64]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vdExp(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
@@ -71,6 +85,13 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
 
 /// Vectorized single-precision natural log: out[i] = ln(x[i])
 pub fn vsln(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsLn(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -89,6 +110,13 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
 
 /// Vectorized double-precision natural log: out[i] = ln(x[i])
 pub fn vdln(x: &[f64], out: &mut [f64]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vdLn(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
@@ -111,6 +139,13 @@ pub fn vdln(x: &[f64], out: &mut [f64]) {
 
 /// Vectorized single-precision sqrt: out[i] = sqrt(x[i])
 pub fn vssqrt(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsSqrt(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -129,6 +164,13 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
 
 /// Vectorized double-precision sqrt.
 pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vdSqrt(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
@@ -151,6 +193,13 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
 
 /// Vectorized single-precision abs: out[i] = |x[i]|
 pub fn vsabs(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsAbs(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -169,6 +218,13 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
 
 /// Vectorized double-precision abs.
 pub fn vdabs(x: &[f64], out: &mut [f64]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vdAbs(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
@@ -191,6 +247,13 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
 
 /// Vectorized single-precision add: out[i] = a[i] + b[i]
 pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsAdd(a.len() as i32, a.as_ptr(), b.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(a.len(), b.len());
     debug_assert_eq!(a.len(), out.len());
     let len = a.len();
@@ -211,6 +274,13 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
 
 /// Vectorized single-precision multiply: out[i] = a[i] * b[i]
 pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsMul(a.len() as i32, a.as_ptr(), b.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(a.len(), b.len());
     debug_assert_eq!(a.len(), out.len());
     let len = a.len();
@@ -231,6 +301,13 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
 
 /// Vectorized single-precision divide: out[i] = a[i] / b[i]
 pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsDiv(a.len() as i32, a.as_ptr(), b.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(a.len(), b.len());
     debug_assert_eq!(a.len(), out.len());
     let len = a.len();
@@ -258,6 +335,13 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// Uses Cody-Waite range reduction + degree-9 minimax polynomial,
 /// all in SIMD. Sign correction via XOR on IEEE 754 sign bit.
 pub fn vssin(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsSin(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -278,6 +362,13 @@ pub fn vssin(x: &[f32], out: &mut [f32]) {
 ///
 /// cos(x) = sin(x + π/2), reusing the SIMD sin kernel.
 pub fn vscos(x: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsCos(x.len() as i32, x.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
@@ -300,6 +391,13 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
 /// Computed as exp(b * ln(a)) using SIMD exp and ln kernels.
 /// Handles a > 0 only (no complex branch for negative bases).
 pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::vsPow(a.len() as i32, a.as_ptr(), b.as_ptr(), out.as_mut_ptr());
+        }
+        return;
+    }
     debug_assert_eq!(a.len(), b.len());
     debug_assert_eq!(a.len(), out.len());
     let len = a.len();

@@ -31,6 +31,10 @@ pub mod simd;
 #[path = "simd_avx2.rs"]
 pub mod simd;
 
+// Intel MKL FFI bindings (only compiled when --features mkl is enabled)
+#[cfg(feature = "mkl")]
+pub mod mkl_ffi;
+
 pub use blackboard::{Blackboard, BufferHandle};
 pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use fingerprint::{Fingerprint, Fingerprint2K, Fingerprint1K, Fingerprint64K};

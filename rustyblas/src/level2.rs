@@ -54,6 +54,20 @@ pub fn sgemv(
     y: &mut [f32],
     incy: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_sgemv(
+                layout as i32, trans as i32,
+                m as i32, n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                x.as_ptr(), incx as i32,
+                beta, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
+
     let (rows, _cols) = match trans {
         Transpose::NoTrans => (m, n),
         _ => (n, m),
@@ -178,6 +192,20 @@ pub fn dgemv(
     y: &mut [f64],
     incy: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dgemv(
+                layout as i32, trans as i32,
+                m as i32, n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                x.as_ptr(), incx as i32,
+                beta, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
+
     let (rows, _cols) = match trans {
         Transpose::NoTrans => (m, n),
         _ => (n, m),
@@ -299,6 +327,19 @@ pub fn sger(
     a: &mut [f32],
     lda: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_sger(
+                layout as i32, m as i32, n as i32,
+                alpha, x.as_ptr(), incx as i32,
+                y.as_ptr(), incy as i32,
+                a.as_mut_ptr(), lda as i32,
+            );
+        }
+        return;
+    }
+
     if alpha == 0.0 {
         return;
     }
@@ -355,6 +396,19 @@ pub fn dger(
     a: &mut [f64],
     lda: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dger(
+                layout as i32, m as i32, n as i32,
+                alpha, x.as_ptr(), incx as i32,
+                y.as_ptr(), incy as i32,
+                a.as_mut_ptr(), lda as i32,
+            );
+        }
+        return;
+    }
+
     if alpha == 0.0 {
         return;
     }
@@ -417,6 +471,20 @@ pub fn ssymv(
     y: &mut [f32],
     incy: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_ssymv(
+                layout as i32, uplo as i32,
+                n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                x.as_ptr(), incx as i32,
+                beta, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
+
     // Scale y by beta
     if beta == 0.0 {
         if incy == 1 {
@@ -499,6 +567,20 @@ pub fn dsymv(
     y: &mut [f64],
     incy: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_dsymv(
+                layout as i32, uplo as i32,
+                n as i32, alpha,
+                a.as_ptr(), lda as i32,
+                x.as_ptr(), incx as i32,
+                beta, y.as_mut_ptr(), incy as i32,
+            );
+        }
+        return;
+    }
+
     if beta == 0.0 {
         if incy == 1 {
             y[..n].fill(0.0);
@@ -581,6 +663,18 @@ pub fn strmv(
     x: &mut [f32],
     incx: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_strmv(
+                layout as i32, uplo as i32, trans as i32, diag as i32,
+                n as i32, a.as_ptr(), lda as i32,
+                x.as_mut_ptr(), incx as i32,
+            );
+        }
+        return;
+    }
+
     let unit = diag == rustynum_core::layout::Diag::Unit;
 
     match (layout, uplo, trans) {
@@ -641,6 +735,18 @@ pub fn strsv(
     x: &mut [f32],
     incx: usize,
 ) {
+    #[cfg(feature = "mkl")]
+    {
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_strsv(
+                layout as i32, uplo as i32, trans as i32, diag as i32,
+                n as i32, a.as_ptr(), lda as i32,
+                x.as_mut_ptr(), incx as i32,
+            );
+        }
+        return;
+    }
+
     let unit = diag == rustynum_core::layout::Diag::Unit;
 
     match (layout, uplo, trans) {

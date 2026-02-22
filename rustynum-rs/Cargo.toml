@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+mkl = ["rustymkl/mkl"]
 
 [dependencies]
 rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
+rustyblas = { path = "../rustyblas", features = ["avx512"] }
 rustymkl = { path = "../rustymkl", features = ["avx512"] }
 
 [dev-dependencies]

@@ -45,6 +45,23 @@ const F64_COMPLEX_PER_SIMD: usize = F64_LANES / 2; // 4
 /// # Panics
 /// Panics if n is not a power of 2.
 pub fn fft_f32(data: &mut [f32], n: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        use rustynum_core::mkl_ffi::*;
+        unsafe {
+            let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
+            let status = DftiCreateDescriptor(
+                &mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64,
+            );
+            if status == 0 {
+                DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
+                DftiCommitDescriptor(handle);
+                DftiComputeForward(handle, data.as_mut_ptr() as *mut std::os::raw::c_void);
+                DftiFreeDescriptor(&mut handle);
+            }
+        }
+        return;
+    }
     assert!(n.is_power_of_two(), "FFT size must be a power of 2");
     assert_eq!(data.len(), 2 * n);
 
@@ -182,6 +199,25 @@ pub fn fft_f32(data: &mut [f32], n: usize) {
 ///
 /// Conjugates, applies forward FFT, conjugates again, and scales by 1/n.
 pub fn ifft_f32(data: &mut [f32], n: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        use rustynum_core::mkl_ffi::*;
+        unsafe {
+            let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
+            let status = DftiCreateDescriptor(
+                &mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64,
+            );
+            if status == 0 {
+                let scale = 1.0f32 / n as f32;
+                DftiSetValue(handle, DFTI_BACKWARD_SCALE, scale);
+                DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
+                DftiCommitDescriptor(handle);
+                DftiComputeBackward(handle, data.as_mut_ptr() as *mut std::os::raw::c_void);
+                DftiFreeDescriptor(&mut handle);
+            }
+        }
+        return;
+    }
     let len = 2 * n;
 
     // SIMD conjugate: negate every other element (imaginary parts).
@@ -241,6 +277,23 @@ pub fn ifft_f32(data: &mut [f32], n: usize) {
 
 /// In-place radix-2 FFT on interleaved complex f64 data.
 pub fn fft_f64(data: &mut [f64], n: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        use rustynum_core::mkl_ffi::*;
+        unsafe {
+            let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
+            let status = DftiCreateDescriptor(
+                &mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64,
+            );
+            if status == 0 {
+                DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
+                DftiCommitDescriptor(handle);
+                DftiComputeForward(handle, data.as_mut_ptr() as *mut std::os::raw::c_void);
+                DftiFreeDescriptor(&mut handle);
+            }
+        }
+        return;
+    }
     assert!(n.is_power_of_two(), "FFT size must be a power of 2");
     assert_eq!(data.len(), 2 * n);
 
@@ -361,6 +414,24 @@ pub fn fft_f64(data: &mut [f64], n: usize) {
 
 /// In-place inverse FFT for f64.
 pub fn ifft_f64(data: &mut [f64], n: usize) {
+    #[cfg(feature = "mkl")]
+    {
+        use rustynum_core::mkl_ffi::*;
+        unsafe {
+            let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
+            let status = DftiCreateDescriptor(
+                &mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64,
+            );
+            if status == 0 {
+                DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
+                DftiSetValue(handle, DFTI_BACKWARD_SCALE, 1.0f64 / n as f64);
+                DftiCommitDescriptor(handle);
+                DftiComputeBackward(handle, data.as_mut_ptr() as *mut std::os::raw::c_void);
+                DftiFreeDescriptor(&mut handle);
+            }
+        }
+        return;
+    }
     let len = 2 * n;
 
     // SIMD conjugate: negate every other element (imaginary parts)
@@ -421,6 +492,8 @@ pub fn ifft_f64(data: &mut [f64], n: usize) {
 ///
 /// Returns a new Vec with the complex output.
 pub fn rfft_f32(input: &[f32]) -> Vec<f32> {
+    // MKL DFTI rfft has different output layout (CCS vs interleaved).
+    // Use hand-rolled path for now; wire when output format is confirmed.
     let n = input.len();
     assert!(n.is_power_of_two(), "FFT size must be a power of 2");
 
