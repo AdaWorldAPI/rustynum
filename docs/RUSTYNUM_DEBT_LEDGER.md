@@ -95,6 +95,7 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 | **N9** | Flat confidence threshold in reverse_trace | 🟢 Improvement | 30 min | Uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. (PR #25) |
 | **N10** | `hamming_i8` misleading name | 🟡 Naming | 10 min | Symbol-level distance (`a[i] != b[i]` on i8), not bit-level Hamming (XOR+popcount). Every other `hamming_*` in the codebase is bit-level. Rename to `symbol_distance_i8` or `disagreement_count`. (PR #25) |
 | **N11** | Clone-per-hop in `reverse_trace()` | 🟢 Latent perf | 30 min | 16KB clone per hop × depth. Fine for research. Rewrite to two pre-allocated buffers + `copy_from_slice` if it enters a batch hot loop. (PR #25) |
+| **N12** | `hamming_64k` 16KB stack copy regression | 🟡 Performance | 15 min | PR #25 delegation creates two `Fingerprint64K` via `from_word_slice` (2×8KB memcpy onto stack) to run the same `(a^b).count_ones()` loop the inline code did. Fix: add `Fingerprint::hamming_distance_slices(a: &[u64], b: &[u64]) → u32` that works on borrows, or revert to inline loop. (PR #25) |
 
 ---
 
