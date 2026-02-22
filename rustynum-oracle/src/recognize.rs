@@ -127,7 +127,7 @@ impl Projector64K {
     /// Project a float vector to a binary fingerprint packed as bytes.
     ///
     /// Each bit = sign(dot(vector, hyperplane_i)).
-    /// Hot path: uses flat buffer for cache-friendly sequential access.
+    /// Hot path: SIMD dot product via `dot_f32` (AVX-512 FMA when available).
     pub fn project(&self, vector: &[f32]) -> Vec<u8> {
         assert_eq!(vector.len(), self.d);
         let num_bytes = self.num_planes / 8;
@@ -136,10 +136,7 @@ impl Projector64K {
 
         for i in 0..self.num_planes {
             let hp = &self.hyperplanes_flat[i * d..(i + 1) * d];
-            let mut dot = 0.0f32;
-            for j in 0..d {
-                dot += vector[j] * hp[j];
-            }
+            let dot = rustynum_core::simd::dot_f32(vector, hp);
             if dot >= 0.0 {
                 bytes[i / 8] |= 1 << (7 - (i % 8));
             }
@@ -150,26 +147,10 @@ impl Projector64K {
 
     /// Project an i8 template to a binary fingerprint.
     ///
-    /// Avoids f32 conversion allocation: accumulates dot product directly
-    /// with i8→f32 conversion per element.
+    /// Converts template to f32 once, then uses SIMD `dot_f32` for all planes.
     pub fn project_signed(&self, template: &[i8]) -> Vec<u8> {
-        assert_eq!(template.len(), self.d);
-        let num_bytes = self.num_planes / 8;
-        let mut bytes = vec![0u8; num_bytes];
-        let d = self.d;
-
-        for i in 0..self.num_planes {
-            let hp = &self.hyperplanes_flat[i * d..(i + 1) * d];
-            let mut dot = 0.0f32;
-            for j in 0..d {
-                dot += template[j] as f32 * hp[j];
-            }
-            if dot >= 0.0 {
-                bytes[i / 8] |= 1 << (7 - (i % 8));
-            }
-        }
-
-        bytes
+        let fv: Vec<f32> = template.iter().map(|&v| v as f32).collect();
+        self.project(&fv)
     }
 
     /// Project a batch of i8 templates, returning their fingerprints.
@@ -192,18 +173,19 @@ impl Projector64K {
     /// Writes the flat hyperplane matrix into buffer `name` on the blackboard.
     /// The buffer is allocated (or reallocated) to the correct size.
     /// After this call, `from_blackboard()` can reconstruct the projector
-    /// without regenerating random numbers — zero-copy from the arena.
+    /// without regenerating random numbers (copy from arena, not zero-copy).
     pub fn write_to_blackboard(&self, bb: &mut Blackboard, name: &str) {
         bb.alloc_f32(name, self.hyperplanes_flat.len());
         let buf = bb.get_f32_mut(name);
         buf.copy_from_slice(&self.hyperplanes_flat);
     }
 
-    /// Reconstruct a projector from a Blackboard buffer (zero-copy read).
+    /// Reconstruct a projector from a Blackboard buffer (copy, no RNG).
     ///
     /// The hyperplane data is copied from the blackboard into the projector's
-    /// owned buffer. Use this when the same hyperplanes need to be reused
-    /// across multiple experiments at the same dimensionality.
+    /// owned buffer — avoids regenerating random numbers, not zero-copy.
+    /// Use this when the same hyperplanes need to be reused across multiple
+    /// experiments at the same dimensionality.
     pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Self {
         assert!(num_planes > 0 && num_planes % 8 == 0);
         let buf = bb.get_f32(name);
