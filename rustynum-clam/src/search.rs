@@ -347,7 +347,7 @@ pub fn knn_dfs_sieve(
         // Termination: H is full AND worst hit is closer than best remaining
         if hits.len() >= k {
             if let Some(&(worst_dist, _)) = hits.peek() {
-                if worst_dist < d_minus {
+                if worst_dist <= d_minus {
                     break;
                 }
             }

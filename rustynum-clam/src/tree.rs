@@ -811,7 +811,7 @@ mod tests {
         }
     }
 
-    // ── HammingSIMD tests ──
+    // ── HammingSIMD tests (require avx512 or avx2 feature) ──
 
     #[test]
     fn test_hamming_simd_identical() {
@@ -875,6 +875,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "avx512", feature = "avx2"))]
     fn test_hamming_top_k_simd() {
         let vec_len = 64;
         let count = 50;

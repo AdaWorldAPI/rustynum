@@ -174,7 +174,7 @@ pub fn top_k_rows_by_norm(
 ) -> Vec<usize> {
     let norms = approx_row_norms_f32(data, rows, cols);
     let mut indices: Vec<usize> = (0..rows).collect();
-    indices.sort_unstable_by(|&a, &b| norms[b].partial_cmp(&norms[a]).unwrap());
+    indices.sort_unstable_by(|&a, &b| norms[b].total_cmp(&norms[a]));
     indices.truncate(k);
     indices
 }
@@ -193,7 +193,7 @@ pub fn pruned_gemm_rows(
 
     // Find threshold norm
     let mut sorted_norms = norms.clone();
-    sorted_norms.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted_norms.sort_unstable_by(|a, b| a.total_cmp(b));
     let thresh_idx = ((m as f32 * threshold_percentile) as usize).min(m - 1);
     let threshold = sorted_norms[thresh_idx];
 

@@ -54,7 +54,7 @@ pub const DGEMM_NC: usize = 1024;
 
 #[inline]
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -86,7 +86,7 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
 
 #[inline]
 pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     let len = a.len();
     let chunks = len / F64_LANES;
 
@@ -122,7 +122,7 @@ pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
 
 #[inline]
 pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
-    debug_assert_eq!(x.len(), y.len());
+    assert_eq!(x.len(), y.len());
     let len = x.len();
     let chunks = len / F32_LANES;
     let alpha_v = f32x8::splat(alpha);
@@ -141,7 +141,7 @@ pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
 
 #[inline]
 pub fn axpy_f64(alpha: f64, x: &[f64], y: &mut [f64]) {
-    debug_assert_eq!(x.len(), y.len());
+    assert_eq!(x.len(), y.len());
     let len = x.len();
     let chunks = len / F64_LANES;
     let alpha_v = f64x4::splat(alpha);
@@ -274,7 +274,7 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
 /// AVX2 hardware lacks VPOPCNTDQ, so this is the fast path.
 #[inline]
 pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     let len = a.len();
     let u64_chunks = len / 8;
     let mut sum: u64 = 0;
@@ -302,8 +302,8 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
 /// Batch Hamming distance: compute distances from `query` to each row in `database`.
 #[inline]
 pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
-    debug_assert_eq!(query.len(), row_bytes);
-    debug_assert_eq!(database.len(), num_rows * row_bytes);
+    assert_eq!(query.len(), row_bytes);
+    assert_eq!(database.len(), num_rows * row_bytes);
 
     let mut distances = vec![0u64; num_rows];
 

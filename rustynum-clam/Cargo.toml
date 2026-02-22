@@ -5,5 +5,9 @@ edition = "2021"
 description = "CLAM tree, triangle-inequality search, and panCAKES compression for rustynum"
 
 [dependencies]
-rustynum-rs = { path = "../rustynum-rs" }
-rustynum-core = { path = "../rustynum-core" }
+rustynum-core = { path = "../rustynum-core", default-features = false }
+
+[features]
+default = ["avx512"]
+avx512 = ["rustynum-core/avx512"]
+avx2 = ["rustynum-core/avx2"]

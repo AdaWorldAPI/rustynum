@@ -20,7 +20,7 @@
 //!
 //! - Generic `Distance` trait — plug any metric (Hamming, cosine, edit distance)
 //! - `HammingDistance` impl uses rustynum's existing SIMD XOR+POPCNT
-//! - Zero external dependencies beyond rustynum-rs
+//! - Zero external dependencies beyond rustynum-core
 //! - Depth-first reordering for O(n) memory (CAKES §2.1.2)
 //! - No Arc/Mutex — follows rustynum's split_at_mut blackboard pattern
 //!

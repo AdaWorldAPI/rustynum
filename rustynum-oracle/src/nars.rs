@@ -1,7 +1,7 @@
 //! NARS Reverse Causality — Tactic #4 from the 34-tactic roster.
 //!
 //! Forward inference: `bind(A, CAUSES) → k-NN search → B`
-//! Reverse inference: `bind(B, CAUSES) → k-NN search → candidate A`
+//! Reverse inference: `unbind(B, CAUSES) → k-NN search → candidate A`
 //!
 //! For Binary base, XOR is self-inverse: `unbind == bind`.
 //! For Signed base, unbind negates the role before binding.
@@ -22,9 +22,12 @@ use crate::sweep::{Base, bind};
 
 /// Unbind: inverse of `bind`.
 ///
-/// - Binary: XOR is self-inverse, so `unbind == bind`.
-/// - Unsigned(B): element-wise subtraction mod B.
-/// - Signed(B): negate role, then bind (clamp to range).
+/// - Binary: exact inverse — XOR is self-inverse, so `unbind == bind`.
+/// - Unsigned(B): exact inverse — element-wise subtraction mod B.
+/// - Signed(B): **approximate** inverse — negates role, then binds (saturating add +
+///   clamp). When the original bind saturated (e.g. bind(3, 2) in Signed(7) clamps
+///   to 3), information is destroyed and unbind cannot recover the original value.
+///   For values that don't hit the clamp boundary, the inverse is exact.
 pub fn unbind(bound: &[i8], role: &[i8], base: Base) -> Vec<i8> {
     let d = bound.len();
     assert_eq!(d, role.len());
@@ -95,9 +98,9 @@ pub fn reverse_unbind(outcome: &[i8], role: &Role, base: Base) -> Vec<i8> {
 pub struct TraceStep {
     /// The entity ID that was recovered at this step.
     pub entity_id: u32,
-    /// Hamming distance from the unbound candidate to the recovered entity.
+    /// Symbol distance from the unbound candidate to the recovered entity.
     pub distance: u64,
-    /// Distance as a fraction of total bits (0.0 = identical, 0.5 = random).
+    /// Distance as a fraction of total dimensions (0.0 = identical, 0.5 = random).
     pub normalized_distance: f64,
     /// Whether this step is confident (distance < threshold).
     pub confident: bool,
@@ -227,6 +230,7 @@ pub fn granger_signal(
     series_b: &[Vec<i8>],
     tau: usize,
 ) -> f64 {
+    assert!(tau > 0, "Granger signal requires tau > 0 (lag must be at least 1)");
     assert_eq!(series_a.len(), series_b.len());
     let n = series_a.len();
     if tau >= n {
@@ -273,8 +277,11 @@ pub fn granger_scan(
 // SimilarPair Detection — Tactic #11 (pairwise similarity screening)
 // ---------------------------------------------------------------------------
 
-/// A detected contradiction: two entities with high structural similarity
-/// but opposing truth values.
+/// A pair of entities with high structural similarity (low symbol distance).
+///
+/// This only checks structural proximity — it does NOT verify truth values.
+/// To detect actual contradictions, the caller must compare truth values
+/// on the returned pairs.
 #[derive(Clone, Debug)]
 pub struct SimilarPair {
     pub entity_a: u32,
@@ -283,10 +290,9 @@ pub struct SimilarPair {
     pub normalized_distance: f64,
 }
 
-/// Find entity pairs that are structurally similar (low Hamming distance)
-/// within a given radius. For Binary base, similarity > 0.5 means
-/// correlated; below the radius threshold suggests potential contradiction
-/// if truth values differ.
+/// Find entity pairs that are structurally similar (low symbol distance)
+/// within a given radius. For Binary base, random pairs average ~0.5
+/// normalized distance; pairs below the threshold are structurally correlated.
 ///
 /// This is O(n²) brute force. Replace with CAKES ρ-NN for O(n·log n).
 pub fn find_similar_pairs(
@@ -390,6 +396,27 @@ mod tests {
         let recovered = unbind(&bound, &role, base);
         // For non-saturating values, this should be exact
         assert_eq!(a, recovered, "Signed unbind should recover when not saturating");
+    }
+
+    #[test]
+    fn test_unbind_signed_saturation_is_lossy() {
+        // Demonstrate that Signed unbind is lossy at the clamp boundary.
+        // bind(3, 2) in Signed(7): saturating_add(3,2)=5, clamp(-3,3)=3
+        // unbind(3, 2): negate(2)=-2, bind(3,-2)=saturating_add(3,-2)=1
+        // Original was 3, recovered is 1 — information was destroyed by clamping.
+        let base = Base::Signed(7);
+        let a: Vec<i8> = vec![3];    // at the boundary
+        let role: Vec<i8> = vec![2];  // pushes past clamp
+
+        let bound = bind(&a, &role, base);
+        assert_eq!(bound, vec![3], "bind(3,2) clamps to 3");
+
+        let recovered = unbind(&bound, &role, base);
+        assert_ne!(recovered, a,
+            "Signed unbind MUST be lossy when bind saturated: recovered {:?} vs original {:?}",
+            recovered, a);
+        assert_eq!(recovered, vec![1],
+            "unbind(3,2) = bind(3,-2) = 1 (not 3)");
     }
 
     // --- Forward / Reverse roundtrip ---
