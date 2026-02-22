@@ -16,6 +16,7 @@
 pub mod linalg;
 pub mod sweep;
 pub mod oracle;
+pub mod organic;
 
 pub use linalg::{
     cholesky_solve, condition_number,
@@ -37,3 +38,15 @@ pub use oracle::{
     TemplateLibrary,
     MaterializedHolograph,
 };
+
+pub use organic::{
+    XTransPattern, MultiResPattern,
+    receptivity, organic_write, organic_write_f32, organic_read,
+    OrganicWAL, WriteResult,
+    PlasticityTracker, AbsorptionTracker,
+    FlushResult, organic_flush,
+    OrganicResult, measure_recovery_organic, run_organic_sweep,
+    organic_results_to_csv,
+    ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
+};
+pub use organic::FlushAction as OrganicFlushAction;
