@@ -4642,6 +4642,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustynum-clam"
+version = "0.1.0"
+dependencies = [
+ "rustynum-rs",
+]
+
+[[package]]
 name = "rustynum-core"
 version = "0.1.0"
 
