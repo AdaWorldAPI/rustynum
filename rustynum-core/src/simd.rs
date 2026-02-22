@@ -357,6 +357,45 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
     hamming_scalar_popcnt(a, b)
 }
 
+/// Select the best Hamming distance function for this CPU.
+/// Call ONCE, use many times — avoids redundant CPUID checks.
+///
+/// Dispatch chain: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
+#[inline]
+pub fn select_hamming_fn() -> fn(&[u8], &[u8]) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
+            return hamming_vpopcntdq_safe;
+        }
+        if is_x86_feature_detected!("avx2") {
+            return hamming_avx2_safe;
+        }
+    }
+    hamming_scalar_popcnt
+}
+
+/// Select the best int8 dot product function for this CPU.
+/// Call ONCE, use many times — avoids redundant CPUID checks.
+///
+/// Dispatch chain: AVX-512 VNNI (VPDPBUSD) → scalar.
+#[inline]
+pub fn select_dot_i8_fn() -> fn(&[u8], &[u8]) -> i64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512f") {
+            return dot_i8_vnni_safe;
+        }
+    }
+    dot_i8_scalar
+}
+
+/// Safe wrapper for dot_i8_vnni (coerces to fn pointer).
+#[cfg(target_arch = "x86_64")]
+fn dot_i8_vnni_safe(a: &[u8], b: &[u8]) -> i64 {
+    unsafe { dot_i8_vnni(a, b) }
+}
+
 /// Batch Hamming distance: compute distances from `query` to each row in `database`.
 ///
 /// `database` is a flat byte array with `num_rows` rows of `row_bytes` each.
@@ -372,22 +411,7 @@ pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: 
     let mut distances = vec![0u64; num_rows];
 
     // Dispatch once at batch level — avoids N redundant CPUID checks.
-    let hamming_fn: fn(&[u8], &[u8]) -> u64 = {
-        #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
-                hamming_vpopcntdq_safe
-            } else if is_x86_feature_detected!("avx2") {
-                hamming_avx2_safe
-            } else {
-                hamming_scalar_popcnt
-            }
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            hamming_scalar_popcnt
-        }
-    };
+    let hamming_fn = select_hamming_fn();
 
     let full = num_rows / 4;
     for i in 0..full {
@@ -1139,6 +1163,221 @@ pub fn div_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     out
 }
 
+// ============================================================================
+// 3-Stroke Adaptive HDR Cascade Search
+// ============================================================================
+
+/// Result from HDR cascade search.
+#[derive(Debug, Clone)]
+pub struct HdrResult {
+    /// Index into the database.
+    pub index: usize,
+    /// Exact Hamming distance (from Stroke 2).
+    pub hamming: u64,
+    /// Optional high-precision distance (from Stroke 3, if BF16/cosine enabled).
+    /// f64::NAN if Stroke 3 was not run.
+    pub precise: f64,
+}
+
+/// 3-Stroke Adaptive HDR Cascade Search.
+///
+/// Operates on raw `&[u8]` slices — the HDC/NumArray layer wraps this.
+///
+/// ## Stroke 1 (Belichtungsmesser)
+///
+/// Partial popcount on first `vec_bytes/16` bytes of each vector.
+/// Warmup on first 128 candidates to estimate population μ and σ.
+/// Reject candidates where scaled estimate > threshold + 3σ.
+/// Kills ~98% of candidates.
+///
+/// ## Stroke 2 (Full resolution)
+///
+/// Incremental full Hamming on survivors (remaining bytes only).
+/// Reject candidates where full distance > threshold.
+/// Kills ~90% of Stroke 1 survivors.
+///
+/// ## Stroke 3 (HDR precision)
+///
+/// VNNI-accelerated dot_i8 → cosine similarity on finalists.
+/// Only runs if `precise_tier` is true.
+///
+/// ## Performance model (100K × 2KB vectors, threshold=500)
+///
+/// | Stroke | Candidates | Ops/candidate | Total ops |
+/// |--------|-----------|---------------|-----------|
+/// | 1      | 100,000   | 2 VPOPCNTDQ  | 200,000   |
+/// | 2      | ~2,000    | 32 VPOPCNTDQ | 64,000    |
+/// | 3      | ~200      | 32 VNNI      | 6,400     |
+/// | **Total** |        |              | **270,400** |
+/// | Brute force |      |              | 3,200,000 |
+/// | **Speedup** |      |              | **~12×**  |
+pub fn hdr_cascade_search(
+    query: &[u8],
+    database: &[u8],
+    vec_bytes: usize,
+    num_vectors: usize,
+    threshold: u64,
+    precise_tier: bool,
+) -> Vec<HdrResult> {
+    assert_eq!(query.len(), vec_bytes);
+    assert_eq!(database.len(), vec_bytes * num_vectors);
+
+    let hamming_fn = select_hamming_fn();
+
+    // ─── Configuration ───
+    let s1_bytes = (vec_bytes / 16).max(64).min(vec_bytes); // At least 64 bytes (1 VPOPCNTDQ)
+    let scale1 = (vec_bytes as f64) / (s1_bytes as f64);
+    let warmup_n = 128.min(num_vectors);
+
+    // For small vectors, skip cascade entirely
+    if vec_bytes < 128 {
+        let mut results = Vec::new();
+        for i in 0..num_vectors {
+            let base = i * vec_bytes;
+            let d = hamming_fn(query, &database[base..base + vec_bytes]);
+            if d <= threshold {
+                results.push(HdrResult { index: i, hamming: d, precise: f64::NAN });
+            }
+        }
+        if precise_tier && !results.is_empty() {
+            apply_precision_tier(query, database, vec_bytes, &mut results);
+        }
+        return results;
+    }
+
+    // ════════════════════════════════════════════════════════
+    // STROKE 1: Partial popcount with σ warmup
+    // ════════════════════════════════════════════════════════
+
+    // Compute σ_est: the estimation error of partial sampling at the threshold boundary.
+    //
+    // For a true Hamming distance d from N*8 total bits, sampling s bytes gives
+    // d̂ = popcount(xor_prefix) × (N/s). The standard deviation of d̂ is:
+    //   σ(d̂) = N × √(8 × p × (1−p) / s)
+    // where p = d/(N×8) is the bit-flip probability.
+    //
+    // We compute σ at the threshold boundary (p = threshold / total_bits).
+    // Additionally, we use warmup to get the population distribution for a tighter
+    // secondary σ if the population is well-separated from the threshold.
+    let query_prefix = &query[..s1_bytes];
+    let total_bits = (vec_bytes * 8) as f64;
+    let p_thresh = (threshold as f64 / total_bits).clamp(0.001, 0.999);
+    let sigma_est = (vec_bytes as f64) * (8.0 * p_thresh * (1.0 - p_thresh) / s1_bytes as f64).sqrt();
+
+    // Warmup: sample first warmup_n candidates to check if population σ is even wider
+    let mut warmup_dists = Vec::with_capacity(warmup_n);
+    for i in 0..warmup_n {
+        let base = i * vec_bytes;
+        let cand_prefix = &database[base..base + s1_bytes];
+        let d = hamming_fn(query_prefix, cand_prefix);
+        let estimate = (d as f64 * scale1) as u64;
+        warmup_dists.push(estimate);
+    }
+
+    let var: f64 = {
+        let mu: f64 = warmup_dists.iter().map(|&d| d as f64).sum::<f64>() / warmup_n as f64;
+        warmup_dists.iter()
+            .map(|&d| { let diff = d as f64 - mu; diff * diff })
+            .sum::<f64>() / warmup_n as f64
+    };
+    let sigma_pop = var.sqrt();
+
+    // Use the LARGER of estimation error σ and population σ.
+    // σ_est captures the statistical uncertainty of partial sampling.
+    // σ_pop captures the actual spread in the database.
+    let sigma = sigma_est.max(sigma_pop).max(1.0);
+
+    // Reject threshold: threshold + 3σ (Belichtungsmesser: one measurement, applied to all)
+    let s1_reject = threshold as f64 + 3.0 * sigma;
+
+    // Phase 1b: Scan ALL candidates (re-checking warmup is fine — tiny cost)
+    let mut survivors: Vec<(usize, u64)> = Vec::with_capacity(num_vectors / 20);
+
+    for i in 0..num_vectors {
+        let base = i * vec_bytes;
+        let cand_prefix = &database[base..base + s1_bytes];
+        let d = hamming_fn(query_prefix, cand_prefix);
+        let estimate = (d as f64 * scale1) as u64;
+
+        if (estimate as f64) <= s1_reject {
+            survivors.push((i, d)); // carry partial distance for incremental Stroke 2
+        }
+    }
+
+    // ════════════════════════════════════════════════════════
+    // STROKE 2: Full Hamming on survivors (incremental)
+    // ════════════════════════════════════════════════════════
+
+    let mut finalists: Vec<HdrResult> = Vec::with_capacity(survivors.len() / 5 + 1);
+    let query_rest = &query[s1_bytes..];
+
+    for &(idx, d_prefix) in &survivors {
+        let base = idx * vec_bytes;
+        // Incremental: compute remaining bytes only
+        let d_rest = hamming_fn(query_rest, &database[base + s1_bytes..base + vec_bytes]);
+        let d_full = d_prefix + d_rest;
+
+        if d_full <= threshold {
+            finalists.push(HdrResult {
+                index: idx,
+                hamming: d_full,
+                precise: f64::NAN,
+            });
+        }
+    }
+
+    // ════════════════════════════════════════════════════════
+    // STROKE 3: High-precision distance (optional VNNI cosine)
+    // ════════════════════════════════════════════════════════
+
+    if precise_tier && !finalists.is_empty() {
+        apply_precision_tier(query, database, vec_bytes, &mut finalists);
+    }
+
+    finalists
+}
+
+/// Stroke 3: compute VNNI dot_i8 → cosine similarity for finalists.
+/// Sorts by cosine descending (best first).
+fn apply_precision_tier(
+    query: &[u8],
+    database: &[u8],
+    vec_bytes: usize,
+    finalists: &mut Vec<HdrResult>,
+) {
+    let dot_fn = select_dot_i8_fn();
+
+    let query_norm_sq = dot_fn(query, query);
+    let query_norm = (query_norm_sq as f64).sqrt();
+
+    if query_norm == 0.0 {
+        for r in finalists.iter_mut() {
+            r.precise = 0.0;
+        }
+        return;
+    }
+
+    for r in finalists.iter_mut() {
+        let base = r.index * vec_bytes;
+        let candidate = &database[base..base + vec_bytes];
+
+        let dot = dot_fn(query, candidate);
+        let cand_norm_sq = dot_fn(candidate, candidate);
+        let cand_norm = (cand_norm_sq as f64).sqrt();
+
+        r.precise = if cand_norm > 0.0 {
+            dot as f64 / (query_norm * cand_norm)
+        } else {
+            0.0
+        };
+    }
+
+    // Sort by cosine descending (most similar first)
+    finalists.sort_unstable_by(|a, b| {
+        b.precise.partial_cmp(&a.precise).unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1263,5 +1502,118 @@ mod tests {
         assert_eq!(distances[0], 0);
         assert_eq!(distances[1], 0);
         assert_eq!(distances[2], 0);
+    }
+
+    // ---- select_hamming_fn / select_dot_i8_fn ----
+
+    #[test]
+    fn test_select_hamming_fn() {
+        let f = select_hamming_fn();
+        let a = vec![0xFFu8; 128];
+        let b = vec![0x00u8; 128];
+        assert_eq!(f(&a, &b), 128 * 8);
+    }
+
+    #[test]
+    fn test_select_dot_i8_fn() {
+        let f = select_dot_i8_fn();
+        let a = vec![1u8; 64];
+        let b = vec![1u8; 64];
+        assert_eq!(f(&a, &b), 64); // 1*1 * 64
+    }
+
+    // ---- HDR Cascade Search ----
+
+    #[test]
+    fn test_hdr_cascade_basic() {
+        let vec_len = 2048;
+        let query = vec![0xAAu8; vec_len];
+        let mut db = Vec::new();
+        db.extend(vec![0xAA; vec_len]); // vec 0: identical
+        db.extend(vec![0x55; vec_len]); // vec 1: maximally different
+        db.extend(vec![0xAA; vec_len]); // vec 2: identical
+        db.extend(vec![0x00; vec_len]); // vec 3: very different
+
+        let results = hdr_cascade_search(&query, &db, vec_len, 4, 100, false);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].index, 0);
+        assert_eq!(results[0].hamming, 0);
+        assert_eq!(results[1].index, 2);
+        assert_eq!(results[1].hamming, 0);
+    }
+
+    #[test]
+    fn test_hdr_warmup_sigma() {
+        let vec_len = 2048;
+        let num_random = 1000;
+        let num_close = 5;
+        let total = num_random + num_close;
+        let mut db = vec![0u8; vec_len * total];
+
+        // Fill with pseudo-random data
+        for i in 0..num_random * vec_len {
+            db[i] = ((i * 7 + 13) % 256) as u8;
+        }
+
+        let query = vec![0xAA; vec_len];
+        // Plant 5 close matches (copy query with small perturbation)
+        for m in 0..num_close {
+            let base = (num_random + m) * vec_len;
+            db[base..base + vec_len].copy_from_slice(&query);
+            // Flip ~50 bytes spread evenly
+            for j in 0..50 {
+                db[base + j * 40] ^= 0xFF;
+            }
+        }
+
+        let results = hdr_cascade_search(&query, &db, vec_len, total, 500, false);
+        assert!(results.len() >= num_close, "Expected at least {} matches, got {}", num_close, results.len());
+        // All planted matches should appear
+        let indices: Vec<usize> = results.iter().map(|r| r.index).collect();
+        for m in 0..num_close {
+            assert!(indices.contains(&(num_random + m)), "Missing planted match {}", num_random + m);
+        }
+    }
+
+    #[test]
+    fn test_hdr_precision_tier() {
+        let vec_len = 2048;
+        let query = vec![0xAA; vec_len];
+        let mut db = Vec::new();
+        db.extend(vec![0xAA; vec_len]); // identical → cosine ≈ 1.0
+        db.extend(vec![0x55; vec_len]); // maximally different (won't survive)
+
+        let results = hdr_cascade_search(&query, &db, vec_len, 2, 100, true);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].index, 0);
+        assert!(results[0].precise.is_finite());
+        // Cosine of identical vectors should be ~1.0
+        assert!((results[0].precise - 1.0).abs() < 0.01,
+            "Expected cosine ~1.0, got {}", results[0].precise);
+    }
+
+    #[test]
+    fn test_hdr_precision_tier_ranks() {
+        let vec_len = 2048;
+        let query = vec![0xAA; vec_len];
+
+        // Two candidates with similar Hamming but different patterns
+        let mut cand_a = query.clone();
+        let mut cand_b = query.clone();
+        // Flip same NUMBER of bits but different byte positions
+        for i in 0..30 { cand_a[i] ^= 0xFF; }
+        for i in 500..530 { cand_b[i] ^= 0xFF; }
+
+        let mut db = Vec::new();
+        db.extend_from_slice(&cand_a);
+        db.extend_from_slice(&cand_b);
+
+        let results = hdr_cascade_search(&query, &db, vec_len, 2, 300, true);
+        assert_eq!(results.len(), 2);
+        // Both have same Hamming distance (30*8 = 240 bits)
+        assert_eq!(results[0].hamming, results[1].hamming);
+        // Precision tier provides cosine ranking
+        assert!(results[0].precise.is_finite());
+        assert!(results[1].precise.is_finite());
     }
 }

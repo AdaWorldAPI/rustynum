@@ -166,4 +166,10 @@ impl PyNumArrayU8 {
     fn cosine_search_adaptive(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, min_similarity: f64) -> PyResult<Vec<(usize, f64)>> {
         Ok(self.inner.cosine_search_adaptive(&database.inner, vec_len, count, min_similarity))
     }
+
+    /// HDR cascade search: 3-stroke adaptive with cosine precision tier.
+    /// Returns list of (index, hamming_distance, cosine_similarity).
+    fn hdr_search(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64) -> PyResult<Vec<(usize, u64, f64)>> {
+        Ok(self.inner.hdr_search(&database.inner, vec_len, count, threshold))
+    }
 }

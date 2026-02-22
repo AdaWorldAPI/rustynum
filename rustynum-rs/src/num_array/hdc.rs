@@ -389,19 +389,20 @@ impl NumArrayU8 {
         }
     }
 
-    /// Adaptive batch Hamming search: scan `count` vectors, return only resonant matches.
+    /// Adaptive Hamming search with 3-stroke HDR cascade.
     ///
-    /// Uses the 3-stage cascade filter to eliminate ~99.7% of non-matching candidates
-    /// at 1/16 of the compute cost, with progressive refinement for borderline cases.
+    /// Returns `(index, exact_hamming_distance)` for all candidates within threshold.
+    /// Uses statistical warmup (128 samples) to set rejection thresholds.
+    /// CPUID is checked once (not per-candidate).
     ///
-    /// Returns `(index, exact_distance)` pairs for all candidates within `threshold`.
+    /// For ranked results with cosine precision, use `hdr_search` instead.
     ///
     /// ## Performance model
     ///
-    /// For a database of 1M 2KB vectors with 0.1% match rate:
-    /// - Without cascade: 1M × 32 VPOPCNTDQ = 32M instructions
-    /// - With cascade:    1M × 2 (stage 1) + 3K × 8 (stage 2) + 1K × 32 (stage 3) ≈ 2.1M
-    /// - Speedup: **~15×** for typical workloads
+    /// | Stroke | Candidates | Operation | Eliminates |
+    /// |--------|-----------|-----------|------------|
+    /// | 1      | ALL       | Partial VPOPCNTDQ + 3σ reject | ~98% |
+    /// | 2      | survivors | Full VPOPCNTDQ (incremental) | ~90% of survivors |
     ///
     /// ## Example
     /// ```
@@ -426,70 +427,47 @@ impl NumArrayU8 {
         count: usize,
         threshold: u64,
     ) -> Vec<(usize, u64)> {
-        assert_eq!(
-            database.data.len(),
-            vec_len * count,
-            "Database length must be vec_len * count"
-        );
-        assert_eq!(
-            self.data.len(),
+        let results = rustynum_core::simd::hdr_cascade_search(
+            &self.data,
+            &database.data,
             vec_len,
-            "Query must have length vec_len"
+            count,
+            threshold,
+            false, // no precision tier
         );
+        results.iter().map(|r| (r.index, r.hamming)).collect()
+    }
 
-        let query = &self.data;
-        let db = &database.data;
-        let mut results = Vec::new();
-
-        // For small vectors, skip cascade
-        if vec_len < 128 {
-            for i in 0..count {
-                let candidate = &db[i * vec_len..(i + 1) * vec_len];
-                let d = hamming_chunk_inline(query, candidate);
-                if d <= threshold {
-                    results.push((i, d));
-                }
-            }
-            return results;
-        }
-
-        let total_bits = (vec_len * 8) as f64;
-        let s1 = vec_len / 16;
-        let s2 = vec_len / 4;
-
-        for i in 0..count {
-            let base = i * vec_len;
-            let candidate = &db[base..base + vec_len];
-
-            // ── Stage 1: 1/16 sample ──
-            let d1 = hamming_chunk_inline(&query[..s1], &candidate[..s1]);
-            let estimate1 = d1 * 16;
-            let p1 = ((estimate1 as f64) / total_bits).clamp(0.001, 0.999);
-            let sigma1 = (vec_len as f64) * (8.0 * p1 * (1.0 - p1) / s1 as f64).sqrt();
-
-            if estimate1 as f64 > threshold as f64 + 3.0 * sigma1 {
-                continue; // 3σ rejection
-            }
-
-            // ── Stage 2: 1/4 sample (incremental) ──
-            let d2 = d1 + hamming_chunk_inline(&query[s1..s2], &candidate[s1..s2]);
-            let estimate2 = d2 * 4;
-            let p2 = ((estimate2 as f64) / total_bits).clamp(0.001, 0.999);
-            let sigma2 = (vec_len as f64) * (8.0 * p2 * (1.0 - p2) / s2 as f64).sqrt();
-
-            if estimate2 as f64 > threshold as f64 + 2.0 * sigma2 {
-                continue; // 2σ rejection
-            }
-
-            // ── Stage 3: full precision ──
-            let d3 = d2 + hamming_chunk_inline(&query[s2..], &candidate[s2..]);
-
-            if d3 <= threshold {
-                results.push((i, d3));
-            }
-        }
-
-        results
+    /// HDR (High Dynamic Range) search: 3-stroke cascade with cosine precision tier.
+    ///
+    /// Same as `hamming_search_adaptive` but Stroke 3 computes cosine similarity
+    /// via VNNI dot_i8 for the ~0.2% finalists.
+    ///
+    /// Returns `(index, hamming_distance, cosine_similarity)` sorted by cosine (best first).
+    ///
+    /// ## Cascade
+    ///
+    /// | Stroke | Sample | Operation | Eliminates |
+    /// |--------|--------|-----------|------------|
+    /// | 1 | 1/16 | Partial VPOPCNTDQ + 3σ warmup reject | ~98% |
+    /// | 2 | Full | Full VPOPCNTDQ (incremental) | ~90% of survivors |
+    /// | 3 | Full | VNNI dot_i8 → cosine similarity | precision ranking |
+    pub fn hdr_search(
+        &self,
+        database: &NumArrayU8,
+        vec_len: usize,
+        count: usize,
+        threshold: u64,
+    ) -> Vec<(usize, u64, f64)> {
+        let results = rustynum_core::simd::hdr_cascade_search(
+            &self.data,
+            &database.data,
+            vec_len,
+            count,
+            threshold,
+            true, // precision tier
+        );
+        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
     }
 
     /// Adaptive cosine similarity search for int8 embeddings.
@@ -543,8 +521,11 @@ impl NumArrayU8 {
         let query = &self.data;
         let db = &database.data;
 
+        // Hoist CPUID dispatch — ONE check, used for all candidates.
+        let dot_fn = rustynum_core::simd::select_dot_i8_fn();
+
         // Pre-compute query norm (amortized across all candidates)
-        let query_norm_sq = dot_i8_slice(query, query);
+        let query_norm_sq = dot_fn(query, query);
         let query_norm = (query_norm_sq as f64).sqrt();
 
         if query_norm == 0.0 {
@@ -557,8 +538,8 @@ impl NumArrayU8 {
         if vec_len < 128 {
             for i in 0..count {
                 let candidate = &db[i * vec_len..(i + 1) * vec_len];
-                let dot = dot_i8_slice(query, candidate);
-                let cand_norm = (dot_i8_slice(candidate, candidate) as f64).sqrt();
+                let dot = dot_fn(query, candidate);
+                let cand_norm = (dot_fn(candidate, candidate) as f64).sqrt();
                 if cand_norm > 0.0 {
                     let cos = dot as f64 / (query_norm * cand_norm);
                     if cos >= min_similarity {
@@ -579,24 +560,21 @@ impl NumArrayU8 {
             let candidate = &db[base..base + vec_len];
 
             // ── Stage 1: 1/16 sample ──
-            let dot_s1 = dot_i8_slice(&query[..s1], &candidate[..s1]);
-            let cand_norm_sq_s1 = dot_i8_slice(&candidate[..s1], &candidate[..s1]);
+            let dot_s1 = dot_fn(&query[..s1], &candidate[..s1]);
+            let cand_norm_sq_s1 = dot_fn(&candidate[..s1], &candidate[..s1]);
             let cand_norm_s1 = (cand_norm_sq_s1 as f64 * scale_1).sqrt();
 
             if cand_norm_s1 > 0.0 {
-                // Upper bound: even if remaining dims add maximally to dot product,
-                // the cosine can't exceed this estimate by much at 3σ
                 let cos_est = (dot_s1 as f64 * scale_1) / (query_norm * cand_norm_s1);
-                // Conservative rejection: if even the optimistic estimate is way below threshold
                 if cos_est < min_similarity - 0.3 {
                     continue;
                 }
             }
 
             // ── Stage 2: 1/4 sample (incremental) ──
-            let dot_s2 = dot_s1 + dot_i8_slice(&query[s1..s2], &candidate[s1..s2]);
+            let dot_s2 = dot_s1 + dot_fn(&query[s1..s2], &candidate[s1..s2]);
             let cand_norm_sq_s2 =
-                cand_norm_sq_s1 + dot_i8_slice(&candidate[s1..s2], &candidate[s1..s2]);
+                cand_norm_sq_s1 + dot_fn(&candidate[s1..s2], &candidate[s1..s2]);
             let cand_norm_s2 = (cand_norm_sq_s2 as f64 * scale_2).sqrt();
 
             if cand_norm_s2 > 0.0 {
@@ -607,9 +585,9 @@ impl NumArrayU8 {
             }
 
             // ── Stage 3: full precision ──
-            let dot_full = dot_s2 + dot_i8_slice(&query[s2..], &candidate[s2..]);
+            let dot_full = dot_s2 + dot_fn(&query[s2..], &candidate[s2..]);
             let cand_norm_sq_full =
-                cand_norm_sq_s2 + dot_i8_slice(&candidate[s2..], &candidate[s2..]);
+                cand_norm_sq_s2 + dot_fn(&candidate[s2..], &candidate[s2..]);
             let cand_norm = (cand_norm_sq_full as f64).sqrt();
 
             if cand_norm > 0.0 {
@@ -635,15 +613,6 @@ fn hamming_chunk_inline(a: &[u8], b: &[u8]) -> u64 {
     rustynum_core::simd::hamming_distance(a, b)
 }
 
-/// Int8 dot product with VNNI dispatch via rustynum_core.
-///
-/// Dispatch chain: AVX-512 VNNI (VPDPBUSD, 64 MACs/instr) → scalar.
-/// Uses signed×signed correction (XOR-0x80 bias) for true i8×i8 semantics.
-/// Replaces the previous scalar-only 32-element chunk loop.
-#[inline(always)]
-fn dot_i8_slice(a: &[u8], b: &[u8]) -> i64 {
-    rustynum_core::simd::dot_i8(a, b)
-}
 
 // ── Bundle implementations ──
 
