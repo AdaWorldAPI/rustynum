@@ -31,6 +31,15 @@ pub mod datafusion_bridge;
 #[cfg(feature = "lance")]
 pub mod lance_io;
 
+#[cfg(feature = "arrow")]
+pub mod fragment_index;
+
+#[cfg(feature = "arrow")]
+pub mod channel_index;
+
+#[cfg(feature = "arrow")]
+pub mod indexed_cascade;
+
 // Re-exports for convenience
 #[cfg(feature = "arrow")]
 pub use arrow_bridge::{
@@ -45,3 +54,15 @@ pub use datafusion_bridge::{
 
 #[cfg(feature = "lance")]
 pub use lance_io::{write_cogrecords, read_cogrecords, append_cogrecords};
+
+#[cfg(feature = "arrow")]
+pub use fragment_index::{FragmentIndex, FragmentMeta};
+
+#[cfg(feature = "arrow")]
+pub use channel_index::{ChannelIndex, ClusterMeta};
+
+#[cfg(feature = "arrow")]
+pub use indexed_cascade::{
+    indexed_cascade_search, learn, rebuild,
+    CascadeIndices, IndexedCascadeResult, IndexedCascadeStats,
+};
