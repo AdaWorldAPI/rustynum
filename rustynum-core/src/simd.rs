@@ -574,6 +574,165 @@ fn hamming_scalar_popcnt(a: &[u8], b: &[u8]) -> u64 {
 }
 
 // ============================================================================
+// POPCOUNT: standalone bit counting (no XOR)
+// ============================================================================
+
+/// Count total set bits in a byte slice.
+///
+/// 3-tier dispatch:
+/// 1. VPOPCNTDQ (AVX-512): 64 bytes/iteration, 8 u64 lanes, zero waste on 2KB containers
+/// 2. AVX2 Harley-Seal: vpshufb nibble popcount, 32 bytes/iteration
+/// 3. Scalar POPCNT: u64::count_ones(), 8 bytes/iteration
+///
+/// For 2048-byte containers: 32 VPOPCNTDQ iterations (2048/64), matching u64x8 width exactly.
+pub fn popcount(a: &[u8]) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
+            return unsafe { popcount_vpopcntdq(a) };
+        }
+        if is_x86_feature_detected!("avx2") {
+            return unsafe { popcount_avx2(a) };
+        }
+    }
+    popcount_scalar(a)
+}
+
+/// VPOPCNTDQ popcount: 64 bytes per iteration (8 × u64 lanes).
+///
+/// For 2048-byte containers = 32 iterations, matching u64x8 width exactly — zero overhead.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vpopcntdq")]
+#[inline]
+unsafe fn popcount_vpopcntdq(a: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+
+    let len = a.len();
+    let chunks = len / 64; // 512 bits = 64 bytes = 8 × u64
+
+    let mut total = _mm512_setzero_si512();
+
+    for i in 0..chunks {
+        let base = i * 64;
+        let v = _mm512_loadu_si512(a[base..].as_ptr() as *const __m512i);
+        let popcnt = _mm512_popcnt_epi64(v);
+        total = _mm512_add_epi64(total, popcnt);
+    }
+
+    // Horizontal sum: 8 × i64
+    let mut vals = [0i64; 8];
+    _mm512_storeu_si512(vals.as_mut_ptr() as *mut __m512i, total);
+    let mut sum: u64 = vals.iter().map(|&v| v as u64).sum();
+
+    // Scalar tail
+    for i in (chunks * 64)..len {
+        sum += a[i].count_ones() as u64;
+    }
+
+    sum
+}
+
+/// AVX2 Harley-Seal popcount: vpshufb nibble lookup, 32 bytes per iteration.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn popcount_avx2(a: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+
+    let len = a.len();
+    let chunks = len / 32;
+
+    let low_mask = _mm256_set1_epi8(0x0f);
+    let lookup = _mm256_setr_epi8(
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+    );
+
+    let mut total = _mm256_setzero_si256();
+
+    // Process in blocks of 8 to avoid u8 saturation (max 8*32*4 = 1024 bits per byte < 255)
+    let blocks = chunks / 8;
+    for block in 0..blocks {
+        let mut local = _mm256_setzero_si256();
+        for i in 0..8 {
+            let idx = (block * 8 + i) * 32;
+            let v = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+            let lo = _mm256_and_si256(v, low_mask);
+            let hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), low_mask);
+            let cnt = _mm256_add_epi8(
+                _mm256_shuffle_epi8(lookup, lo),
+                _mm256_shuffle_epi8(lookup, hi),
+            );
+            local = _mm256_add_epi8(local, cnt);
+        }
+        let sad = _mm256_sad_epu8(local, _mm256_setzero_si256());
+        total = _mm256_add_epi64(total, sad);
+    }
+
+    // Remaining chunks
+    if blocks * 8 < chunks {
+        let mut local = _mm256_setzero_si256();
+        for i in blocks * 8..chunks {
+            let idx = i * 32;
+            let v = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+            let lo = _mm256_and_si256(v, low_mask);
+            let hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), low_mask);
+            let cnt = _mm256_add_epi8(
+                _mm256_shuffle_epi8(lookup, lo),
+                _mm256_shuffle_epi8(lookup, hi),
+            );
+            local = _mm256_add_epi8(local, cnt);
+        }
+        let sad = _mm256_sad_epu8(local, _mm256_setzero_si256());
+        total = _mm256_add_epi64(total, sad);
+    }
+
+    // Horizontal sum
+    let arr: [i64; 4] = std::mem::transmute(total);
+    let mut sum: u64 = arr.iter().map(|&v| v as u64).sum();
+
+    // Scalar tail
+    for i in (chunks * 32)..len {
+        sum += a[i].count_ones() as u64;
+    }
+
+    sum
+}
+
+/// Scalar popcount fallback: u64::count_ones() with 4x unrolling.
+#[inline]
+fn popcount_scalar(a: &[u8]) -> u64 {
+    let len = a.len();
+    let u64_chunks = len / 8;
+    let full_quads = u64_chunks / 4;
+    let mut sum: u64 = 0;
+
+    for q in 0..full_quads {
+        let base = q * 32;
+        let w0 = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap());
+        let w1 = u64::from_ne_bytes(a[base + 8..base + 16].try_into().unwrap());
+        let w2 = u64::from_ne_bytes(a[base + 16..base + 24].try_into().unwrap());
+        let w3 = u64::from_ne_bytes(a[base + 24..base + 32].try_into().unwrap());
+        sum += w0.count_ones() as u64
+            + w1.count_ones() as u64
+            + w2.count_ones() as u64
+            + w3.count_ones() as u64;
+    }
+
+    for i in full_quads * 4..u64_chunks {
+        let base = i * 8;
+        let w = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap());
+        sum += w.count_ones() as u64;
+    }
+
+    for i in u64_chunks * 8..len {
+        sum += a[i].count_ones() as u64;
+    }
+
+    sum
+}
+
+// ============================================================================
 // VNNI: INT8 dot product (VPDPBUSD) for embedding containers
 // ============================================================================
 

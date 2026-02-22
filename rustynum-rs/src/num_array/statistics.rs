@@ -227,6 +227,8 @@ where
     /// let var = array.var().item();
     /// assert!((var - 2.0).abs() < 1e-5);
     /// ```
+    // TODO(simd): REFACTOR — var() uses scalar sum-of-squared-deviations loop.
+    // Fix: SIMD sub_scalar(data, mean) → SIMD mul_array(diff, diff) → SIMD sum.
     pub fn var(&self) -> NumArray<T, Ops> {
         let n = self.data.len();
         if n == 0 {

@@ -152,6 +152,8 @@ where
     a.iter().zip(b.iter()).map(|(&x, &y)| x * y).sum()
 }
 
+// TODO(simd): REFACTOR — all 5 transpose() implementations (u8, f32, f64, i32, i64) are scalar
+// double-nested loops. Use SIMD 8x8 or 16x16 block transpose with shuffle/unpack intrinsics.
 impl SimdOps<u8> for u8x64 {
     fn transpose(src: &[u8], dst: &mut [u8], rows: usize, cols: usize) {
         for i in 0..rows {
@@ -2298,37 +2300,12 @@ fn hamming_chunk(a: &[u8], b: &[u8]) -> u64 {
 }
 
 /// Popcount for a single chunk of u8 data.
-/// Uses u64::count_ones() (POPCNT instruction) with 4× unrolling.
+///
+/// Dispatch chain: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
+/// For 2048-byte containers: 32 VPOPCNTDQ iterations, matching u64x8 width exactly.
 #[inline(always)]
 fn popcount_chunk(a: &[u8]) -> u64 {
-    let len = a.len();
-    let u64_chunks = len / 8;
-    let full_quads = u64_chunks / 4;
-    let mut total: u64 = 0;
-
-    for q in 0..full_quads {
-        let base = q * 32;
-        let w0 = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap());
-        let w1 = u64::from_ne_bytes(a[base + 8..base + 16].try_into().unwrap());
-        let w2 = u64::from_ne_bytes(a[base + 16..base + 24].try_into().unwrap());
-        let w3 = u64::from_ne_bytes(a[base + 24..base + 32].try_into().unwrap());
-        total += w0.count_ones() as u64
-            + w1.count_ones() as u64
-            + w2.count_ones() as u64
-            + w3.count_ones() as u64;
-    }
-
-    for i in full_quads * 4..u64_chunks {
-        let base = i * 8;
-        let w = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap());
-        total += w.count_ones() as u64;
-    }
-
-    for i in u64_chunks * 8..len {
-        total += a[i].count_ones() as u64;
-    }
-
-    total
+    rustynum_core::simd::popcount(a)
 }
 
 #[cfg(test)]
