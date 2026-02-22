@@ -90,12 +90,12 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 | **N3** | ~~pub(crate) field escalation~~ | ✅ CLOSED | — | Fields now private with `template()`, `template_norm()`, `update_template()` accessors. PR #25. |
 | **N5** | `debug_assert_eq!` in HammingSIMD | 🟡 Safety | 5 min | `HammingSIMD::distance()` uses `debug_assert_eq!` for length check — elided in release builds. The AVX-512 path loads 64-byte chunks via `_mm512_loadu_si512`; mismatched buffer lengths could read past allocation. **Upgrade to `assert_eq!`** (one comparison per call, negligible cost). |
 | **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. PR #25 partially addressed — `hamming_64k` delegates to `Fingerprint64K` for 1024-word case. SIMD acceleration of Fingerprint deferred. |
-| **N7** | Granger sign convention contradiction | 🔴 Correctness | 5 min | `granger_signal()` doc says G > 0 = A predicts B. Code + test prove G < 0 = A predicts B. `granger_scan()` has correct convention but prefaced with "Wait — let me clarify" debug thinking. Fix: swap G>0/G<0 descriptions in `granger_signal()`, remove debug text from `granger_scan()`. (PR #25) |
-| **N8** | `Contradiction` struct overpromises | 🟢 Naming | 10 min | Checks structural similarity only, not truth-value conflict. Should be `SimilarPair` until NARS truth values are integrated. (PR #25) |
+| **N7** | ~~Granger sign convention contradiction~~ | ✅ CLOSED | — | Fixed in PR #26. All three doc locations now say G < 0 = A predicts B. Debug thinking removed. |
+| **N8** | ~~`Contradiction` struct overpromises~~ | ✅ CLOSED | — | Renamed to `SimilarPair` in PR #26. |
 | **N9** | Flat confidence threshold in reverse_trace | 🟢 Improvement | 30 min | Uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. (PR #25) |
-| **N10** | `hamming_i8` misleading name | 🟡 Naming | 10 min | Symbol-level distance (`a[i] != b[i]` on i8), not bit-level Hamming (XOR+popcount). Every other `hamming_*` in the codebase is bit-level. Rename to `symbol_distance_i8` or `disagreement_count`. (PR #25) |
+| **N10** | ~~`hamming_i8` misleading name~~ | ✅ CLOSED | — | Renamed to `symbol_distance` in PR #26. |
 | **N11** | Clone-per-hop in `reverse_trace()` | 🟢 Latent perf | 30 min | 16KB clone per hop × depth. Fine for research. Rewrite to two pre-allocated buffers + `copy_from_slice` if it enters a batch hot loop. (PR #25) |
-| **N12** | `hamming_64k` 16KB stack copy regression | 🟡 Performance | 15 min | PR #25 delegation creates two `Fingerprint64K` via `from_word_slice` (2×8KB memcpy onto stack) to run the same `(a^b).count_ones()` loop the inline code did. Fix: add `Fingerprint::hamming_distance_slices(a: &[u64], b: &[u64]) → u32` that works on borrows, or revert to inline loop. (PR #25) |
+| **N12** | ~~`hamming_64k` 16KB stack copy regression~~ | ✅ CLOSED | — | Reverted to inline loop on borrowed slices in PR #26. Zero copies. |
 
 ---
 
