@@ -12,5 +12,6 @@ members = [
     "rustynum-carrier",
     "rustynum-focus",
     "rustynum-oracle",
+    "rustynum-clam",
     "bindings/python",
 ]

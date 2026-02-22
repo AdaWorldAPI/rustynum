@@ -1,0 +1,8 @@
+[package]
+name = "rustynum-clam"
+version = "0.1.0"
+edition = "2021"
+description = "CLAM tree, triangle-inequality search, and panCAKES compression for rustynum"
+
+[dependencies]
+rustynum-rs = { path = "../rustynum-rs" }
