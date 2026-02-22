@@ -83,4 +83,15 @@ impl PyCogRecord {
         }
         Ok(PyNumArrayU8 { inner: self.inner.container(idx).clone() })
     }
+
+    /// HDR sweep: 4-channel compound early exit with VNNI cosine on EMBED.
+    /// Returns list of (index, [4 distances], cosine_similarity) sorted by cosine.
+    fn hdr_sweep(&self, database: Vec<u8>, n: usize, thresholds: [u64; 4]) -> PyResult<Vec<(usize, [u64; 4], f64)>> {
+        if database.len() != n * 8192 {
+            return Err(PyValueError::new_err(
+                format!("Database must be n*8192={} bytes, got {}", n * 8192, database.len())
+            ));
+        }
+        Ok(self.inner.hdr_sweep(&database, n, thresholds))
+    }
 }

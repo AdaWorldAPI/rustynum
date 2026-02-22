@@ -433,7 +433,7 @@ impl NumArrayU8 {
             vec_len,
             count,
             threshold,
-            false, // no precision tier
+            rustynum_core::simd::PreciseMode::Off,
         );
         results.iter().map(|r| (r.index, r.hamming)).collect()
     }
@@ -465,7 +465,57 @@ impl NumArrayU8 {
             vec_len,
             count,
             threshold,
-            true, // precision tier
+            rustynum_core::simd::PreciseMode::Vnni,
+        );
+        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+    }
+
+    /// HDR search with f32 dequantization precision tier.
+    ///
+    /// For quantized embeddings (e.g. Jina f32 → u8). Dequantizes the ~0.2% finalists
+    /// back to f32 using scale/zero_point, then computes SIMD dot_f32 cosine.
+    /// Returns `(index, hamming_distance, cosine_similarity)` sorted by cosine (best first).
+    pub fn hdr_search_f32(
+        &self,
+        database: &NumArrayU8,
+        vec_len: usize,
+        count: usize,
+        threshold: u64,
+        scale: f32,
+        zero_point: i32,
+    ) -> Vec<(usize, u64, f64)> {
+        let results = rustynum_core::simd::hdr_cascade_search(
+            &self.data,
+            &database.data,
+            vec_len,
+            count,
+            threshold,
+            rustynum_core::simd::PreciseMode::F32 { scale, zero_point },
+        );
+        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+    }
+
+    /// HDR search with XOR Delta + INT8 residual precision tier (Case 5).
+    ///
+    /// For 3D bitpacked vectors with organic INT8 delta XOR.
+    /// Tier 1-2: Hamming on XOR delta bits.
+    /// Tier 3: Blended distance — hamming_norm * (1-w) + INT8 cosine * w.
+    /// `delta_weight` controls blend (0.0 = pure Hamming, 1.0 = pure INT8, typical 0.3).
+    pub fn hdr_search_delta(
+        &self,
+        database: &NumArrayU8,
+        vec_len: usize,
+        count: usize,
+        threshold: u64,
+        delta_weight: f32,
+    ) -> Vec<(usize, u64, f64)> {
+        let results = rustynum_core::simd::hdr_cascade_search(
+            &self.data,
+            &database.data,
+            vec_len,
+            count,
+            threshold,
+            rustynum_core::simd::PreciseMode::DeltaXor { delta_weight },
         );
         results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
     }
@@ -1302,5 +1352,53 @@ mod tests {
         let recovered_perm_tgt = &(&edge ^ &src) ^ &perm_rel;
         let recovered_tgt = recovered_perm_tgt.permute(total_bits - 2);
         assert_eq!(recovered_tgt.get_data(), tgt.get_data());
+    }
+
+    // ---- HDR search F32 dequantize tests ----
+
+    #[test]
+    fn test_hdr_search_f32_identical() {
+        let query = NumArrayU8::new(vec![200u8; 2048]);
+        let mut db_data = vec![200u8; 2048]; // identical
+        db_data.extend(vec![50u8; 2048]);    // very different
+        let db = NumArrayU8::new(db_data);
+
+        let results = query.hdr_search_f32(&db, 2048, 2, 20000, 1.0, 128);
+        assert!(!results.is_empty());
+        // Identical vector should have cosine ~1.0
+        let ident = results.iter().find(|r| r.0 == 0).unwrap();
+        assert!((ident.2 - 1.0).abs() < 0.01, "Expected ~1.0, got {}", ident.2);
+    }
+
+    // ---- HDR search delta tests ----
+
+    #[test]
+    fn test_hdr_search_delta_basic() {
+        let query = NumArrayU8::new(vec![0xAA; 2048]);
+        let mut db_data = vec![0xAA; 2048]; // identical
+        db_data.extend(vec![0x55; 2048]);   // maximally different
+        let db = NumArrayU8::new(db_data);
+
+        let results = query.hdr_search_delta(&db, 2048, 2, 100, 0.3);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, 0);
+        assert!(results[0].2.is_finite());
+    }
+
+    // ---- Backward compatibility ----
+
+    #[test]
+    fn test_hamming_search_adaptive_backward_compat() {
+        let query = NumArrayU8::new(vec![0xAA; 2048]);
+        let mut db_data = vec![0xAA; 2048]; // identical
+        db_data.extend(vec![0x55; 2048]);   // maximally different
+        db_data.extend(vec![0xAA; 2048]);   // identical
+        db_data.extend(vec![0x00; 2048]);   // different
+        let db = NumArrayU8::new(db_data);
+
+        let results = query.hamming_search_adaptive(&db, 2048, 4, 100);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], (0, 0));
+        assert_eq!(results[1], (2, 0));
     }
 }
