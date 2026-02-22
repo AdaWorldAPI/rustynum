@@ -1,3 +1,14 @@
+// TODO(simd): REFACTOR — int8_gemm has scalar quantization and fallback paths:
+// - quantize_f32_to_u8/quantize_f32_to_i8: scalar per-element quantize loops.
+//   Fix: SIMD min/max reduction, SIMD scale+round+clamp.
+// - quantize_per_channel_i8: scalar per-row quantize.
+//   Fix: SIMD abs_max per row, SIMD scale+clamp.
+// - quantize_f32_to_i4/dequantize_i4_to_f32: scalar nibble pack/unpack.
+//   Fix: SIMD byte shuffle for nibble interleave.
+// - int8_gemm_scalar: scalar triple loop fallback (no VNNI).
+//   Fix: mark as lowest tier, add AVX2 fallback with pmaddubsw+pmaddwd.
+// - B transpose: scalar double loop.
+//   Fix: SIMD 8x8 block transpose.
 //! INT8 Quantized GEMM with AVX-512 VNNI acceleration.
 //!
 //! Implements quantized matrix multiplication for inference workloads:
