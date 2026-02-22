@@ -520,6 +520,31 @@ impl NumArrayU8 {
         results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
     }
 
+    /// HDR search with BF16-structured Hamming precision tier.
+    ///
+    /// For native BF16 embeddings (2 bytes per dimension). Stroke 3 computes
+    /// weighted Hamming distance respecting IEEE 754 BF16 field structure:
+    /// sign (1 bit), exponent (8 bits), mantissa (7 bits) with configurable weights.
+    /// Returns `(index, hamming_distance, similarity)` sorted by similarity (best first).
+    pub fn hdr_search_bf16(
+        &self,
+        database: &NumArrayU8,
+        vec_len: usize,
+        count: usize,
+        threshold: u64,
+        weights: rustynum_core::bf16_hamming::BF16Weights,
+    ) -> Vec<(usize, u64, f64)> {
+        let results = rustynum_core::simd::hdr_cascade_search(
+            &self.data,
+            &database.data,
+            vec_len,
+            count,
+            threshold,
+            rustynum_core::simd::PreciseMode::BF16Hamming { weights },
+        );
+        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+    }
+
     /// Adaptive cosine similarity search for int8 embeddings.
     ///
     /// Same cascade principle as `hamming_search_adaptive`, but for int8 dot product.

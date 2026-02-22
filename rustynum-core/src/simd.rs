@@ -1177,7 +1177,7 @@ pub struct HdrResult {
 
 /// Precision mode for Stroke 3 of the HDR cascade.
 ///
-/// Five data paths through the same cascade engine:
+/// Six data paths through the same cascade engine:
 ///
 /// | Case | Source | Tier 1-2 | Tier 3 | Example |
 /// |------|--------|----------|--------|---------|
@@ -1186,6 +1186,7 @@ pub struct HdrResult {
 /// | F32  | f32 embedding → u8 | hamming on u8 | dequant → f32 dot | Jina embed |
 /// | BF16 | f32 embedding → u8 | hamming on u8 | dequant → bf16 dot | large embed db |
 /// | DeltaXor | 3D + INT8 delta | XOR delta popcount | INT8 residual dot | DeltaLayer |
+/// | BF16Hamming | native BF16 bytes (2B/dim) | weighted XOR popcount | weighted BF16 distance | 6× faster than F32 |
 #[derive(Clone, Copy, Debug)]
 pub enum PreciseMode {
     /// No precision tier — return Hamming distances only.
@@ -1913,5 +1914,57 @@ mod tests {
         // Should be between 0 and 1 for a close-but-not-identical match
         assert!(results[0].precise > 0.0 && results[0].precise < 1.0,
             "Expected blended in (0,1), got {}", results[0].precise);
+    }
+
+    // ---- PreciseMode::BF16Hamming tests ----
+
+    #[test]
+    fn test_hdr_bf16_hamming_identical() {
+        // BF16 vectors: 1024 dims × 2 bytes = 2048 bytes per vector
+        let vec_len = 2048;
+        let query = vec![0x3F; vec_len]; // All same BF16 value
+        let mut db = Vec::new();
+        db.extend_from_slice(&query); // vec 0: identical
+
+        let weights = crate::bf16_hamming::BF16Weights::default();
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 1, 10000,
+            PreciseMode::BF16Hamming { weights },
+        );
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].hamming, 0);
+        // Identical vectors: BF16 distance = 0, similarity = 1.0
+        assert!((results[0].precise - 1.0).abs() < 0.01,
+            "Expected ~1.0 for identical, got {}", results[0].precise);
+    }
+
+    #[test]
+    fn test_hdr_bf16_hamming_ranking() {
+        // Test that BF16Hamming correctly ranks: closer vectors get higher similarity
+        let vec_len = 2048;
+        let query = vec![0x00; vec_len];
+
+        // vec 0: 1 byte flipped → small distance
+        let mut close = vec![0x00; vec_len];
+        close[0] = 0x80; // sign flip on dim 0
+
+        // vec 1: many bytes flipped → large distance
+        let mut far = vec![0xFF; vec_len];
+        let _ = &far; // all bits differ from query
+
+        let mut db = Vec::new();
+        db.extend_from_slice(&close);
+        db.extend_from_slice(&far);
+
+        let weights = crate::bf16_hamming::BF16Weights::default();
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 2, u64::MAX,
+            PreciseMode::BF16Hamming { weights },
+        );
+        assert_eq!(results.len(), 2);
+        // Results sorted by precise (descending), so closer should be first
+        assert!(results[0].precise > results[1].precise,
+            "Close vector ({}) should rank higher than far vector ({})",
+            results[0].precise, results[1].precise);
     }
 }

@@ -22,12 +22,12 @@
 //! let mut bb = Blackboard::new();
 //!
 //! // Allocate GEMM operands
-//! let _ = bb.alloc_f32("A", 1024 * 1024);
-//! let _ = bb.alloc_f32("B", 1024 * 1024);
-//! let _ = bb.alloc_f32("C", 1024 * 1024);
+//! bb.alloc_f32("A", 1024 * 1024);
+//! bb.alloc_f32("B", 1024 * 1024);
+//! bb.alloc_f32("C", 1024 * 1024);
 //!
 //! // Get non-overlapping mutable slices — no borrow conflicts
-//! let (a_slice, b_slice, c_slice) = bb.borrow_3_mut_f32("A", "B", "C");
+//! let (a_slice, b_slice, c_slice) = bb.borrow_3_mut_f32("A", "B", "C").unwrap();
 //!
 //! // Fill A and B, compute into C — all zero-copy
 //! a_slice.fill(1.0);
@@ -170,166 +170,169 @@ impl Blackboard {
         );
     }
 
-    /// Get an immutable f32 slice for the named buffer.
-    pub fn get_f32(&self, name: &str) -> &[f32] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::F32, "Buffer is not f32");
-        if meta.len_elements == 0 {
-            return &[];
+    /// Helper: look up a buffer and verify its dtype.
+    fn meta_checked(&self, name: &str, expected: DType) -> Option<&BufferMeta> {
+        let meta = self.buffers.get(name)?;
+        if meta.dtype != expected {
+            return None;
         }
-        unsafe { std::slice::from_raw_parts(meta.ptr as *const f32, meta.len_elements) }
+        Some(meta)
+    }
+
+    /// Get an immutable f32 slice for the named buffer.
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't f32.
+    pub fn get_f32(&self, name: &str) -> Option<&[f32]> {
+        let meta = self.meta_checked(name, DType::F32)?;
+        if meta.len_elements == 0 {
+            return Some(&[]);
+        }
+        Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const f32, meta.len_elements) })
     }
 
     /// Get a mutable f32 slice for the named buffer.
-    pub fn get_f32_mut(&mut self, name: &str) -> &mut [f32] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::F32, "Buffer is not f32");
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't f32.
+    pub fn get_f32_mut(&mut self, name: &str) -> Option<&mut [f32]> {
+        let meta = self.meta_checked(name, DType::F32)?;
         if meta.len_elements == 0 {
-            return &mut [];
+            return Some(&mut []);
         }
-        unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f32, meta.len_elements) }
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f32, meta.len_elements) })
     }
 
     /// Get an immutable f64 slice for the named buffer.
-    pub fn get_f64(&self, name: &str) -> &[f64] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::F64, "Buffer is not f64");
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't f64.
+    pub fn get_f64(&self, name: &str) -> Option<&[f64]> {
+        let meta = self.meta_checked(name, DType::F64)?;
         if meta.len_elements == 0 {
-            return &[];
+            return Some(&[]);
         }
-        unsafe { std::slice::from_raw_parts(meta.ptr as *const f64, meta.len_elements) }
+        Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const f64, meta.len_elements) })
     }
 
     /// Get a mutable f64 slice for the named buffer.
-    pub fn get_f64_mut(&mut self, name: &str) -> &mut [f64] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::F64, "Buffer is not f64");
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't f64.
+    pub fn get_f64_mut(&mut self, name: &str) -> Option<&mut [f64]> {
+        let meta = self.meta_checked(name, DType::F64)?;
         if meta.len_elements == 0 {
-            return &mut [];
+            return Some(&mut []);
         }
-        unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f64, meta.len_elements) }
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f64, meta.len_elements) })
     }
 
     /// Get an immutable u8 slice for the named buffer.
-    pub fn get_u8(&self, name: &str) -> &[u8] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::U8, "Buffer is not u8");
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't u8.
+    pub fn get_u8(&self, name: &str) -> Option<&[u8]> {
+        let meta = self.meta_checked(name, DType::U8)?;
         if meta.len_elements == 0 {
-            return &[];
+            return Some(&[]);
         }
-        unsafe { std::slice::from_raw_parts(meta.ptr as *const u8, meta.len_elements) }
+        Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const u8, meta.len_elements) })
     }
 
     /// Get a mutable u8 slice for the named buffer.
-    pub fn get_u8_mut(&mut self, name: &str) -> &mut [u8] {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        assert_eq!(meta.dtype, DType::U8, "Buffer is not u8");
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't u8.
+    pub fn get_u8_mut(&mut self, name: &str) -> Option<&mut [u8]> {
+        let meta = self.meta_checked(name, DType::U8)?;
         if meta.len_elements == 0 {
-            return &mut [];
+            return Some(&mut []);
         }
-        unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut u8, meta.len_elements) }
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut u8, meta.len_elements) })
     }
 
     /// Split-borrow: get 2 non-overlapping mutable f32 slices simultaneously.
     ///
-    /// # Safety invariant
-    ///
-    /// Sound because: (1) `&mut self` guarantees exclusive access to the Blackboard,
-    /// (2) `assert_ne!` prevents aliasing the same buffer, and (3) different named
-    /// buffers are different heap allocations that cannot overlap. The `&BufferMeta`
-    /// references from HashMap::get are only used to read the pointer and length —
-    /// they do not alias with the heap data the pointer refers to.
+    /// Returns `None` if either buffer doesn't exist or isn't f32.
     ///
     /// # Panics
     ///
-    /// Panics if names are the same or buffers don't exist.
-    pub fn borrow_2_mut_f32<'a>(&'a mut self, a: &str, b: &str) -> (&'a mut [f32], &'a mut [f32]) {
+    /// Panics if names are the same (logic error — aliasing would be unsound).
+    pub fn borrow_2_mut_f32<'a>(&'a mut self, a: &str, b: &str) -> Option<(&'a mut [f32], &'a mut [f32])> {
         assert_ne!(a, b, "Cannot borrow the same buffer twice mutably");
-        let ma = self.buffers.get(a).expect("Buffer A not found");
-        let mb = self.buffers.get(b).expect("Buffer B not found");
-        assert_eq!(ma.dtype, DType::F32);
-        assert_eq!(mb.dtype, DType::F32);
+        let ma = self.meta_checked(a, DType::F32)?;
+        let mb = self.meta_checked(b, DType::F32)?;
         // Safety: &mut self → exclusive access. Names are distinct → pointers are
-        // to different heap allocations. We only read ptr/len from &BufferMeta
-        // (which lives in the HashMap), then create &mut [f32] from the heap pointer
-        // (which is a separate allocation). No aliasing.
+        // to different heap allocations. No aliasing.
         unsafe {
-            (
+            Some((
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f32, ma.len_elements),
                 std::slice::from_raw_parts_mut(mb.ptr as *mut f32, mb.len_elements),
-            )
+            ))
         }
     }
 
     /// Split-borrow: get 3 non-overlapping mutable f32 slices simultaneously.
     /// This is the key pattern for GEMM: A, B, C all mutable at once.
     ///
-    /// # Safety invariant
-    ///
-    /// Same as `borrow_2_mut_f32` — `&mut self` + distinct names + separate allocations.
+    /// Returns `None` if any buffer doesn't exist or isn't f32.
     ///
     /// # Panics
     ///
-    /// Panics if any names are the same or buffers don't exist.
+    /// Panics if any names are the same (logic error — aliasing would be unsound).
     pub fn borrow_3_mut_f32<'a>(
         &'a mut self,
         a: &str,
         b: &str,
         c: &str,
-    ) -> (&'a mut [f32], &'a mut [f32], &'a mut [f32]) {
+    ) -> Option<(&'a mut [f32], &'a mut [f32], &'a mut [f32])> {
         assert!(a != b && b != c && a != c, "Buffer names must be distinct");
-        let ma = self.buffers.get(a).expect("Buffer A not found");
-        let mb = self.buffers.get(b).expect("Buffer B not found");
-        let mc = self.buffers.get(c).expect("Buffer C not found");
-        assert_eq!(ma.dtype, DType::F32);
-        assert_eq!(mb.dtype, DType::F32);
-        assert_eq!(mc.dtype, DType::F32);
+        let ma = self.meta_checked(a, DType::F32)?;
+        let mb = self.meta_checked(b, DType::F32)?;
+        let mc = self.meta_checked(c, DType::F32)?;
         unsafe {
-            (
+            Some((
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f32, ma.len_elements),
                 std::slice::from_raw_parts_mut(mb.ptr as *mut f32, mb.len_elements),
                 std::slice::from_raw_parts_mut(mc.ptr as *mut f32, mc.len_elements),
-            )
+            ))
         }
     }
 
     /// Split-borrow: get 3 non-overlapping mutable f64 slices simultaneously.
     ///
+    /// Returns `None` if any buffer doesn't exist or isn't f64.
+    ///
     /// # Panics
     ///
-    /// Panics if any names are the same or buffers don't exist.
+    /// Panics if any names are the same (logic error — aliasing would be unsound).
     pub fn borrow_3_mut_f64<'a>(
         &'a mut self,
         a: &str,
         b: &str,
         c: &str,
-    ) -> (&'a mut [f64], &'a mut [f64], &'a mut [f64]) {
+    ) -> Option<(&'a mut [f64], &'a mut [f64], &'a mut [f64])> {
         assert!(a != b && b != c && a != c, "Buffer names must be distinct");
-        let ma = self.buffers.get(a).expect("Buffer A not found");
-        let mb = self.buffers.get(b).expect("Buffer B not found");
-        let mc = self.buffers.get(c).expect("Buffer C not found");
-        assert_eq!(ma.dtype, DType::F64);
-        assert_eq!(mb.dtype, DType::F64);
-        assert_eq!(mc.dtype, DType::F64);
+        let ma = self.meta_checked(a, DType::F64)?;
+        let mb = self.meta_checked(b, DType::F64)?;
+        let mc = self.meta_checked(c, DType::F64)?;
         unsafe {
-            (
+            Some((
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f64, ma.len_elements),
                 std::slice::from_raw_parts_mut(mb.ptr as *mut f64, mb.len_elements),
                 std::slice::from_raw_parts_mut(mc.ptr as *mut f64, mc.len_elements),
-            )
+            ))
         }
     }
 
     /// Get the raw pointer and length for a named buffer (for FFI or advanced usage).
-    pub fn raw_ptr(&self, name: &str) -> (*mut u8, usize, DType) {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        (meta.ptr, meta.len_elements, meta.dtype)
+    ///
+    /// Returns `None` if the buffer doesn't exist.
+    pub fn raw_ptr(&self, name: &str) -> Option<(*mut u8, usize, DType)> {
+        let meta = self.buffers.get(name)?;
+        Some((meta.ptr, meta.len_elements, meta.dtype))
     }
 
     /// Returns the number of elements in a named buffer.
-    pub fn len(&self, name: &str) -> usize {
-        let meta = self.buffers.get(name).expect("Buffer not found");
-        meta.len_elements
+    ///
+    /// Returns `None` if the buffer doesn't exist.
+    pub fn len(&self, name: &str) -> Option<usize> {
+        let meta = self.buffers.get(name)?;
+        Some(meta.len_elements)
     }
 
     /// Check if a named buffer exists.
@@ -362,29 +365,29 @@ mod tests {
     fn test_alloc_and_access_f32() {
         let mut bb = Blackboard::new();
         bb.alloc_f32("test", 1024);
-        let slice = bb.get_f32_mut("test");
+        let slice = bb.get_f32_mut("test").unwrap();
         assert_eq!(slice.len(), 1024);
         // Should be zero-initialized
         assert!(slice.iter().all(|&x| x == 0.0));
         slice[0] = 42.0;
-        assert_eq!(bb.get_f32("test")[0], 42.0);
+        assert_eq!(bb.get_f32("test").unwrap()[0], 42.0);
     }
 
     #[test]
     fn test_alloc_and_access_f64() {
         let mut bb = Blackboard::new();
         bb.alloc_f64("test", 512);
-        let slice = bb.get_f64_mut("test");
+        let slice = bb.get_f64_mut("test").unwrap();
         assert_eq!(slice.len(), 512);
         slice[0] = 99.0;
-        assert_eq!(bb.get_f64("test")[0], 99.0);
+        assert_eq!(bb.get_f64("test").unwrap()[0], 99.0);
     }
 
     #[test]
     fn test_alignment() {
         let mut bb = Blackboard::new();
         bb.alloc_f32("aligned", 256);
-        let (ptr, _, _) = bb.raw_ptr("aligned");
+        let (ptr, _, _) = bb.raw_ptr("aligned").unwrap();
         assert_eq!(ptr as usize % ALIGNMENT, 0, "Buffer not 64-byte aligned");
     }
 
@@ -395,7 +398,7 @@ mod tests {
         bb.alloc_f32("B", 16);
         bb.alloc_f32("C", 16);
 
-        let (a, b, c) = bb.borrow_3_mut_f32("A", "B", "C");
+        let (a, b, c) = bb.borrow_3_mut_f32("A", "B", "C").unwrap();
         a.fill(1.0);
         b.fill(2.0);
         c.fill(0.0);
@@ -418,12 +421,12 @@ mod tests {
     fn test_realloc_overwrites() {
         let mut bb = Blackboard::new();
         bb.alloc_f32("buf", 8);
-        bb.get_f32_mut("buf")[0] = 42.0;
+        bb.get_f32_mut("buf").unwrap()[0] = 42.0;
         // Re-allocate with different size
         bb.alloc_f32("buf", 16);
-        assert_eq!(bb.len("buf"), 16);
+        assert_eq!(bb.len("buf").unwrap(), 16);
         // Should be zero-initialized again
-        assert_eq!(bb.get_f32("buf")[0], 0.0);
+        assert_eq!(bb.get_f32("buf").unwrap()[0], 0.0);
     }
 
     #[test]
@@ -441,7 +444,7 @@ mod tests {
         bb.alloc_f32("X", 8);
         bb.alloc_f32("Y", 8);
 
-        let (x, y) = bb.borrow_2_mut_f32("X", "Y");
+        let (x, y) = bb.borrow_2_mut_f32("X", "Y").unwrap();
         x.fill(3.0);
         y.fill(7.0);
 
@@ -456,7 +459,7 @@ mod tests {
         bb.alloc_f64("B", 8);
         bb.alloc_f64("C", 8);
 
-        let (a, b, c) = bb.borrow_3_mut_f64("A", "B", "C");
+        let (a, b, c) = bb.borrow_3_mut_f64("A", "B", "C").unwrap();
         a.fill(1.0);
         b.fill(2.0);
         c.fill(3.0);
@@ -467,15 +470,18 @@ mod tests {
     }
 
     #[test]
-    fn test_not_send_not_sync() {
-        // Compile-time proof that Blackboard is !Send and !Sync
-        // (due to *mut u8 in BufferMeta).
-        fn assert_not_send<T: Send>() {}
-        fn assert_not_sync<T: Sync>() {}
-        // Uncomment to verify — these would fail to compile:
-        // assert_not_send::<Blackboard>();
-        // assert_not_sync::<Blackboard>();
-        let _ = assert_not_send::<()>;
-        let _ = assert_not_sync::<()>;
+    fn test_missing_buffer_returns_none() {
+        let bb = Blackboard::new();
+        assert!(bb.get_f32("nonexistent").is_none());
+        assert!(bb.len("nonexistent").is_none());
+        assert!(bb.raw_ptr("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_wrong_dtype_returns_none() {
+        let mut bb = Blackboard::new();
+        bb.alloc_f32("buf", 8);
+        assert!(bb.get_f64("buf").is_none());
+        assert!(bb.get_u8("buf").is_none());
     }
 }

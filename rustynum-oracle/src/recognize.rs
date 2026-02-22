@@ -176,7 +176,8 @@ impl Projector64K {
     /// without regenerating random numbers (copy from arena, not zero-copy).
     pub fn write_to_blackboard(&self, bb: &mut Blackboard, name: &str) {
         bb.alloc_f32(name, self.hyperplanes_flat.len());
-        let buf = bb.get_f32_mut(name);
+        let buf = bb.get_f32_mut(name)
+            .expect("write_to_blackboard: buffer just allocated, should exist");
         buf.copy_from_slice(&self.hyperplanes_flat);
     }
 
@@ -186,15 +187,19 @@ impl Projector64K {
     /// owned buffer — avoids regenerating random numbers, not zero-copy.
     /// Use this when the same hyperplanes need to be reused across multiple
     /// experiments at the same dimensionality.
-    pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Self {
+    ///
+    /// Returns `None` if the buffer doesn't exist, isn't f32, or has wrong length.
+    pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Option<Self> {
         assert!(num_planes > 0 && num_planes % 8 == 0);
-        let buf = bb.get_f32(name);
-        assert_eq!(buf.len(), num_planes * d);
-        Self {
+        let buf = bb.get_f32(name)?;
+        if buf.len() != num_planes * d {
+            return None;
+        }
+        Some(Self {
             hyperplanes_flat: buf.to_vec(),
             d,
             num_planes,
-        }
+        })
     }
 }
 
@@ -818,7 +823,8 @@ fn run_recognition_sweep_with_planes(num_planes: usize) -> Vec<ExperimentResult>
                 let channels = (nc * 2).max(16).min(d / 4);
                 for &noise in &noise_levels {
                     // Reconstruct projector from blackboard (copy, no RNG)
-                    let projector = Projector64K::from_blackboard(&bb, &buf_name, d, num_planes);
+                    let projector = Projector64K::from_blackboard(&bb, &buf_name, d, num_planes)
+                        .expect("projector buffer should exist in blackboard");
                     let (result, _) = run_recognition_experiment_with_projector(
                         d, base, channels, nc,
                         3,     // examples_per_class

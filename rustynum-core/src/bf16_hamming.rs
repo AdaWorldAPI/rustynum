@@ -10,6 +10,7 @@
 //! For 1024-D Jina embedding: 2KB per vector.
 
 use smallvec::SmallVec;
+use std::sync::OnceLock;
 
 // ---------------------------------------------------------------------------
 // Weights
@@ -227,14 +228,20 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 // ---------------------------------------------------------------------------
 
 /// Select the fastest BF16-structured Hamming implementation for this CPU.
+///
+/// The result is cached in a `OnceLock` — the CPUID probe runs at most once.
+/// Safe to call in hot loops.
 pub fn select_bf16_hamming_fn() -> fn(&[u8], &[u8], &BF16Weights) -> u64 {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
-            return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
+    static FN: OnceLock<fn(&[u8], &[u8], &BF16Weights) -> u64> = OnceLock::new();
+    *FN.get_or_init(|| {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
+                return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
+            }
         }
-    }
-    bf16_hamming_scalar
+        bf16_hamming_scalar
+    })
 }
 
 // ---------------------------------------------------------------------------

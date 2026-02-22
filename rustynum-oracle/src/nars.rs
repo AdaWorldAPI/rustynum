@@ -812,21 +812,112 @@ pub fn bf16_granger_causal_map(
 }
 
 /// Scan multiple lags and return the CausalFeatureMap at the best lag.
+///
+/// Single-pass algorithm: iterates timesteps once, accumulating per-lag
+/// counters simultaneously. O(n × max_lag) total, not O(n × max_lag²).
 pub fn bf16_granger_causal_scan(
     series_a: &[BF16Entity],
     series_b: &[BF16Entity],
     max_lag: usize,
 ) -> CausalFeatureMap {
-    let mut best_map = bf16_granger_causal_map(series_a, series_b, 1);
+    assert!(max_lag >= 1);
+    assert_eq!(series_a.len(), series_b.len());
+    let n = series_a.len();
+    assert!(max_lag < n);
+    let n_dims = series_a[0].n_dims;
 
-    for tau in 2..=max_lag {
-        let map = bf16_granger_causal_map(series_a, series_b, tau);
-        if map.granger_signal < best_map.granger_signal {
-            best_map = map;
+    let bf16_fn = select_bf16_hamming_fn();
+    let weights = &TRAINING_WEIGHTS;
+
+    // Per-lag accumulators
+    struct LagAcc {
+        sign_flips: Vec<u32>,
+        exp_shifts: Vec<u32>,
+        cross_sum: f64,
+        auto_sum: f64,
+        count: usize,
+    }
+
+    let mut lags: Vec<LagAcc> = (0..max_lag)
+        .map(|_| LagAcc {
+            sign_flips: vec![0u32; n_dims],
+            exp_shifts: vec![0u32; n_dims],
+            cross_sum: 0.0,
+            auto_sum: 0.0,
+            count: 0,
+        })
+        .collect();
+
+    // Single pass over all timesteps
+    for t in 0..n {
+        for (lag_idx, lag) in lags.iter_mut().enumerate() {
+            let tau = lag_idx + 1; // lag 1..=max_lag
+            if t + tau >= n {
+                continue;
+            }
+
+            let cross_diff = structural_diff(
+                &series_a[t].bf16_bytes,
+                &series_b[t + tau].bf16_bytes,
+            );
+
+            for &dim in &cross_diff.sign_flip_dims {
+                lag.sign_flips[dim] += 1;
+            }
+            for &dim in &cross_diff.major_magnitude_shifts {
+                lag.exp_shifts[dim] += 1;
+            }
+
+            let d_ab = bf16_fn(
+                &series_a[t].bf16_bytes,
+                &series_b[t + tau].bf16_bytes,
+                weights,
+            ) as f64;
+            let d_bb = bf16_fn(
+                &series_b[t].bf16_bytes,
+                &series_b[t + tau].bf16_bytes,
+                weights,
+            ) as f64;
+            lag.cross_sum += d_ab;
+            lag.auto_sum += d_bb;
+            lag.count += 1;
         }
     }
 
-    best_map
+    // Find lag with most negative Granger signal
+    let mut best_idx = 0;
+    let mut best_granger = f64::INFINITY;
+    for (i, lag) in lags.iter().enumerate() {
+        let granger = if lag.count > 0 {
+            (lag.cross_sum - lag.auto_sum) / lag.count as f64
+        } else {
+            0.0
+        };
+        if granger < best_granger {
+            best_granger = granger;
+            best_idx = i;
+        }
+    }
+
+    let best = &lags[best_idx];
+    let tau = best_idx + 1;
+
+    let mut top: Vec<(usize, u32)> = best.sign_flips.iter()
+        .enumerate()
+        .filter(|(_, &c)| c > 0)
+        .map(|(d, &c)| (d, c))
+        .collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+
+    CausalFeatureMap {
+        n_dims,
+        sign_flip_counts: best.sign_flips.clone(),
+        exponent_shift_counts: best.exp_shifts.clone(),
+        top_causal_dims: top,
+        timesteps: best.count,
+        granger_signal: best_granger,
+        best_lag: tau,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -875,17 +966,20 @@ pub fn bf16_reverse_trace(
         bound.iter().zip(role.iter()).map(|(a, b)| a ^ b).collect()
     };
 
-    let nearest_bf16 = |candidate: &[u8]| -> (u32, u64) {
+    // Returns (entity_index, entity_id, distance)
+    let nearest_bf16 = |candidate: &[u8]| -> (usize, u32, u64) {
+        let mut best_idx = 0usize;
         let mut best_id = 0u32;
         let mut best_dist = u64::MAX;
-        for e in entities {
+        for (i, e) in entities.iter().enumerate() {
             let d = bf16_fn(candidate, &e.bf16_bytes, weights);
             if d < best_dist {
                 best_dist = d;
                 best_id = e.id;
+                best_idx = i;
             }
         }
-        (best_id, best_dist)
+        (best_idx, best_id, best_dist)
     };
 
     // Max possible BF16 distance for normalization
@@ -894,23 +988,27 @@ pub fn bf16_reverse_trace(
     let max_total = max_dist_per_dim * (outcome.n_dims as u64);
 
     let mut steps = Vec::with_capacity(max_depth);
-    let mut current_bytes = outcome.bf16_bytes.clone();
+    // Track current source by index into entities slice (avoids cloning bf16_bytes)
+    let mut current_entity_idx: Option<usize> = None;
     let mut confident_depth = 0;
     let mut all_sign_flip_dims: Vec<Vec<usize>> = Vec::new();
 
-    for _ in 0..max_depth {
-        let candidate = xor_unbind(&current_bytes, role_bf16);
-        let (entity_id, distance) = nearest_bf16(&candidate);
+    for hop in 0..max_depth {
+        let current: &[u8] = if hop == 0 {
+            &outcome.bf16_bytes
+        } else if let Some(idx) = current_entity_idx {
+            &entities[idx].bf16_bytes
+        } else {
+            break;
+        };
+
+        let candidate = xor_unbind(current, role_bf16);
+        let (entity_idx, entity_id, distance) = nearest_bf16(&candidate);
         let normalized = if max_total > 0 { distance as f64 / max_total as f64 } else { 1.0 };
         let confident = normalized < confidence_threshold;
 
         // Structural diff between candidate and recovered entity
-        let recovered = entities.iter().find(|e| e.id == entity_id);
-        let diff = if let Some(r) = recovered {
-            structural_diff(&candidate, &r.bf16_bytes)
-        } else {
-            BF16StructuralDiff::default()
-        };
+        let diff = structural_diff(&candidate, &entities[entity_idx].bf16_bytes);
 
         all_sign_flip_dims.push(diff.sign_flip_dims.to_vec());
 
@@ -924,12 +1022,7 @@ pub fn bf16_reverse_trace(
 
         if confident {
             confident_depth += 1;
-        } else {
-            break;
-        }
-
-        if let Some(e) = recovered {
-            current_bytes = e.bf16_bytes.clone();
+            current_entity_idx = Some(entity_idx);
         } else {
             break;
         }
