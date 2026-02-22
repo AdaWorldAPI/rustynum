@@ -259,38 +259,6 @@ pub fn approx_hamming_candidates(
     distances
 }
 
-/// Two-stage Hamming search with prefix prefilter.
-///
-/// # Deprecated
-///
-/// This function delegates to `hdr_cascade_search` with `PreciseMode::Off`.
-/// The `prefix_bytes` and `prefilter_k` parameters are ignored.
-/// Use `hdr_cascade_search` directly for full control over cascade behavior.
-#[deprecated(since = "0.5.0", note = "Use hdr_cascade_search directly. prefix_bytes and prefilter_k are ignored.")]
-pub fn two_stage_hamming_search(
-    query: &[u8],
-    database: &[u8],
-    bytes_per_vec: usize,
-    n_vectors: usize,
-    _prefix_bytes: usize, // now handled internally by cascade
-    _prefilter_k: usize,  // now handled by σ threshold
-    final_k: usize,
-) -> Vec<(usize, u32)> {
-    // Heuristic threshold: 50% bit distance (bytes_per_vec * 8 bits * 0.5 = bytes * 4).
-    // This admits candidates with up to half their bits differing from the query.
-    // For tighter control, use hdr_cascade_search directly with an explicit threshold.
-    let threshold = (bytes_per_vec * 4) as u64;
-
-    let mut results = crate::simd::hdr_cascade_search(
-        query, database, bytes_per_vec, n_vectors, threshold,
-        crate::simd::PreciseMode::Off,
-    );
-
-    results.sort_unstable_by_key(|r| r.hamming);
-    results.truncate(final_k);
-    results.iter().map(|r| (r.index, r.hamming as u32)).collect()
-}
-
 /// INT8 approximate standard deviation per column.
 /// Useful for feature selection: prune low-variance columns before GEMM.
 pub fn approx_column_std(
@@ -403,31 +371,6 @@ mod tests {
         assert_eq!(results[0].1, 0);
         assert_eq!(results[1].0, 7);  // 1 bit different
         assert_eq!(results[1].1, 1);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_two_stage_hamming() {
-        let bytes_per_vec = 128; // 1024-bit vectors
-        let n_vectors = 200;
-        let query = vec![0xCCu8; bytes_per_vec];
-        let mut db = vec![0u8; n_vectors * bytes_per_vec];
-
-        // Plant known close vectors
-        db[50 * bytes_per_vec..(50 + 1) * bytes_per_vec].copy_from_slice(&query);
-        db[100 * bytes_per_vec..(100 + 1) * bytes_per_vec].copy_from_slice(&query);
-        db[100 * bytes_per_vec] ^= 0x03; // 2 bits different
-
-        let results = two_stage_hamming_search(
-            &query, &db, bytes_per_vec, n_vectors,
-            16,   // prefix: use first 16 bytes for prefiltering
-            20,   // prefilter: keep top 20 candidates
-            3,    // final: return top 3
-        );
-
-        assert!(results.len() <= 3);
-        assert_eq!(results[0].0, 50);  // exact match
-        assert_eq!(results[0].1, 0);
     }
 
     #[test]

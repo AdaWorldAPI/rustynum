@@ -912,7 +912,7 @@ pub fn bf16_reverse_trace(
             BF16StructuralDiff::default()
         };
 
-        all_sign_flip_dims.push(diff.sign_flip_dims.clone());
+        all_sign_flip_dims.push(diff.sign_flip_dims.to_vec());
 
         steps.push(BF16TraceStep {
             entity_id,
@@ -1012,14 +1012,14 @@ pub fn classify_learning_event(
     let interpretation = match (diff.sign_flips, diff.major_magnitude_shifts.len()) {
         (0, 0) => LearningInterpretation::Noise,
         (0, _) => LearningInterpretation::AttentionShift {
-            dims: diff.major_magnitude_shifts.clone(),
+            dims: diff.major_magnitude_shifts.to_vec(),
         },
         (_, 0) => LearningInterpretation::SemanticReversal {
-            dims: diff.sign_flip_dims.clone(),
+            dims: diff.sign_flip_dims.to_vec(),
         },
         (_, _) => LearningInterpretation::MajorUpdate {
-            sign_dims: diff.sign_flip_dims.clone(),
-            magnitude_dims: diff.major_magnitude_shifts.clone(),
+            sign_dims: diff.sign_flip_dims.to_vec(),
+            magnitude_dims: diff.major_magnitude_shifts.to_vec(),
         },
     };
 

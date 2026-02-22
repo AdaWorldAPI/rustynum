@@ -9,6 +9,8 @@
 //! Storage: 2 bytes per dimension (same as BF16).
 //! For 1024-D Jina embedding: 2KB per vector.
 
+use smallvec::SmallVec;
+
 // ---------------------------------------------------------------------------
 // Weights
 // ---------------------------------------------------------------------------
@@ -25,8 +27,28 @@ pub struct BF16Weights {
     pub mantissa: u16,
 }
 
+impl BF16Weights {
+    /// Create custom weights with overflow validation.
+    ///
+    /// The AVX-512 path accumulates `sign + 8×exponent + 7×mantissa` per BF16
+    /// pair in a u16 lane before widening to u32. This must not exceed 65535.
+    ///
+    /// Panics if the per-element maximum exceeds u16 range.
+    pub fn new(sign: u16, exponent: u16, mantissa: u16) -> Self {
+        let max_per_elem = sign as u32 + 8 * exponent as u32 + 7 * mantissa as u32;
+        assert!(
+            max_per_elem <= 65535,
+            "BF16Weights overflow: sign({}) + 8×exp({}) + 7×man({}) = {} > 65535. \
+             The AVX-512 path would silently wrap in u16 lanes.",
+            sign, exponent, mantissa, max_per_elem,
+        );
+        Self { sign, exponent, mantissa }
+    }
+}
+
 impl Default for BF16Weights {
     fn default() -> Self {
+        // 256 + 8×16 + 7×1 = 391 — safe
         Self { sign: 256, exponent: 16, mantissa: 1 }
     }
 }
@@ -258,6 +280,9 @@ pub fn bf16_bytes_to_fp32(bytes: &[u8]) -> Vec<f32> {
 /// Returns per-dimension breakdown of what changed:
 /// sign flips, exponent changes, mantissa changes.
 /// This is the "structural gradient" — actionable learning signal.
+///
+/// Uses `SmallVec<[usize; 32]>` for dimension indices to avoid heap allocation
+/// in the common case (≤32 sign flips or magnitude shifts per diff).
 #[derive(Clone, Debug, Default)]
 pub struct BF16StructuralDiff {
     /// Number of dimensions where the sign flipped.
@@ -267,9 +292,9 @@ pub struct BF16StructuralDiff {
     /// Number of mantissa bits that changed (total across all dims).
     pub mantissa_bits_changed: usize,
     /// Indices of dimensions where sign flipped.
-    pub sign_flip_dims: Vec<usize>,
+    pub sign_flip_dims: SmallVec<[usize; 32]>,
     /// Indices of dimensions with exponent change >= 2 bits (magnitude shift >= 4x).
-    pub major_magnitude_shifts: Vec<usize>,
+    pub major_magnitude_shifts: SmallVec<[usize; 32]>,
 }
 
 pub fn structural_diff(a: &[u8], b: &[u8]) -> BF16StructuralDiff {
@@ -380,7 +405,7 @@ mod tests {
         let b = fp32_to_bf16_bytes(&[1.0, -2.0, 3.0, -4.0]);
         let diff = structural_diff(&a, &b);
         assert_eq!(diff.sign_flips, 2);
-        assert_eq!(diff.sign_flip_dims, vec![1, 3]);
+        assert_eq!(diff.sign_flip_dims.as_slice(), &[1, 3]);
     }
 
     #[test]
@@ -497,5 +522,28 @@ mod tests {
         let d_exp = bf16_hamming_scalar(&a, &big_exp, &w);
         assert!(d_sign > d_exp,
             "Sign flip ({}) should cost more than exponent shift ({})", d_sign, d_exp);
+    }
+
+    #[test]
+    fn test_weights_new_valid() {
+        let w = BF16Weights::new(256, 16, 1);
+        assert_eq!(w.sign, 256);
+        assert_eq!(w.exponent, 16);
+        assert_eq!(w.mantissa, 1);
+    }
+
+    #[test]
+    fn test_weights_new_max_safe() {
+        // Exactly at the limit: 65535 = sign + 8*exp + 7*man
+        // e.g. 0 + 8*8191 + 7*1 = 65535
+        let w = BF16Weights::new(0, 8191, 1);
+        assert_eq!(w.exponent, 8191);
+    }
+
+    #[test]
+    #[should_panic(expected = "BF16Weights overflow")]
+    fn test_weights_new_overflow_panics() {
+        // 4096 + 8*4096 + 7*4096 = 4096 + 32768 + 28672 = 65536 — wraps!
+        BF16Weights::new(4096, 4096, 4096);
     }
 }
