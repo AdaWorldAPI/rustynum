@@ -223,6 +223,23 @@ pub fn bf16_gemm_f32(
     assert!(b.len() >= k * n);
     assert!(c.len() >= m * n);
 
+    #[cfg(feature = "mkl")]
+    {
+        // BF16 is #[repr(transparent)] wrapping u16, safe to cast pointer
+        unsafe {
+            rustynum_core::mkl_ffi::cblas_gemm_bf16bf16f32(
+                101, // CblasRowMajor
+                111, // CblasNoTrans
+                111, // CblasNoTrans
+                m as i32, n as i32, k as i32,
+                alpha, a.as_ptr() as *const u16, k as i32,
+                b.as_ptr() as *const u16, n as i32,
+                beta, c.as_mut_ptr(), n as i32,
+            );
+        }
+        return;
+    }
+
     // Scale C by beta
     if beta == 0.0 {
         c[..m * n].fill(0.0);

@@ -7,11 +7,10 @@
 //! seeded deterministically. This replaces per-vector random dot products
 //! (25 min for 100K × 512D) with a single batch call (~4 sec).
 //!
-//! The matrix multiply uses tiled loops for cache efficiency.
-//! For maximum throughput on large batches, use rustyblas::level3::sgemm
-//! from the rustyblas crate directly.
+//! The matrix multiply uses rustyblas::level3::sgemm for SIMD-accelerated GEMM.
 
 use super::NumArrayU8;
+use rustynum_core::layout::{Layout, Transpose};
 
 // ============================================================================
 // Deterministic random matrix generation (SplitMix64)
@@ -86,9 +85,12 @@ pub fn simhash_batch_project(
     // GEMM: projections = embeddings × hyperplanes
     // (n × d) × (d × container_bits) → (n × container_bits)
     let mut projections = vec![0.0f32; n * container_bits];
-    gemm_tiled(
-        embeddings, &hyperplanes, &mut projections,
+    rustyblas::level3::sgemm(
+        Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
         n, container_bits, d,
+        1.0, embeddings, d,
+        &hyperplanes, container_bits,
+        0.0, &mut projections, container_bits,
     );
 
     // Extract sign bits into packed binary containers
@@ -110,36 +112,6 @@ pub fn simhash_project(
 ) -> NumArrayU8 {
     let mut result = simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed);
     result.pop().unwrap()
-}
-
-// ============================================================================
-// Tiled GEMM (self-contained, no external deps)
-// ============================================================================
-
-/// Cache-friendly tiled matrix multiply: C = A × B.
-///
-/// A: m×k, B: k×n, C: m×n. All row-major.
-/// Tile size chosen to fit in L1 cache.
-fn gemm_tiled(a: &[f32], b: &[f32], c: &mut [f32], m: usize, n: usize, k: usize) {
-    const TILE: usize = 64;
-
-    for ii in (0..m).step_by(TILE) {
-        let i_end = (ii + TILE).min(m);
-        for kk in (0..k).step_by(TILE) {
-            let k_end = (kk + TILE).min(k);
-            for jj in (0..n).step_by(TILE) {
-                let j_end = (jj + TILE).min(n);
-                for i in ii..i_end {
-                    for p in kk..k_end {
-                        let a_val = a[i * k + p];
-                        for j in jj..j_end {
-                            c[i * n + j] += a_val * b[p * n + j];
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// Generate the deterministic hyperplane matrix.

@@ -8,6 +8,7 @@ description = "Pure Rust BLAS implementation with AVX-512/AVX2 SIMD — drop-in 
 default = ["avx512"]
 avx512 = ["rustynum-core/avx512"]
 avx2 = ["rustynum-core/avx2"]
+mkl = ["rustynum-core/mkl"]
 
 [dependencies]
 rustynum-core = { path = "../rustynum-core", features = ["avx512"] }

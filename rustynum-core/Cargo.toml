@@ -12,7 +12,12 @@ avx512 = []
 # AVX2: f32x8, f64x4, u8x32 — laptops/desktops (Haswell+)
 # For AVX2-only builds: default-features = false, features = ["avx2"]
 avx2 = []
+# Intel MKL: optional FFI dispatch for BLAS/LAPACK/VML/FFT.
+# When enabled, compile-time feature gate routes to MKL instead of hand-rolled SIMD.
+# Uses static linking, LP64 (32-bit ints), sequential (no OpenMP — Rayon handles threading).
+mkl = ["dep:intel-mkl-src"]
 
 [dependencies]
+intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-seq"], optional = true }
 
 [dev-dependencies]
