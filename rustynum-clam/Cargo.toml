@@ -6,3 +6,4 @@ description = "CLAM tree, triangle-inequality search, and panCAKES compression f
 
 [dependencies]
 rustynum-rs = { path = "../rustynum-rs" }
+rustynum-core = { path = "../rustynum-core" }

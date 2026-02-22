@@ -74,6 +74,52 @@ impl Distance for HammingDistance {
     }
 }
 
+/// SIMD-accelerated Hamming distance using rustynum-core's VPOPCNTDQ path.
+///
+/// Runtime dispatches to AVX-512 VPOPCNTDQ when available (64 bytes/iter,
+/// ~8x scalar throughput), otherwise falls back to scalar POPCNT on u64 chunks.
+///
+/// This is an ADDITIONAL distance implementation alongside `HammingDistance`.
+/// Use `HammingSIMD` when you want guaranteed hardware acceleration via
+/// rustynum-core's intrinsic path, vs `HammingDistance` which uses the
+/// inline scalar path with compiler auto-vectorization.
+pub struct HammingSIMD;
+
+impl Distance for HammingSIMD {
+    type Point = [u8];
+
+    fn distance(&self, a: &[u8], b: &[u8]) -> u64 {
+        debug_assert_eq!(a.len(), b.len(), "Hamming distance requires equal lengths");
+        rustynum_core::simd::hamming_distance(a, b)
+    }
+
+    fn is_metric(&self) -> bool {
+        true
+    }
+}
+
+/// SIMD-accelerated batch Hamming distance using rustynum-core.
+///
+/// Computes distances from `query` to each row in a flat database.
+/// 4x unrolled for ILP — processes 4 database rows per outer iteration.
+pub fn hamming_batch_simd(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+    rustynum_core::simd::hamming_batch(query, database, num_rows, row_bytes)
+}
+
+/// SIMD-accelerated top-k Hamming search using rustynum-core.
+///
+/// Returns (indices, distances) of the k closest rows in the database.
+/// Uses partial sort (select_nth_unstable) for O(n) instead of O(n log n).
+pub fn hamming_top_k_simd(
+    query: &[u8],
+    database: &[u8],
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> (Vec<usize>, Vec<u64>) {
+    rustynum_core::simd::hamming_top_k(query, database, num_rows, row_bytes, k)
+}
+
 /// Inline XOR+POPCNT, same algorithm as hdc.rs::hamming_chunk_inline.
 /// 4× u64 unrolled for VPOPCNTDQ auto-vectorization.
 #[inline(always)]
@@ -770,6 +816,91 @@ mod tests {
             println!("Depth {}: {} points, median LFD = {:.2}",
                 depth, lfds.len(),
                 lfds[lfds.len() / 2]);
+        }
+    }
+
+    // ── HammingSIMD tests ──
+
+    #[test]
+    fn test_hamming_simd_identical() {
+        let a = vec![0xAA; 2048];
+        let dist = HammingSIMD;
+        assert_eq!(dist.distance(&a, &a), 0);
+    }
+
+    #[test]
+    fn test_hamming_simd_all_different() {
+        let a = vec![0xFF; 8];
+        let b = vec![0x00; 8];
+        let dist = HammingSIMD;
+        assert_eq!(dist.distance(&a, &b), 64);
+    }
+
+    #[test]
+    fn test_hamming_simd_matches_inline() {
+        // Verify SIMD path produces identical results to scalar path
+        let mut rng: u64 = 12345;
+        let a: Vec<u8> = (0..2048).map(|_| (splitmix64(&mut rng) & 0xFF) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|_| (splitmix64(&mut rng) & 0xFF) as u8).collect();
+
+        let inline_result = hamming_inline(&a, &b);
+        let simd_result = HammingSIMD.distance(&a, &b);
+        assert_eq!(inline_result, simd_result,
+            "SIMD and inline Hamming must agree: inline={} simd={}", inline_result, simd_result);
+    }
+
+    #[test]
+    fn test_hamming_simd_various_sizes() {
+        let dist = HammingSIMD;
+        // Test sizes: 8, 64, 128, 2048, 8192 bytes
+        for &size in &[8, 64, 128, 2048, 8192] {
+            let a = vec![0xFF; size];
+            let b = vec![0x00; size];
+            let expected = (size * 8) as u64;
+            assert_eq!(dist.distance(&a, &b), expected,
+                "size={}: expected {} got {}", size, expected, dist.distance(&a, &b));
+        }
+    }
+
+    #[test]
+    fn test_hamming_batch_simd() {
+        let vec_len = 64;
+        let count = 50;
+        let data = make_test_data(count, vec_len);
+        let query = &data[0..vec_len]; // first vector as query
+
+        let distances = hamming_batch_simd(query, &data, count, vec_len);
+        assert_eq!(distances.len(), count);
+        assert_eq!(distances[0], 0); // self-distance = 0
+        // All distances should be non-negative (they're u64, so always true)
+        // And should match inline computation
+        for i in 0..count {
+            let row = &data[i * vec_len..(i + 1) * vec_len];
+            let expected = hamming_inline(query, row);
+            assert_eq!(distances[i], expected,
+                "batch distance mismatch at row {}: batch={} inline={}", i, distances[i], expected);
+        }
+    }
+
+    #[test]
+    fn test_hamming_top_k_simd() {
+        let vec_len = 64;
+        let count = 50;
+        let data = make_test_data(count, vec_len);
+        let query = &data[0..vec_len];
+
+        let k = 5;
+        let (indices, distances) = hamming_top_k_simd(query, &data, count, vec_len, k);
+        assert_eq!(indices.len(), k);
+        assert_eq!(distances.len(), k);
+        assert_eq!(indices[0], 0); // query itself should be closest
+        assert_eq!(distances[0], 0);
+
+        // Distances should be sorted ascending
+        for i in 1..k {
+            assert!(distances[i] >= distances[i - 1],
+                "top-k distances not sorted: d[{}]={} < d[{}]={}",
+                i, distances[i], i - 1, distances[i - 1]);
         }
     }
 }
