@@ -155,6 +155,9 @@ impl Lfd {
     /// When count_half_r == 0 or count_r == count_half_r, returns 0.0
     /// (degenerate: all points are at the same distance from center).
     pub fn compute(count_r: usize, count_half_r: usize) -> Self {
+        // Guard: div-by-zero when count_half_r == 0. The count_r <= count_half_r
+        // case returns 0.0 (degenerate cluster: all points equidistant from center,
+        // or too few points in the half-radius ball to estimate LFD).
         let value = if count_half_r == 0 || count_r <= count_half_r {
             0.0
         } else {

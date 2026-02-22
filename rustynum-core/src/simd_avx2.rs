@@ -17,8 +17,6 @@ use std::simd::num::SimdFloat;
 pub const F32_LANES: usize = 8;
 pub const F64_LANES: usize = 4;
 pub const U8_LANES: usize = 32;
-pub const I32_LANES: usize = 8;
-pub const I64_LANES: usize = 4;
 
 // ============================================================================
 // GEMM microkernel tile sizes for AVX2

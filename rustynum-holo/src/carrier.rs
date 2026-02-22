@@ -383,13 +383,13 @@ impl CarrierRecord {
         thresholds: &CarrierThresholds,
     ) -> Option<CarrierDistances> {
         // Stage 1: META — binary Hamming (cheapest rejection)
-        let meta_dist = hamming_slice(self.meta.data_slice(), other.meta.data_slice());
+        let meta_dist = rustynum_core::simd::hamming_distance(self.meta.data_slice(), other.meta.data_slice());
         if meta_dist > thresholds.meta_hamming {
             return None;
         }
 
         // Stage 2: BTREE — binary Hamming
-        let btree_dist = hamming_slice(self.btree.data_slice(), other.btree.data_slice());
+        let btree_dist = rustynum_core::simd::hamming_distance(self.btree.data_slice(), other.btree.data_slice());
         if btree_dist > thresholds.btree_hamming {
             return None;
         }
@@ -459,12 +459,6 @@ impl CarrierRecord {
     }
 }
 
-/// Hamming distance with 3-tier SIMD dispatch via rustynum_core.
-/// Dispatch: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
-#[inline]
-fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    rustynum_core::simd::hamming_distance(a, b)
-}
 
 // ============================================================================
 // Tests
