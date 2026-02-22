@@ -88,6 +88,8 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 | **N1** | 4× PRNG copies | 🟡 | 1 hour | Extract `rustynum_core::rng::SplitMix64` with `next_u64()`, `next_f64()`, `next_gaussian()`. Replace all 4 sites. |
 | **N2** | recognize.rs ≠ Fingerprint\<1024\> | 🟡 | 2 hours | Refactor `Projector64K.project()` → `Fingerprint<1024>`, use `Fingerprint::hamming_distance()` |
 | **N3** | pub(crate) fields | 🟢 | 30 min | Add `OrganicWAL::template_for(idx)` and `template_norm(idx)` accessors |
+| **N5** | `debug_assert_eq!` in HammingSIMD | 🟡 Safety | 5 min | `HammingSIMD::distance()` uses `debug_assert_eq!` for length check — elided in release builds. The AVX-512 path loads 64-byte chunks via `_mm512_loadu_si512`; mismatched buffer lengths could read past allocation. **Upgrade to `assert_eq!`** (one comparison per call, negligible cost). |
+| **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. Same logical operation, three incompatible paths. When `Fingerprint<N>` gets a SIMD-accelerated path, it should delegate to rustynum-core (like PR #24 did for rustynum-clam), not reimplement. |
 
 ---
 
@@ -234,9 +236,10 @@ Based on compute intensity × frequency of use:
 
 ### Immediate (debt cleanup, <1 day)
 
-1. **Extract `rustynum_core::rng::SplitMix64`** — consolidate 4 PRNG copies (N1). Single commit, cherry-pickable.
-2. **Refactor recognize.rs → Fingerprint\<1024\>** — connect LSH projection to the type system (N2).
-3. **Add OrganicWAL accessor methods** — replace pub(crate) fields (N3).
+1. **Upgrade `debug_assert_eq!` → `assert_eq!` in `HammingSIMD::distance()`** — AVX-512 safety. One comparison per call, negligible cost. Also check upstream `rustynum_core::simd::hamming_distance` (N5).
+2. **Extract `rustynum_core::rng::SplitMix64`** — consolidate 4 PRNG copies (N1). Single commit, cherry-pickable.
+3. **Refactor recognize.rs → Fingerprint\<1024\>** — connect LSH projection to the type system (N2).
+4. **Add OrganicWAL accessor methods** — replace pub(crate) fields (N3).
 
 ### Next sprint (CLAM completeness, 2-3 days)
 
