@@ -91,7 +91,8 @@ impl VerbCodebook {
     /// # Returns
     /// The encoded edge as a NumArrayU8.
     pub fn encode_edge(&self, src: &NumArrayU8, verb: &str, tgt: &NumArrayU8) -> NumArrayU8 {
-        let offset = self.offset(verb)
+        let offset = self
+            .offset(verb)
             .unwrap_or_else(|| panic!("Verb '{}' not in codebook", verb));
         encode_edge_with_offset(src, offset, tgt)
     }
@@ -103,7 +104,8 @@ impl VerbCodebook {
     /// tgt = permute(tgt_perm2, total_bits - 2)  // inverse rotation
     /// ```
     pub fn decode_target(&self, edge: &NumArrayU8, src: &NumArrayU8, verb: &str) -> NumArrayU8 {
-        let offset = self.offset(verb)
+        let offset = self
+            .offset(verb)
             .unwrap_or_else(|| panic!("Verb '{}' not in codebook", verb));
         decode_target_with_offset(edge, src, offset)
     }
@@ -116,12 +118,7 @@ impl VerbCodebook {
     /// - ~0.5 = maximally asymmetric (strongly directional/causal)
     ///
     /// Cost: 2 edge encodings + 1 Hamming distance = ~256 VPOPCNTDQ instructions.
-    pub fn causality_asymmetry(
-        &self,
-        src: &NumArrayU8,
-        verb: &str,
-        tgt: &NumArrayU8,
-    ) -> f64 {
+    pub fn causality_asymmetry(&self, src: &NumArrayU8, verb: &str, tgt: &NumArrayU8) -> f64 {
         let fwd = self.encode_edge(src, verb, tgt);
         let rev = self.encode_edge(tgt, verb, src);
         let dist = fwd.hamming_distance(&rev);
@@ -151,10 +148,16 @@ impl VerbCodebook {
         edges: &[(NumArrayU8, &str, NumArrayU8)],
         threshold: f64,
     ) -> Vec<(usize, f64)> {
-        edges.iter().enumerate()
+        edges
+            .iter()
+            .enumerate()
             .filter_map(|(i, (src, verb, tgt))| {
                 let score = self.causality_asymmetry(src, verb, tgt);
-                if score < threshold { Some((i, score)) } else { None }
+                if score < threshold {
+                    Some((i, score))
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -175,7 +178,7 @@ impl VerbCodebook {
             let recovered = decode_target_with_offset(edge, src, *offset);
             for (ci, candidate) in candidates.iter().enumerate() {
                 let dist = recovered.hamming_distance(candidate);
-                if best.as_ref().map_or(true, |(_, _, d)| dist < *d) {
+                if best.as_ref().is_none_or(|(_, _, d)| dist < *d) {
                     best = Some((verb.clone(), ci, dist));
                 }
             }
@@ -208,7 +211,11 @@ fn encode_edge_with_offset(src: &NumArrayU8, verb_offset: usize, tgt: &NumArrayU
 }
 
 /// Decode target from edge, source, and verb offset.
-fn decode_target_with_offset(edge: &NumArrayU8, src: &NumArrayU8, verb_offset: usize) -> NumArrayU8 {
+fn decode_target_with_offset(
+    edge: &NumArrayU8,
+    src: &NumArrayU8,
+    verb_offset: usize,
+) -> NumArrayU8 {
     let total_bits = edge.len() * 8;
     let perm_verb = src.permute(verb_offset);
 
@@ -223,14 +230,22 @@ fn decode_target_with_offset(edge: &NumArrayU8, src: &NumArrayU8, verb_offset: u
 /// Encode edge with explicit verb vector (full HDC style).
 ///
 /// `edge = src XOR permute(verb_vec, 1) XOR permute(tgt, 2)`
-pub fn encode_edge_explicit(src: &NumArrayU8, verb_vec: &NumArrayU8, tgt: &NumArrayU8) -> NumArrayU8 {
+pub fn encode_edge_explicit(
+    src: &NumArrayU8,
+    verb_vec: &NumArrayU8,
+    tgt: &NumArrayU8,
+) -> NumArrayU8 {
     let perm_verb = verb_vec.permute(1);
     let perm_tgt = tgt.permute(2);
     src.bind(&perm_verb).bind(&perm_tgt)
 }
 
 /// Decode target with explicit verb vector.
-pub fn decode_target_explicit(edge: &NumArrayU8, src: &NumArrayU8, verb_vec: &NumArrayU8) -> NumArrayU8 {
+pub fn decode_target_explicit(
+    edge: &NumArrayU8,
+    src: &NumArrayU8,
+    verb_vec: &NumArrayU8,
+) -> NumArrayU8 {
     let total_bits = edge.len() * 8;
     let perm_verb = verb_vec.permute(1);
     let recovered_perm_tgt = edge.bind(src).bind(&perm_verb);
@@ -244,10 +259,14 @@ mod tests {
     fn random_container(seed: u64) -> NumArrayU8 {
         // Simple deterministic random bytes
         let mut state = seed;
-        let data: Vec<u8> = (0..2048).map(|_| {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            (state >> 33) as u8
-        }).collect();
+        let data: Vec<u8> = (0..2048)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (state >> 33) as u8
+            })
+            .collect();
         NumArrayU8::new(data)
     }
 
@@ -280,7 +299,11 @@ mod tests {
 
         let score = cb.causality_asymmetry(&src, "CAUSES", &tgt);
         // Random independent vectors: asymmetry should be near 0.5
-        assert!(score > 0.3, "Random vectors should show high asymmetry, got {}", score);
+        assert!(
+            score > 0.3,
+            "Random vectors should show high asymmetry, got {}",
+            score
+        );
     }
 
     #[test]
@@ -293,7 +316,7 @@ mod tests {
         // When src == tgt, the encoding is still asymmetric due to different
         // permutation slots, but less so than random vectors
         // The key test is that it returns a valid score
-        assert!(score >= 0.0 && score <= 0.5);
+        assert!((0.0..=0.5).contains(&score));
     }
 
     #[test]
@@ -336,7 +359,7 @@ mod tests {
         let flagged = cb.find_non_causal_edges(&edges, 0.6);
         // Random vectors should have asymmetry ~0.5, so with threshold 0.6
         // they should be flagged
-        assert!(!flagged.is_empty() || true); // At least tests the API works
+        let _ = flagged; // At least tests the API works
     }
 
     #[test]

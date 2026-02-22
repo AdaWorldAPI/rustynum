@@ -6,7 +6,9 @@
 //!
 //! All functions are async (Lance uses tokio internally).
 
-use crate::arrow_bridge::{cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords};
+use crate::arrow_bridge::{
+    cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords,
+};
 use arrow::array::RecordBatchIterator;
 use futures::StreamExt;
 use lance::dataset::write::{WriteMode, WriteParams};
@@ -17,50 +19,33 @@ use std::sync::Arc;
 /// Write CogRecords to a new Lance dataset at `uri`.
 ///
 /// Creates the dataset if it doesn't exist. Overwrites if it does.
-pub async fn write_cogrecords(
-    uri: &str,
-    records: &[CogRecord],
-) -> Result<Dataset, lance::Error> {
-    let batch = cogrecords_to_record_batch(records)
-        .expect("CogRecord data must be 2048 bytes per channel");
+pub async fn write_cogrecords(uri: &str, records: &[CogRecord]) -> Result<Dataset, lance::Error> {
+    let batch =
+        cogrecords_to_record_batch(records).expect("CogRecord data must be 2048 bytes per channel");
     let schema = Arc::new(cogrecord_schema());
-    let reader = RecordBatchIterator::new(
-        vec![Ok(batch)],
-        schema,
-    );
+    let reader = RecordBatchIterator::new(vec![Ok(batch)], schema);
     let mut params = WriteParams::default();
     params.mode = WriteMode::Create;
     Dataset::write(reader, uri, Some(params)).await
 }
 
 /// Append CogRecords to an existing Lance dataset.
-pub async fn append_cogrecords(
-    uri: &str,
-    records: &[CogRecord],
-) -> Result<Dataset, lance::Error> {
-    let batch = cogrecords_to_record_batch(records)
-        .expect("CogRecord data must be 2048 bytes per channel");
+pub async fn append_cogrecords(uri: &str, records: &[CogRecord]) -> Result<Dataset, lance::Error> {
+    let batch =
+        cogrecords_to_record_batch(records).expect("CogRecord data must be 2048 bytes per channel");
     let schema = Arc::new(cogrecord_schema());
-    let reader = RecordBatchIterator::new(
-        vec![Ok(batch)],
-        schema,
-    );
+    let reader = RecordBatchIterator::new(vec![Ok(batch)], schema);
     let mut params = WriteParams::default();
     params.mode = WriteMode::Append;
     Dataset::write(reader, uri, Some(params)).await
 }
 
 /// Read all CogRecords from a Lance dataset.
-pub async fn read_cogrecords(
-    uri: &str,
-) -> Result<Vec<CogRecord>, lance::Error> {
+pub async fn read_cogrecords(uri: &str) -> Result<Vec<CogRecord>, lance::Error> {
     let dataset = Dataset::open(uri).await?;
     let mut records = Vec::new();
 
-    let mut stream = dataset
-        .scan()
-        .try_into_stream()
-        .await?;
+    let mut stream = dataset.scan().try_into_stream().await?;
 
     while let Some(batch_result) = stream.next().await {
         let batch = batch_result?;
@@ -120,8 +105,12 @@ mod tests {
         let uri = dir.path().join("append.lance");
         let uri_str = uri.to_str().unwrap();
 
-        write_cogrecords(uri_str, &make_test_records(50)).await.unwrap();
-        append_cogrecords(uri_str, &make_test_records(50)).await.unwrap();
+        write_cogrecords(uri_str, &make_test_records(50))
+            .await
+            .unwrap();
+        append_cogrecords(uri_str, &make_test_records(50))
+            .await
+            .unwrap();
 
         let back = read_cogrecords(uri_str).await.unwrap();
         assert_eq!(back.len(), 100);

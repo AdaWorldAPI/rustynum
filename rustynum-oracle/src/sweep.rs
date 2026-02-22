@@ -1,7 +1,7 @@
 //! Exhaustive capacity sweep over D, base, signing, axes, K, and bind depth.
 
-use rand::Rng;
 use crate::linalg::{cholesky_solve, condition_number};
+use rand::Rng;
 
 // ---------------------------------------------------------------------------
 // Parameter constants
@@ -13,15 +13,15 @@ pub const DIMS: &[usize] = &[1024, 2048, 4096, 8192, 16384, 32768, 65536];
 /// All base types. Total: 8 values.
 pub const BASES: &[Base] = &[
     // Unsigned
-    Base::Binary,           // B=2, {0, 1}
-    Base::Unsigned(3),      // B=3, {0, 1, 2}
-    Base::Unsigned(5),      // B=5, {0, 1, 2, 3, 4}
-    Base::Unsigned(7),      // B=7, {0, 1, 2, 3, 4, 5, 6}
+    Base::Binary,      // B=2, {0, 1}
+    Base::Unsigned(3), // B=3, {0, 1, 2}
+    Base::Unsigned(5), // B=5, {0, 1, 2, 3, 4}
+    Base::Unsigned(7), // B=7, {0, 1, 2, 3, 4, 5, 6}
     // Signed (with Auslöschung / cancellation at zero)
-    Base::Signed(3),        // B=3, {-1, 0, +1}
-    Base::Signed(5),        // B=5, {-2, -1, 0, +1, +2}
-    Base::Signed(7),        // B=7, {-3, -2, -1, 0, +1, +2, +3}
-    Base::Signed(9),        // B=9, {-4, -3, -2, -1, 0, +1, +2, +3, +4}
+    Base::Signed(3), // B=3, {-1, 0, +1}
+    Base::Signed(5), // B=5, {-2, -1, 0, +1, +2}
+    Base::Signed(7), // B=7, {-3, -2, -1, 0, +1, +2, +3}
+    Base::Signed(9), // B=9, {-4, -3, -2, -1, 0, +1, +2, +3, +4}
 ];
 
 /// Number of axes. Total: 3 values.
@@ -39,9 +39,9 @@ pub const BIND_DEPTHS: &[usize] = &[1, 2, 3, 4];
 
 #[derive(Clone, Copy, Debug)]
 pub enum Base {
-    Binary,         // 1 bit per dimension, {0, 1}
-    Unsigned(u8),   // B values per dimension, {0, 1, ..., B-1}
-    Signed(u8),     // B values per dimension, {-(B/2), ..., 0, ..., +(B/2)}
+    Binary,       // 1 bit per dimension, {0, 1}
+    Unsigned(u8), // B values per dimension, {0, 1, ..., B-1}
+    Signed(u8),   // B values per dimension, {-(B/2), ..., 0, ..., +(B/2)}
 }
 
 impl Base {
@@ -88,7 +88,7 @@ impl Base {
 
     /// Storage in bytes for D dimensions × N axes.
     pub fn storage_bytes(&self, d: usize, axes: usize) -> usize {
-        (self.storage_bits(d) * axes + 7) / 8
+        (self.storage_bits(d) * axes).div_ceil(8)
     }
 
     /// String name for CSV output.
@@ -230,9 +230,7 @@ pub fn bundle(vectors: &[Vec<i8>], base: Base) -> Vec<i8> {
 fn quantize(v: &[f32], base: Base) -> Vec<i8> {
     let min = base.min_val() as f32;
     let max = base.max_val() as f32;
-    v.iter()
-        .map(|&x| x.round().clamp(min, max) as i8)
-        .collect()
+    v.iter().map(|&x| x.round().clamp(min, max) as i8).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -248,24 +246,17 @@ pub struct RecoveryResult {
     pub max_error: f32,
     pub gram_condition: f32,
     pub noise_floor: f32,
-    pub cancellation: f32,      // fraction of zero dimensions (signed only)
-    pub bits_per_concept: f32,  // storage efficiency
+    pub cancellation: f32,     // fraction of zero dimensions (signed only)
+    pub bits_per_concept: f32, // storage efficiency
 }
 
 /// Measure recovery error after orthogonal projection (single axis).
-pub fn measure_recovery(
-    d: usize,
-    base: Base,
-    k: usize,
-    rng: &mut impl Rng,
-) -> RecoveryResult {
+pub fn measure_recovery(d: usize, base: Base, k: usize, rng: &mut impl Rng) -> RecoveryResult {
     // Generate templates
     let templates = generate_templates(k, d, base, rng);
 
     // Random coefficients in [-1.0, +1.0]
-    let coefficients: Vec<f32> = (0..k)
-        .map(|_| rng.gen_range(-1.0f32..1.0f32))
-        .collect();
+    let coefficients: Vec<f32> = (0..k).map(|_| rng.gen_range(-1.0f32..1.0f32)).collect();
 
     // Create superposition (in f32 for precision)
     let mut superposition_f32 = vec![0.0f32; d];
@@ -390,15 +381,14 @@ pub fn measure_recovery_multiaxis(
     let templates = generate_templates(k, d, base, rng);
 
     // Random coefficients
-    let coefficients: Vec<f32> = (0..k)
-        .map(|_| rng.gen_range(-1.0f32..1.0f32))
-        .collect();
+    let coefficients: Vec<f32> = (0..k).map(|_| rng.gen_range(-1.0f32..1.0f32)).collect();
 
     // For each axis: bind concepts with axis roles, bundle, measure recovery
     let mut per_axis_results = Vec::new();
     for axis in 0..axes {
         // Bind each template with this axis's role vectors
-        let bound_templates: Vec<Vec<i8>> = templates.iter()
+        let bound_templates: Vec<Vec<i8>> = templates
+            .iter()
             .map(|t| bind_deep(t, &role_vectors[axis][..bind_depth], base))
             .collect();
 
@@ -432,9 +422,8 @@ pub fn measure_recovery_multiaxis(
     }
 
     // Combined error: average across axes
-    let combined_error: f32 = per_axis_results.iter()
-        .map(|r| r.mean_error)
-        .sum::<f32>() / axes as f32;
+    let combined_error: f32 =
+        per_axis_results.iter().map(|r| r.mean_error).sum::<f32>() / axes as f32;
 
     // Bell coefficient measurement (for 2+ axes)
     let bell_coefficient = if axes >= 2 {
@@ -472,10 +461,10 @@ pub fn measure_bell_coefficient(
 ) -> f32 {
     // CHSH setup: two parties (axis 0 and axis 1), two measurement settings each
     let m = [
-        generate_template(d, base, rng),  // party A, setting 0
-        generate_template(d, base, rng),  // party A, setting 1
-        generate_template(d, base, rng),  // party B, setting 0
-        generate_template(d, base, rng),  // party B, setting 1
+        generate_template(d, base, rng), // party A, setting 0
+        generate_template(d, base, rng), // party A, setting 1
+        generate_template(d, base, rng), // party B, setting 0
+        generate_template(d, base, rng), // party B, setting 1
     ];
 
     // Build the holograph state on both axes
@@ -527,15 +516,18 @@ pub fn run_sweep(repetitions: usize) -> Vec<MultiAxisResult> {
                 for &k in BUNDLE_SIZES {
                     for &bind_depth in BIND_DEPTHS {
                         // Skip invalid: bind_depth > axes
-                        if bind_depth > axes { continue; }
+                        if bind_depth > axes {
+                            continue;
+                        }
                         // Skip pathological combos
-                        if k > d / 10 { continue; }
+                        if k > d / 10 {
+                            continue;
+                        }
 
                         let mut rep_results = Vec::new();
                         for _ in 0..repetitions {
-                            let result = measure_recovery_multiaxis(
-                                d, base, axes, k, bind_depth, &mut rng,
-                            );
+                            let result =
+                                measure_recovery_multiaxis(d, base, axes, k, bind_depth, &mut rng);
                             rep_results.push(result);
                         }
 
@@ -555,7 +547,9 @@ pub fn run_sweep(repetitions: usize) -> Vec<MultiAxisResult> {
         match (a_valid, b_valid) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => a.bits_per_concept.partial_cmp(&b.bits_per_concept)
+            _ => a
+                .bits_per_concept
+                .partial_cmp(&b.bits_per_concept)
                 .unwrap_or(std::cmp::Ordering::Equal),
         }
     });
@@ -603,9 +597,11 @@ pub fn results_to_csv(results: &[MultiAxisResult]) -> String {
 // ---------------------------------------------------------------------------
 
 fn dot_matrix_vector_i8(templates: &[Vec<i8>], v: &[i8]) -> Vec<f64> {
-    templates.iter()
+    templates
+        .iter()
         .map(|t| {
-            t.iter().zip(v.iter())
+            t.iter()
+                .zip(v.iter())
                 .map(|(&a, &b)| a as f64 * b as f64)
                 .sum()
         })
@@ -617,7 +613,8 @@ fn gram_matrix_i8(templates: &[Vec<i8>]) -> Vec<f64> {
     let mut gram = vec![0.0f64; k * k];
     for i in 0..k {
         for j in i..k {
-            let dot: f64 = templates[i].iter()
+            let dot: f64 = templates[i]
+                .iter()
                 .zip(templates[j].iter())
                 .map(|(&a, &b)| a as f64 * b as f64)
                 .sum();
@@ -635,8 +632,8 @@ fn gram_matrix_i8(templates: &[Vec<i8>]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     fn seeded_rng() -> StdRng {
         StdRng::seed_from_u64(42)
@@ -691,14 +688,14 @@ mod tests {
     fn test_generate_template_signed_range() {
         let mut rng = seeded_rng();
         let t = generate_template(1000, Base::Signed(5), &mut rng);
-        assert!(t.iter().all(|&v| v >= -2 && v <= 2));
+        assert!(t.iter().all(|&v| (-2..=2).contains(&v)));
     }
 
     #[test]
     fn test_generate_template_unsigned_range() {
         let mut rng = seeded_rng();
         let t = generate_template(1000, Base::Unsigned(7), &mut rng);
-        assert!(t.iter().all(|&v| v >= 0 && v <= 6));
+        assert!(t.iter().all(|&v| (0..=6).contains(&v)));
     }
 
     // -- Binding --
@@ -757,10 +754,7 @@ mod tests {
     #[test]
     fn test_bundle_signed_cancellation() {
         // Opposing values should cancel (Auslöschung)
-        let vecs = vec![
-            vec![2i8, -2, 1],
-            vec![-2, 2, -1],
-        ];
+        let vecs = vec![vec![2i8, -2, 1], vec![-2, 2, -1]];
         let b = bundle(&vecs, Base::Signed(5));
         // 2+(-2)=0, (-2)+2=0, 1+(-1)=0
         assert_eq!(b, vec![0, 0, 0]);
@@ -773,8 +767,11 @@ mod tests {
         let mut rng = seeded_rng();
         let result = measure_recovery(1024, Base::Binary, 1, &mut rng);
         // Quantization noise prevents exact recovery even at K=1
-        assert!(result.mean_error < 0.15,
-            "K=1 binary should recover well, got error={}", result.mean_error);
+        assert!(
+            result.mean_error < 0.15,
+            "K=1 binary should recover well, got error={}",
+            result.mean_error
+        );
     }
 
     #[test]
@@ -782,8 +779,11 @@ mod tests {
         let mut rng = seeded_rng();
         let result = measure_recovery(1024, Base::Binary, 55, &mut rng);
         // D=1024 is too small for 55 binary concepts — expect nonzero error
-        assert!(result.mean_error > 0.0,
-            "K=55 at D=1024 binary should have error, got {}", result.mean_error);
+        assert!(
+            result.mean_error > 0.0,
+            "K=55 at D=1024 binary should have error, got {}",
+            result.mean_error
+        );
     }
 
     #[test]
@@ -791,8 +791,11 @@ mod tests {
         let mut rng = seeded_rng();
         let result = measure_recovery(16384, Base::Signed(5), 55, &mut rng);
         // Quantization noise at base-5 limits recovery precision
-        assert!(result.mean_error < 0.5,
-            "Signed(5) D=16384 K=55 should recover reasonably, got error={}", result.mean_error);
+        assert!(
+            result.mean_error < 0.5,
+            "Signed(5) D=16384 K=55 should recover reasonably, got error={}",
+            result.mean_error
+        );
     }
 
     #[test]
@@ -802,9 +805,12 @@ mod tests {
         let mut rng2 = seeded_rng();
         let unsigned = measure_recovery(4096, Base::Unsigned(5), 13, &mut rng2);
         // Both should produce finite results; quantization limits precision
-        assert!(signed.mean_error < 0.5 || unsigned.mean_error < 0.5,
+        assert!(
+            signed.mean_error < 0.5 || unsigned.mean_error < 0.5,
             "At least one should recover reasonably: signed={}, unsigned={}",
-            signed.mean_error, unsigned.mean_error);
+            signed.mean_error,
+            unsigned.mean_error
+        );
     }
 
     // -- Multi-axis --
@@ -844,7 +850,8 @@ mod tests {
         let roles: Vec<Vec<Vec<i8>>> = (0..2)
             .map(|_| generate_templates(1, 1024, Base::Binary, &mut rng))
             .collect();
-        let bell = measure_bell_coefficient(1024, Base::Binary, &templates, &coeffs, &roles, &mut rng);
+        let bell =
+            measure_bell_coefficient(1024, Base::Binary, &templates, &coeffs, &roles, &mut rng);
         // Binary should produce a finite Bell coefficient
         assert!(bell.is_finite(), "Bell should be finite, got {}", bell);
     }
@@ -857,7 +864,8 @@ mod tests {
         let roles: Vec<Vec<Vec<i8>>> = (0..2)
             .map(|_| generate_templates(1, 2048, Base::Signed(5), &mut rng))
             .collect();
-        let bell = measure_bell_coefficient(2048, Base::Signed(5), &templates, &coeffs, &roles, &mut rng);
+        let bell =
+            measure_bell_coefficient(2048, Base::Signed(5), &templates, &coeffs, &roles, &mut rng);
         assert!(bell.is_finite(), "Bell should be finite, got {}", bell);
     }
 
@@ -870,8 +878,11 @@ mod tests {
         // D=1024 >> K²=64 should have good recovery.
         let good = measure_recovery(1024, Base::Signed(5), 8, &mut rng);
         // Quantization noise is the limiting factor at this D/K ratio
-        assert!(good.mean_error < 0.25,
-            "D=1024 >> K²=64 should recover reasonably, got {}", good.mean_error);
+        assert!(
+            good.mean_error < 0.25,
+            "D=1024 >> K²=64 should recover reasonably, got {}",
+            good.mean_error
+        );
     }
 
     // -- Bits per concept --
@@ -881,8 +892,12 @@ mod tests {
         let mut rng = seeded_rng();
         let result = measure_recovery(2048, Base::Signed(5), 8, &mut rng);
         let expected_bits = Base::Signed(5).storage_bits(2048) as f32 / 8.0;
-        assert!((result.bits_per_concept - expected_bits).abs() < 0.1,
-            "bits_per_concept={}, expected={}", result.bits_per_concept, expected_bits);
+        assert!(
+            (result.bits_per_concept - expected_bits).abs() < 0.1,
+            "bits_per_concept={}, expected={}",
+            result.bits_per_concept,
+            expected_bits
+        );
     }
 
     // -- CSV output --
@@ -897,7 +912,11 @@ mod tests {
             bind_depth: 1,
             combined_error: 0.0,
             bell_coefficient: 0.0,
-            per_axis: vec![AxisResult { axis: 0, mean_error: 0.0, gram_condition: 1.0 }],
+            per_axis: vec![AxisResult {
+                axis: 0,
+                mean_error: 0.0,
+                gram_condition: 1.0,
+            }],
             storage_bytes: 128,
             bits_per_concept: 1024.0,
         }];

@@ -13,8 +13,8 @@
 //! | 3         | EMBED | Phase  | ADD    | Circular    | NO      |
 
 use crate::phase::{
-    circular_distance_i8, phase_bind_i8, phase_unbind_i8,
-    sort_phase_vector, unsort_phase_vector, wasserstein_sorted_i8,
+    circular_distance_i8, phase_bind_i8, phase_unbind_i8, sort_phase_vector, unsort_phase_vector,
+    wasserstein_sorted_i8,
 };
 use rustynum_rs::NumArrayU8;
 
@@ -125,13 +125,17 @@ impl CogRecordV3 {
         thresholds: &HybridThresholds,
     ) -> Option<HybridDistances> {
         // Stage 1: META — binary Hamming
-        let meta_dist = rustynum_core::simd::hamming_distance(self.meta.data_slice(), other.meta.data_slice());
+        let meta_dist =
+            rustynum_core::simd::hamming_distance(self.meta.data_slice(), other.meta.data_slice());
         if meta_dist > thresholds.meta_hamming {
             return None;
         }
 
         // Stage 2: BTREE — binary Hamming
-        let btree_dist = rustynum_core::simd::hamming_distance(self.btree.data_slice(), other.btree.data_slice());
+        let btree_dist = rustynum_core::simd::hamming_distance(
+            self.btree.data_slice(),
+            other.btree.data_slice(),
+        );
         if btree_dist > thresholds.btree_hamming {
             return None;
         }
@@ -165,9 +169,7 @@ impl CogRecordV3 {
         database
             .iter()
             .enumerate()
-            .filter_map(|(i, rec)| {
-                self.hybrid_sweep(rec, thresholds).map(|d| (i, d))
-            })
+            .filter_map(|(i, rec)| self.hybrid_sweep(rec, thresholds).map(|d| (i, d)))
             .collect()
     }
 
@@ -220,7 +222,6 @@ impl CogRecordV3 {
     }
 }
 
-
 // -------------------------------------------------------------------------
 // Tests
 // -------------------------------------------------------------------------
@@ -271,7 +272,9 @@ mod tests {
     #[test]
     fn test_cogrecord_v3_cam_unsort_round_trip() {
         let mut rng = super::super::phase::SplitMix64(42);
-        let cam_data: Vec<u8> = (0..CONTAINER_BYTES).map(|_| (rng.next() % 256) as u8).collect();
+        let cam_data: Vec<u8> = (0..CONTAINER_BYTES)
+            .map(|_| (rng.next() % 256) as u8)
+            .collect();
 
         let rec = CogRecordV3::new(
             &vec![0u8; CONTAINER_BYTES],

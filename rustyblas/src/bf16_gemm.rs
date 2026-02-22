@@ -121,7 +121,7 @@ pub fn f32_to_bf16_rounded(src: &[f32], dst: &mut [BF16]) {
         let base = i * F32_LANES;
         let fv = F32Simd::from_slice(&src[base..]);
         let bits = fv.to_bits(); // u32x16
-        // LSB of the bf16 result = bit 16 of the f32 bits
+                                 // LSB of the bf16 result = bit 16 of the f32 bits
         let lsb = (bits >> shift16) & one;
         // rounding bias = 0x7FFF + lsb (round-to-nearest-even)
         let bias = round_base + lsb;
@@ -231,10 +231,17 @@ pub fn bf16_gemm_f32(
                 101, // CblasRowMajor
                 111, // CblasNoTrans
                 111, // CblasNoTrans
-                m as i32, n as i32, k as i32,
-                alpha, a.as_ptr() as *const u16, k as i32,
-                b.as_ptr() as *const u16, n as i32,
-                beta, c.as_mut_ptr(), n as i32,
+                m as i32,
+                n as i32,
+                k as i32,
+                alpha,
+                a.as_ptr() as *const u16,
+                k as i32,
+                b.as_ptr() as *const u16,
+                n as i32,
+                beta,
+                c.as_mut_ptr(),
+                n as i32,
             );
         }
         return;
@@ -397,7 +404,16 @@ mod tests {
 
     #[test]
     fn test_bf16_roundtrip() {
-        let values = [0.0f32, 1.0, -1.0, 3.14, 1e10, -1e-10, 0.5, 255.0];
+        let values = [
+            0.0f32,
+            1.0,
+            -1.0,
+            std::f32::consts::PI,
+            1e10,
+            -1e-10,
+            0.5,
+            255.0,
+        ];
         for &v in &values {
             let bf = BF16::from_f32(v);
             let back = bf.to_f32();

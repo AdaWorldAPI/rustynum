@@ -48,18 +48,16 @@ pub fn binding_popcount_3d(
     assert_eq!(x.len(), y.len());
     assert_eq!(y.len(), z.len());
     let total_bits = x.len() * 8;
-    let step = if resolution > 1 { total_bits / resolution } else { 0 };
+    let step = if resolution > 1 {
+        total_bits / resolution
+    } else {
+        0
+    };
 
     // Pre-compute all permutations (avoid recomputation in inner loops)
-    let x_perms: Vec<NumArrayU8> = (0..resolution)
-        .map(|i| x.permute(i * step))
-        .collect();
-    let y_perms: Vec<NumArrayU8> = (0..resolution)
-        .map(|j| y.permute(j * step))
-        .collect();
-    let z_perms: Vec<NumArrayU8> = (0..resolution)
-        .map(|k| z.permute(k * step))
-        .collect();
+    let x_perms: Vec<NumArrayU8> = (0..resolution).map(|i| x.permute(i * step)).collect();
+    let y_perms: Vec<NumArrayU8> = (0..resolution).map(|j| y.permute(j * step)).collect();
+    let z_perms: Vec<NumArrayU8> = (0..resolution).map(|k| z.permute(k * step)).collect();
 
     let mut matrix = vec![0u32; resolution * resolution * resolution];
 
@@ -72,10 +70,7 @@ pub fn binding_popcount_3d(
             for k in 0..resolution {
                 // Fused XOR+VPOPCNTDQ: popcount(xy XOR z_k) = hamming_distance(xy, z_k)
                 // Single pass, zero allocation — 32 VPOPCNTDQ iterations for 2KB containers
-                let popcnt = rustynum_core::simd::hamming_distance(
-                    xy_data,
-                    z_perms[k].get_data(),
-                );
+                let popcnt = rustynum_core::simd::hamming_distance(xy_data, z_perms[k].get_data());
                 matrix[i * resolution * resolution + j * resolution + k] = popcnt as u32;
             }
         }
@@ -152,11 +147,7 @@ pub fn find_discriminative_spots(
 /// Extract 2D cross-section at fixed Z index for visualization.
 ///
 /// Returns a `resolution × resolution` matrix of popcount values.
-pub fn cross_section_at_z(
-    matrix: &[u32],
-    resolution: usize,
-    z_idx: usize,
-) -> Vec<Vec<u32>> {
+pub fn cross_section_at_z(matrix: &[u32], resolution: usize, z_idx: usize) -> Vec<Vec<u32>> {
     let mut slice = vec![vec![0u32; resolution]; resolution];
     for i in 0..resolution {
         for j in 0..resolution {
@@ -173,10 +164,7 @@ pub fn cross_section_at_z(
 /// and discriminative regions.
 ///
 /// Returns `[dx, dy, dz]` per point.
-pub fn popcount_gradient_3d(
-    matrix: &[u32],
-    resolution: usize,
-) -> Vec<[f32; 3]> {
+pub fn popcount_gradient_3d(matrix: &[u32], resolution: usize) -> Vec<[f32; 3]> {
     let r = resolution;
     let mut gradient = vec![[0.0f32; 3]; r * r * r];
 
@@ -200,10 +188,7 @@ pub fn popcount_gradient_3d(
 /// Compute summary statistics of the 3D matrix.
 ///
 /// Returns `(mean, std, min, max, holographic_fraction, discriminative_fraction)`.
-pub fn matrix_stats(
-    matrix: &[u32],
-    total_bits: usize,
-) -> (f64, f64, u32, u32, f64, f64) {
+pub fn matrix_stats(matrix: &[u32], total_bits: usize) -> (f64, f64, u32, u32, f64, f64) {
     let n = matrix.len() as f64;
     let target = total_bits as f64 / 2.0;
     let sigma = (total_bits as f64 / 4.0).sqrt();
@@ -211,19 +196,25 @@ pub fn matrix_stats(
     let sum: f64 = matrix.iter().map(|&v| v as f64).sum();
     let mean = sum / n;
 
-    let var: f64 = matrix.iter().map(|&v| {
-        let d = v as f64 - mean;
-        d * d
-    }).sum::<f64>() / n;
+    let var: f64 = matrix
+        .iter()
+        .map(|&v| {
+            let d = v as f64 - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / n;
     let std = var.sqrt();
 
     let min = matrix.iter().copied().min().unwrap_or(0);
     let max = matrix.iter().copied().max().unwrap_or(0);
 
-    let holographic_count = matrix.iter()
+    let holographic_count = matrix
+        .iter()
         .filter(|&&v| (v as f64 - target).abs() < sigma)
         .count();
-    let discriminative_count = matrix.iter()
+    let discriminative_count = matrix
+        .iter()
         .filter(|&&v| (v as f64 - target).abs() > 2.0 * sigma)
         .count();
 
@@ -239,10 +230,14 @@ mod tests {
 
     fn random_container(seed: u64) -> NumArrayU8 {
         let mut state = seed;
-        let data: Vec<u8> = (0..2048).map(|_| {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            (state >> 33) as u8
-        }).collect();
+        let data: Vec<u8> = (0..2048)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (state >> 33) as u8
+            })
+            .collect();
         NumArrayU8::new(data)
     }
 
@@ -272,7 +267,8 @@ mod tests {
         assert!(
             (mean - total_bits as f64 / 2.0).abs() < 200.0,
             "Mean popcount should be near D/2={}, got {}",
-            total_bits / 2, mean
+            total_bits / 2,
+            mean
         );
     }
 
@@ -286,7 +282,7 @@ mod tests {
         // At (0,0,0): popcount(v XOR v XOR v) = popcount(v) ≠ D/2 necessarily
         // The diagonal should show different behavior than off-diagonal
         let diag_val = matrix[0]; // (0,0,0)
-        let off_val = matrix[1 * res * res + 2 * res + 3]; // (1,2,3)
+        let off_val = matrix[res * res + 2 * res + 3]; // (1,2,3)
 
         // They should generally be different (identity vs rotation)
         // This just verifies the computation doesn't crash
@@ -322,7 +318,10 @@ mod tests {
         let sweet_spots = find_holographic_sweet_spot(&matrix, res, total_bits);
         // For random vectors, most points should be in the holographic zone
         // (within 1σ of D/2)
-        assert!(!sweet_spots.is_empty(), "Should find holographic sweet spots");
+        assert!(
+            !sweet_spots.is_empty(),
+            "Should find holographic sweet spots"
+        );
 
         // Sweet spots should be sorted by z_score
         if sweet_spots.len() > 1 {
@@ -345,7 +344,11 @@ mod tests {
         assert!(std > 0.0);
         assert!(min < max);
         // For random vectors, most points should be holographic
-        assert!(holo_frac > 0.3, "Expected >30% holographic, got {}", holo_frac);
+        assert!(
+            holo_frac > 0.3,
+            "Expected >30% holographic, got {}",
+            holo_frac
+        );
     }
 
     #[test]

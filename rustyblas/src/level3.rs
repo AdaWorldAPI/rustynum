@@ -9,7 +9,10 @@
 //! - `avx2`:   f32x8  (6x8  microkernel), f64x4 (4x4 microkernel)
 
 use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
-use rustynum_core::simd::{SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC, SGEMM_NR, DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR};
+use rustynum_core::simd::{
+    DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC,
+    SGEMM_NR,
+};
 use std::simd::StdFloat;
 
 // SIMD vector types selected by feature flag — no runtime branching
@@ -30,10 +33,14 @@ unsafe impl<T> Sync for SendMutPtr<T> {}
 
 impl<T> SendMutPtr<T> {
     fn new(slice: &mut [T]) -> Self {
-        Self { ptr: slice.as_mut_ptr(), len: slice.len() }
+        Self {
+            ptr: slice.as_mut_ptr(),
+            len: slice.len(),
+        }
     }
 
     /// Get a mutable slice. Safety: caller ensures no aliasing.
+    #[allow(clippy::mut_from_ref)] // Intentional: raw pointer interior mutability for parallel tiling.
     unsafe fn as_mut_slice(&self) -> &mut [T] {
         std::slice::from_raw_parts_mut(self.ptr, self.len)
     }
@@ -71,11 +78,20 @@ pub fn sgemm(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_sgemm(
-                layout as i32, trans_a as i32, trans_b as i32,
-                m as i32, n as i32, k as i32,
-                alpha, a.as_ptr(), lda as i32,
-                b.as_ptr(), ldb as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                trans_a as i32,
+                trans_b as i32,
+                m as i32,
+                n as i32,
+                k as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                b.as_ptr(),
+                ldb as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -104,12 +120,16 @@ pub fn sgemm(
     // For small matrices, use simple triple-loop.
     // Threshold: below ~48^3 ≈ 110K flops, the packing overhead isn't worth it.
     if m * n * k < 110_000 {
-        sgemm_simple(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+        sgemm_simple(
+            layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+        );
         return;
     }
 
     // Cache-blocked GEMM with packing
-    sgemm_blocked(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+    sgemm_blocked(
+        layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+    );
 }
 
 /// Small-matrix GEMM with SIMD dot products.
@@ -153,7 +173,8 @@ fn sgemm_simple(
         // Check if A row is already contiguous (RowMajor NoTrans or ColMajor Trans)
         let a_row_contiguous = matches!(
             (layout, trans_a),
-            (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+            (Layout::RowMajor, Transpose::NoTrans)
+                | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
         );
 
         if a_row_contiguous {
@@ -220,8 +241,8 @@ fn sgemm_blocked(
     let kc = SGEMM_KC.min(k);
 
     // Packed buffers — padded to MR/NR boundaries for microkernel alignment
-    let mc_padded = ((mc + SGEMM_MR - 1) / SGEMM_MR) * SGEMM_MR;
-    let nc_padded = ((nc + SGEMM_NR - 1) / SGEMM_NR) * SGEMM_NR;
+    let mc_padded = mc.div_ceil(SGEMM_MR) * SGEMM_MR;
+    let nc_padded = nc.div_ceil(SGEMM_NR) * SGEMM_NR;
 
     let use_parallel = m * n > SGEMM_PARALLEL_THRESHOLD;
     let num_threads = if use_parallel {
@@ -250,7 +271,7 @@ fn sgemm_blocked(
                 // We wrap C's pointer in SendPtr so threads can write to
                 // non-overlapping regions — the blackboard borrow-mut pattern.
                 let c_send = SendMutPtr::new(c);
-                let rows_per_thread = ((m + num_threads - 1) / num_threads + SGEMM_MR - 1) / SGEMM_MR * SGEMM_MR;
+                let rows_per_thread = m.div_ceil(num_threads).div_ceil(SGEMM_MR) * SGEMM_MR;
 
                 // Collect work items (row ranges) upfront
                 let mut work_items = Vec::new();
@@ -274,8 +295,30 @@ fn sgemm_blocked(
                             let mut thread_ic = ic;
                             while thread_ic < ic + thread_m {
                                 let ib = mc.min(ic + thread_m - thread_ic);
-                                pack_a_f32(layout, trans_a, a, lda, thread_ic, pc, ib, pb, &mut thread_packed_a);
-                                sgemm_macrokernel(alpha, &thread_packed_a, packed_b_ref, c_slice, layout, ldc, thread_ic, jc, ib, jb, pb);
+                                pack_a_f32(
+                                    layout,
+                                    trans_a,
+                                    a,
+                                    lda,
+                                    thread_ic,
+                                    pc,
+                                    ib,
+                                    pb,
+                                    &mut thread_packed_a,
+                                );
+                                sgemm_macrokernel(
+                                    alpha,
+                                    &thread_packed_a,
+                                    packed_b_ref,
+                                    c_slice,
+                                    layout,
+                                    ldc,
+                                    thread_ic,
+                                    jc,
+                                    ib,
+                                    jb,
+                                    pb,
+                                );
                                 thread_ic += mc;
                             }
                         });
@@ -287,7 +330,9 @@ fn sgemm_blocked(
                 for ic in (0..m).step_by(mc) {
                     let ib = mc.min(m - ic);
                     pack_a_f32(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
-                    sgemm_macrokernel(alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb);
+                    sgemm_macrokernel(
+                        alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb,
+                    );
                 }
             }
         }
@@ -378,8 +423,8 @@ fn sgemm_macrokernel(
     nb: usize,
     kb: usize,
 ) {
-    let mr_blocks = (mb + SGEMM_MR - 1) / SGEMM_MR;
-    let nr_blocks = (nb + SGEMM_NR - 1) / SGEMM_NR;
+    let mr_blocks = mb.div_ceil(SGEMM_MR);
+    let nr_blocks = nb.div_ceil(SGEMM_NR);
 
     for jr in 0..nr_blocks {
         let nr = SGEMM_NR.min(nb - jr * SGEMM_NR);
@@ -439,9 +484,7 @@ fn sgemm_microkernel_6x16(
         } else {
             // Partial: pad with zeros — stack array, not heap
             let mut tmp = [0.0f32; SGEMM_NR];
-            for j in 0..nr {
-                tmp[j] = packed_b[b_base + j];
-            }
+            tmp[..nr].copy_from_slice(&packed_b[b_base..b_base + nr]);
             F32Simd::from_slice(&tmp)
         };
 
@@ -502,11 +545,20 @@ pub fn dgemm(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dgemm(
-                layout as i32, trans_a as i32, trans_b as i32,
-                m as i32, n as i32, k as i32,
-                alpha, a.as_ptr(), lda as i32,
-                b.as_ptr(), ldb as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                trans_a as i32,
+                trans_b as i32,
+                m as i32,
+                n as i32,
+                k as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                b.as_ptr(),
+                ldb as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -534,12 +586,16 @@ pub fn dgemm(
 
     // Small matrices: simple triple-loop
     if m * n * k < 110_000 {
-        dgemm_simple(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+        dgemm_simple(
+            layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+        );
         return;
     }
 
     // Cache-blocked DGEMM with packing + multithreading
-    dgemm_blocked(layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc);
+    dgemm_blocked(
+        layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+    );
 }
 
 /// Small-matrix DGEMM with SIMD dot products.
@@ -577,7 +633,8 @@ fn dgemm_simple(
     for i in 0..m {
         let a_row_contiguous = matches!(
             (layout, trans_a),
-            (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+            (Layout::RowMajor, Transpose::NoTrans)
+                | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
         );
 
         if a_row_contiguous {
@@ -629,8 +686,8 @@ fn dgemm_blocked(
     let nc = DGEMM_NC.min(n);
     let kc = DGEMM_KC.min(k);
 
-    let mc_padded = ((mc + DGEMM_MR - 1) / DGEMM_MR) * DGEMM_MR;
-    let nc_padded = ((nc + DGEMM_NR - 1) / DGEMM_NR) * DGEMM_NR;
+    let mc_padded = mc.div_ceil(DGEMM_MR) * DGEMM_MR;
+    let nc_padded = nc.div_ceil(DGEMM_NR) * DGEMM_NR;
 
     let use_parallel = m * n > DGEMM_PARALLEL_THRESHOLD;
     let num_threads = if use_parallel {
@@ -653,7 +710,7 @@ fn dgemm_blocked(
 
             if num_threads > 1 {
                 let c_send = SendMutPtr::new(c);
-                let rows_per_thread = ((m + num_threads - 1) / num_threads + DGEMM_MR - 1) / DGEMM_MR * DGEMM_MR;
+                let rows_per_thread = m.div_ceil(num_threads).div_ceil(DGEMM_MR) * DGEMM_MR;
 
                 let mut work_items = Vec::new();
                 let mut row = 0;
@@ -674,8 +731,30 @@ fn dgemm_blocked(
                             let mut thread_ic = ic;
                             while thread_ic < ic + thread_m {
                                 let ib = mc.min(ic + thread_m - thread_ic);
-                                pack_a_f64(layout, trans_a, a, lda, thread_ic, pc, ib, pb, &mut thread_packed_a);
-                                dgemm_macrokernel(alpha, &thread_packed_a, packed_b_ref, c_slice, layout, ldc, thread_ic, jc, ib, jb, pb);
+                                pack_a_f64(
+                                    layout,
+                                    trans_a,
+                                    a,
+                                    lda,
+                                    thread_ic,
+                                    pc,
+                                    ib,
+                                    pb,
+                                    &mut thread_packed_a,
+                                );
+                                dgemm_macrokernel(
+                                    alpha,
+                                    &thread_packed_a,
+                                    packed_b_ref,
+                                    c_slice,
+                                    layout,
+                                    ldc,
+                                    thread_ic,
+                                    jc,
+                                    ib,
+                                    jb,
+                                    pb,
+                                );
                                 thread_ic += mc;
                             }
                         });
@@ -686,7 +765,9 @@ fn dgemm_blocked(
                 for ic in (0..m).step_by(mc) {
                     let ib = mc.min(m - ic);
                     pack_a_f64(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
-                    dgemm_macrokernel(alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb);
+                    dgemm_macrokernel(
+                        alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb,
+                    );
                 }
             }
         }
@@ -777,8 +858,8 @@ fn dgemm_macrokernel(
     nb: usize,
     kb: usize,
 ) {
-    let mr_blocks = (mb + DGEMM_MR - 1) / DGEMM_MR;
-    let nr_blocks = (nb + DGEMM_NR - 1) / DGEMM_NR;
+    let mr_blocks = mb.div_ceil(DGEMM_MR);
+    let nr_blocks = nb.div_ceil(DGEMM_NR);
 
     for jr in 0..nr_blocks {
         let nr = DGEMM_NR.min(nb - jr * DGEMM_NR);
@@ -790,10 +871,14 @@ fn dgemm_macrokernel(
                 alpha,
                 &packed_a[a_offset..],
                 &packed_b[b_offset..],
-                c, layout, ldc,
+                c,
+                layout,
+                ldc,
                 ic + ir * DGEMM_MR,
                 jc + jr * DGEMM_NR,
-                mr, nr, kb,
+                mr,
+                nr,
+                kb,
             );
         }
     }
@@ -824,9 +909,7 @@ fn dgemm_microkernel_6x8(
         } else {
             // Partial: pad with zeros — stack array, not heap
             let mut tmp = [0.0f64; DGEMM_NR];
-            for j in 0..nr {
-                tmp[j] = packed_b[b_base + j];
-            }
+            tmp[..nr].copy_from_slice(&packed_b[b_base..b_base + nr]);
             F64Simd::from_slice(&tmp)
         };
 
@@ -887,10 +970,17 @@ pub fn ssyrk(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_ssyrk(
-                layout as i32, uplo as i32, trans as i32,
-                n as i32, k as i32, alpha,
-                a.as_ptr(), lda as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                uplo as i32,
+                trans as i32,
+                n as i32,
+                k as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -917,7 +1007,8 @@ pub fn ssyrk(
     // Check if A "rows" (for op(A)) are contiguous
     let rows_contiguous = matches!(
         (layout, trans),
-        (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+        (Layout::RowMajor, Transpose::NoTrans)
+            | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
     );
 
     if rows_contiguous {
@@ -979,10 +1070,17 @@ pub fn dsyrk(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dsyrk(
-                layout as i32, uplo as i32, trans as i32,
-                n as i32, k as i32, alpha,
-                a.as_ptr(), lda as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                uplo as i32,
+                trans as i32,
+                n as i32,
+                k as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -1007,7 +1105,8 @@ pub fn dsyrk(
 
     let rows_contiguous = matches!(
         (layout, trans),
-        (Layout::RowMajor, Transpose::NoTrans) | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
+        (Layout::RowMajor, Transpose::NoTrans)
+            | (Layout::ColMajor, Transpose::Trans | Transpose::ConjTrans)
     );
 
     if rows_contiguous {
@@ -1077,11 +1176,18 @@ pub fn strsm(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_strsm(
-                layout as i32, side as i32, uplo as i32,
-                trans as i32, diag as i32,
-                m as i32, n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                b.as_mut_ptr(), ldb as i32,
+                layout as i32,
+                side as i32,
+                uplo as i32,
+                trans as i32,
+                diag as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                b.as_mut_ptr(),
+                ldb as i32,
             );
         }
         return;
@@ -1204,11 +1310,19 @@ pub fn ssymm(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_ssymm(
-                layout as i32, side as i32, uplo as i32,
-                m as i32, n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                b.as_ptr(), ldb as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                side as i32,
+                uplo as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                b.as_ptr(),
+                ldb as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -1309,11 +1423,19 @@ pub fn dsymm(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dsymm(
-                layout as i32, side as i32, uplo as i32,
-                m as i32, n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                b.as_ptr(), ldb as i32,
-                beta, c.as_mut_ptr(), ldc as i32,
+                layout as i32,
+                side as i32,
+                uplo as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                b.as_ptr(),
+                ldb as i32,
+                beta,
+                c.as_mut_ptr(),
+                ldc as i32,
             );
         }
         return;
@@ -1397,8 +1519,22 @@ mod tests {
         let a = vec![1.0f32, 0.0, 0.0, 1.0];
         let b = vec![1.0f32, 2.0, 3.0, 4.0];
         let mut c = vec![0.0f32; 4];
-        sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2);
+        sgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![1.0, 2.0, 3.0, 4.0]);
     }
 
@@ -1409,8 +1545,22 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let b = vec![5.0f32, 6.0, 7.0, 8.0];
         let mut c = vec![0.0f32; 4];
-        sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2);
+        sgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![19.0, 22.0, 43.0, 50.0]);
     }
 
@@ -1420,8 +1570,22 @@ mod tests {
         let a = vec![1.0f32, 0.0, 0.0, 1.0]; // identity
         let b = vec![1.0f32, 2.0, 3.0, 4.0];
         let mut c = vec![10.0f32, 20.0, 30.0, 40.0];
-        sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 2, 2.0, &a, 2, &b, 2, 3.0, &mut c, 2);
+        sgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            2.0,
+            &a,
+            2,
+            &b,
+            2,
+            3.0,
+            &mut c,
+            2,
+        );
         // C = 2*[[1,2],[3,4]] + 3*[[10,20],[30,40]] = [[32,64],[96,128]]
         assert_eq!(c, vec![32.0, 64.0, 96.0, 128.0]);
     }
@@ -1433,8 +1597,22 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let b = vec![1.0f32, 0.0, 0.0, 1.0];
         let mut c = vec![0.0f32; 4];
-        sgemm(Layout::RowMajor, Transpose::Trans, Transpose::NoTrans,
-              2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2);
+        sgemm(
+            Layout::RowMajor,
+            Transpose::Trans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![1.0, 3.0, 2.0, 4.0]);
     }
 
@@ -1445,8 +1623,22 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
         let b = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut c = vec![0.0f32; 4];
-        sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 3, 1.0, &a, 3, &b, 2, 0.0, &mut c, 2);
+        sgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            3,
+            1.0,
+            &a,
+            3,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![22.0, 28.0, 49.0, 64.0]);
     }
 
@@ -1455,8 +1647,22 @@ mod tests {
         let a = vec![1.0f64, 2.0, 3.0, 4.0];
         let b = vec![5.0f64, 6.0, 7.0, 8.0];
         let mut c = vec![0.0f64; 4];
-        dgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2);
+        dgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![19.0, 22.0, 43.0, 50.0]);
     }
 
@@ -1468,8 +1674,22 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0]; // col-major
         let b = vec![5.0f32, 6.0, 7.0, 8.0]; // col-major
         let mut c = vec![0.0f32; 4];
-        sgemm(Layout::ColMajor, Transpose::NoTrans, Transpose::NoTrans,
-              2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2);
+        sgemm(
+            Layout::ColMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &b,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
         assert_eq!(c, vec![23.0, 34.0, 31.0, 46.0]);
     }
 
@@ -1478,9 +1698,20 @@ mod tests {
         // A = [[1,2],[3,4]], C = A * A^T = [[5,11],[11,25]]
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let mut c = vec![0.0f32; 4];
-        ssyrk(Layout::RowMajor, Uplo::Upper, Transpose::NoTrans,
-              2, 2, 1.0, &a, 2, 0.0, &mut c, 2);
-        assert_eq!(c[0], 5.0);  // C[0,0]
+        ssyrk(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::NoTrans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            0.0,
+            &mut c,
+            2,
+        );
+        assert_eq!(c[0], 5.0); // C[0,0]
         assert_eq!(c[1], 11.0); // C[0,1]
         assert_eq!(c[3], 25.0); // C[1,1]
     }
@@ -1494,8 +1725,22 @@ mod tests {
         let mut c = vec![0.0f64; n * n];
         let mut c_ref = vec![0.0f64; n * n];
 
-        dgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-              n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n);
+        dgemm(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            Transpose::NoTrans,
+            n,
+            n,
+            n,
+            1.0,
+            &a,
+            n,
+            &b,
+            n,
+            0.0,
+            &mut c,
+            n,
+        );
 
         // Reference
         for i in 0..n {
@@ -1506,7 +1751,9 @@ mod tests {
             }
         }
 
-        let max_err = c.iter().zip(c_ref.iter())
+        let max_err = c
+            .iter()
+            .zip(c_ref.iter())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0f64, f64::max);
         assert!(max_err < 1e-6, "dgemm 64x64 max error: {}", max_err);
@@ -1516,13 +1763,31 @@ mod tests {
     fn test_sgemm_blocked_correctness() {
         // Test various sizes that exercise blocked path (> 110K flops)
         for &n in &[48, 50, 64, 100, 128] {
-            let a: Vec<f32> = (0..n * n).map(|i| ((i * 7 + 3) % 100) as f32 * 0.01).collect();
-            let b: Vec<f32> = (0..n * n).map(|i| ((i * 11 + 5) % 100) as f32 * 0.01).collect();
+            let a: Vec<f32> = (0..n * n)
+                .map(|i| ((i * 7 + 3) % 100) as f32 * 0.01)
+                .collect();
+            let b: Vec<f32> = (0..n * n)
+                .map(|i| ((i * 11 + 5) % 100) as f32 * 0.01)
+                .collect();
             let mut c = vec![0.0f32; n * n];
             let mut c_ref = vec![0.0f32; n * n];
 
-            sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-                  n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n);
+            sgemm(
+                Layout::RowMajor,
+                Transpose::NoTrans,
+                Transpose::NoTrans,
+                n,
+                n,
+                n,
+                1.0,
+                &a,
+                n,
+                &b,
+                n,
+                0.0,
+                &mut c,
+                n,
+            );
 
             for i in 0..n {
                 for j in 0..n {
@@ -1532,12 +1797,24 @@ mod tests {
                 }
             }
 
-            let max_err = c.iter().zip(c_ref.iter())
+            let max_err = c
+                .iter()
+                .zip(c_ref.iter())
                 .map(|(a, b)| (a - b).abs())
                 .fold(0.0f32, f32::max);
             let max_val = c_ref.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-            let rel_err = if max_val > 0.0 { max_err / max_val } else { max_err };
-            assert!(rel_err < 1e-4, "sgemm {}x{} relative error: {}", n, n, rel_err);
+            let rel_err = if max_val > 0.0 {
+                max_err / max_val
+            } else {
+                max_err
+            };
+            assert!(
+                rel_err < 1e-4,
+                "sgemm {}x{} relative error: {}",
+                n,
+                n,
+                rel_err
+            );
         }
     }
 }

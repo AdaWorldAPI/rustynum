@@ -68,9 +68,27 @@ pub fn cascade_scan_4ch(
     thresholds: [u64; 4],
 ) -> Vec<(usize, [u64; 4])> {
     let n = meta_col.len();
-    assert_eq!(cam_col.len(), n, "cascade_scan_4ch: cam_col length {} != meta_col length {}", cam_col.len(), n);
-    assert_eq!(btree_col.len(), n, "cascade_scan_4ch: btree_col length {} != meta_col length {}", btree_col.len(), n);
-    assert_eq!(embed_col.len(), n, "cascade_scan_4ch: embed_col length {} != meta_col length {}", embed_col.len(), n);
+    assert_eq!(
+        cam_col.len(),
+        n,
+        "cascade_scan_4ch: cam_col length {} != meta_col length {}",
+        cam_col.len(),
+        n
+    );
+    assert_eq!(
+        btree_col.len(),
+        n,
+        "cascade_scan_4ch: btree_col length {} != meta_col length {}",
+        btree_col.len(),
+        n
+    );
+    assert_eq!(
+        embed_col.len(),
+        n,
+        "cascade_scan_4ch: embed_col length {} != meta_col length {}",
+        embed_col.len(),
+        n
+    );
     let vec_len = meta_col.value_length() as usize;
     let meta_flat = arrow_to_flat_bytes(meta_col);
     let cam_flat = arrow_to_flat_bytes(cam_col);
@@ -195,10 +213,10 @@ mod tests {
             .map(|i| {
                 if i == 2 {
                     CogRecord::new(
-                        make_container(1),  // close in META
-                        make_container(1),  // close in CAM
-                        make_container(1),  // close in BTREE
-                        make_container(1),  // close in EMBED
+                        make_container(1), // close in META
+                        make_container(1), // close in CAM
+                        make_container(1), // close in BTREE
+                        make_container(1), // close in EMBED
                     )
                 } else {
                     CogRecord::new(
@@ -211,10 +229,22 @@ mod tests {
             })
             .collect();
 
-        let meta_rows: Vec<Vec<u8>> = records.iter().map(|r| r.meta.data_slice().to_vec()).collect();
-        let cam_rows: Vec<Vec<u8>> = records.iter().map(|r| r.cam.data_slice().to_vec()).collect();
-        let btree_rows: Vec<Vec<u8>> = records.iter().map(|r| r.btree.data_slice().to_vec()).collect();
-        let embed_rows: Vec<Vec<u8>> = records.iter().map(|r| r.embed.data_slice().to_vec()).collect();
+        let meta_rows: Vec<Vec<u8>> = records
+            .iter()
+            .map(|r| r.meta.data_slice().to_vec())
+            .collect();
+        let cam_rows: Vec<Vec<u8>> = records
+            .iter()
+            .map(|r| r.cam.data_slice().to_vec())
+            .collect();
+        let btree_rows: Vec<Vec<u8>> = records
+            .iter()
+            .map(|r| r.btree.data_slice().to_vec())
+            .collect();
+        let embed_rows: Vec<Vec<u8>> = records
+            .iter()
+            .map(|r| r.embed.data_slice().to_vec())
+            .collect();
 
         let m_refs: Vec<&[u8]> = meta_rows.iter().map(|r| r.as_slice()).collect();
         let c_refs: Vec<&[u8]> = cam_rows.iter().map(|r| r.as_slice()).collect();
@@ -229,7 +259,10 @@ mod tests {
         // Threshold: 3000 bits per channel — only record 2 should pass all 4
         let results = cascade_scan_4ch(
             &query,
-            &meta_col, &cam_col, &btree_col, &embed_col,
+            &meta_col,
+            &cam_col,
+            &btree_col,
+            &embed_col,
             [3000, 3000, 3000, 3000],
         );
 

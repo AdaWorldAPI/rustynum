@@ -148,9 +148,9 @@ mod tests {
     fn test_adaptive_search_batch() {
         let query = NumArrayU8::new(vec![0xAA; 2048]);
         let mut db_data = vec![0xAA; 2048]; // vec 0: identical (d=0)
-        db_data.extend(vec![0x55; 2048]);   // vec 1: maximally different
-        db_data.extend(vec![0xAA; 2048]);   // vec 2: identical (d=0)
-        db_data.extend(vec![0x00; 2048]);   // vec 3: very different
+        db_data.extend(vec![0x55; 2048]); // vec 1: maximally different
+        db_data.extend(vec![0xAA; 2048]); // vec 2: identical (d=0)
+        db_data.extend(vec![0x00; 2048]); // vec 3: very different
         let db = NumArrayU8::new(db_data);
 
         let results = query.hamming_search_adaptive(&db, 2048, 4, 100);

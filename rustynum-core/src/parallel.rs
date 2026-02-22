@@ -24,7 +24,7 @@ where
         .map(|n| n.get())
         .unwrap_or(4);
     let total = end - start;
-    let chunk_size = (total + num_threads - 1) / num_threads;
+    let chunk_size = total.div_ceil(num_threads);
 
     if total <= chunk_size || num_threads <= 1 {
         // Small workload — run inline, no thread overhead
@@ -58,7 +58,7 @@ where
         .map(|n| n.get())
         .unwrap_or(4);
     let total = end - start;
-    let chunk_size = (total + num_threads - 1) / num_threads;
+    let chunk_size = total.div_ceil(num_threads);
 
     if total <= chunk_size || num_threads <= 1 {
         return vec![f(start, end)];
@@ -93,9 +93,7 @@ mod tests {
 
     #[test]
     fn test_parallel_map_chunks() {
-        let results = parallel_map_chunks(0, 100, |start, end| {
-            (start..end).sum::<usize>()
-        });
+        let results = parallel_map_chunks(0, 100, |start, end| (start..end).sum::<usize>());
         let total: usize = results.iter().sum();
         assert_eq!(total, (0..100).sum::<usize>());
     }

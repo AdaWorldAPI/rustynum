@@ -3,9 +3,9 @@
 //! One oracle per entity with hot/warm/cold tiers, overexposure-triggered flush,
 //! and coefficient-as-canonical-storage.
 
-use rand::Rng;
-use crate::sweep::{Base, generate_template};
 use crate::linalg::{cholesky_solve, upsample_to_f32};
+use crate::sweep::{generate_template, Base};
+use rand::Rng;
 
 // ---------------------------------------------------------------------------
 // Oracle
@@ -55,6 +55,12 @@ impl PartialEq for Base {
             (Base::Signed(a), Base::Signed(b)) => a == b,
             _ => false,
         }
+    }
+}
+
+impl Default for Oracle {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -117,7 +123,11 @@ impl Oracle {
             }
         }
 
-        MaterializedHolograph::Warm { axes: axes_buf, d, base }
+        MaterializedHolograph::Warm {
+            axes: axes_buf,
+            d,
+            base,
+        }
     }
 
     /// Materialize from cold to hot.
@@ -151,17 +161,15 @@ impl Oracle {
     ///   2. Extract K exact coefficients
     ///   3. Update oracle coefficients (the canonical form)
     ///   4. Discard the hot buffer
-    pub fn surgical_cool(
-        &mut self,
-        hot: &MaterializedHolograph,
-        library: &TemplateLibrary,
-    ) {
+    pub fn surgical_cool(&mut self, hot: &MaterializedHolograph, library: &TemplateLibrary) {
         let MaterializedHolograph::Hot { axes, d } = hot else {
             panic!("surgical_cool requires hot materialization");
         };
 
         let k = self.k();
-        if k == 0 { return; }
+        if k == 0 {
+            return;
+        }
         let n_axes = library.axes;
 
         // Per-axis coefficient extraction, then average across axes
@@ -208,8 +216,7 @@ impl Oracle {
                 let cid_j = self.concept_ids[j] as usize;
                 let mut dot = 0.0f64;
                 for p in 0..d {
-                    dot += library.hot[cid_i][axis][p] as f64
-                        * library.hot[cid_j][axis][p] as f64;
+                    dot += library.hot[cid_i][axis][p] as f64 * library.hot[cid_j][axis][p] as f64;
                 }
                 gram[i * k + j] = dot;
                 gram[j * k + i] = dot;
@@ -227,10 +234,7 @@ impl Oracle {
     ///   1. Saturation: dimensions hitting clamp boundary
     ///   2. Energy overflow: total energy vs expected for K concepts
     ///   3. Zero deficit: loss of Auslöschung zeros (signed only)
-    pub fn check_overexposure(
-        &mut self,
-        warm: &MaterializedHolograph,
-    ) -> f32 {
+    pub fn check_overexposure(&mut self, warm: &MaterializedHolograph) -> f32 {
         let MaterializedHolograph::Warm { axes, d, base } = warm else {
             return 0.0;
         };
@@ -243,15 +247,11 @@ impl Oracle {
 
         for axis_buf in axes {
             // Signal 1: saturation ratio
-            let saturated = axis_buf.iter()
-                .filter(|&&v| v.abs() >= max_val)
-                .count();
+            let saturated = axis_buf.iter().filter(|&&v| v.abs() >= max_val).count();
             let sat_ratio = saturated as f32 / d_f;
 
             // Signal 2: energy density
-            let energy: f64 = axis_buf.iter()
-                .map(|&v| (v as f64) * (v as f64))
-                .sum();
+            let energy: f64 = axis_buf.iter().map(|&v| (v as f64) * (v as f64)).sum();
             let expected = k as f64 * d_f as f64 * 0.5;
             let energy_ratio = (energy / expected.max(1.0)) as f32 - 1.0;
 
@@ -264,10 +264,7 @@ impl Oracle {
                 0.0
             };
 
-            let axis_score = sat_ratio
-                .max(energy_ratio)
-                .max(zero_deficit)
-                .max(0.0);
+            let axis_score = sat_ratio.max(energy_ratio).max(zero_deficit).max(0.0);
 
             max_score = max_score.max(axis_score);
         }
@@ -358,7 +355,15 @@ impl TemplateLibrary {
             hot.push(h_axes);
         }
 
-        Self { size, d_warm, d_hot, base_warm, axes, warm, hot }
+        Self {
+            size,
+            d_warm,
+            d_hot,
+            base_warm,
+            axes,
+            warm,
+            hot,
+        }
     }
 }
 
@@ -387,12 +392,7 @@ pub enum MaterializedHolograph {
 
 impl MaterializedHolograph {
     /// Add a concept to the materialized holograph.
-    pub fn add_concept(
-        &mut self,
-        concept_id: usize,
-        coefficient: f32,
-        library: &TemplateLibrary,
-    ) {
+    pub fn add_concept(&mut self, concept_id: usize, coefficient: f32, library: &TemplateLibrary) {
         match self {
             MaterializedHolograph::Warm { axes, d, base } => {
                 let max = base.max_val();
@@ -401,8 +401,7 @@ impl MaterializedHolograph {
                     for j in 0..*d {
                         let current = axes[a][j] as f32;
                         let update = coefficient * library.warm[concept_id][a][j] as f32;
-                        axes[a][j] = (current + update).round()
-                            .clamp(min as f32, max as f32) as i8;
+                        axes[a][j] = (current + update).round().clamp(min as f32, max as f32) as i8;
                     }
                 }
             }
@@ -434,8 +433,10 @@ impl MaterializedHolograph {
                         let tb = library.warm[concept_b][a][j] as f32;
                         let interference = ta * tb * learning_rate;
                         let current = axes[a][j] as f32;
-                        axes[a][j] = (current + interference).round()
-                            .clamp(min as f32, max as f32) as i8;
+                        axes[a][j] = (current + interference)
+                            .round()
+                            .clamp(min as f32, max as f32)
+                            as i8;
                     }
                 }
             }
@@ -460,8 +461,8 @@ impl MaterializedHolograph {
 mod tests {
     use super::*;
     use crate::linalg::downsample_to_base;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     fn seeded_rng() -> StdRng {
         StdRng::seed_from_u64(42)
@@ -476,7 +477,12 @@ mod tests {
 
     fn test_library(rng: &mut StdRng) -> TemplateLibrary {
         TemplateLibrary::generate(
-            TEST_LIB_SIZE, TEST_D_WARM, TEST_D_HOT, TEST_BASE, TEST_AXES, rng,
+            TEST_LIB_SIZE,
+            TEST_D_WARM,
+            TEST_D_HOT,
+            TEST_BASE,
+            TEST_AXES,
+            rng,
         )
     }
 
@@ -572,9 +578,14 @@ mod tests {
         assert_eq!(oracle.temperature, Temperature::Cold);
         for i in 0..oracle.k() {
             let err = (oracle.coefficients[i] - original_coeffs[i]).abs();
-            assert!(err < 0.01,
+            assert!(
+                err < 0.01,
                 "coefficient[{}]: original={}, recovered={}, err={}",
-                i, original_coeffs[i], oracle.coefficients[i], err);
+                i,
+                original_coeffs[i],
+                oracle.coefficients[i],
+                err
+            );
         }
     }
 
@@ -596,8 +607,7 @@ mod tests {
 
         for i in 0..oracle.k() {
             let err = (oracle.coefficients[i] - original_coeffs[i]).abs();
-            assert!(err < 0.01,
-                "hot round trip coefficient[{}]: err={}", i, err);
+            assert!(err < 0.01, "hot round trip coefficient[{}]: err={}", i, err);
         }
     }
 
@@ -622,9 +632,11 @@ mod tests {
         oracle.surgical_cool(&hot, &lib);
 
         // Concept 2 should now have a nonzero coefficient
-        assert!(oracle.coefficients[2].abs() > 0.01,
+        assert!(
+            oracle.coefficients[2].abs() > 0.01,
             "added concept should have nonzero coefficient after cool, got {}",
-            oracle.coefficients[2]);
+            oracle.coefficients[2]
+        );
     }
 
     // -- Overexposure --
@@ -653,9 +665,12 @@ mod tests {
 
         let warm = oracle.materialize_warm(&lib);
         let score = oracle.check_overexposure(&warm);
-        assert!(score < 0.8,
+        assert!(
+            score < 0.8,
             "5 concepts at D={} should be comfortable, got {}",
-            TEST_D_WARM, score);
+            TEST_D_WARM,
+            score
+        );
     }
 
     #[test]
@@ -671,8 +686,11 @@ mod tests {
 
         let warm = oracle.materialize_warm(&lib);
         let score = oracle.check_overexposure(&warm);
-        assert!(score > 0.3,
-            "18 concepts at D=32 should be cramped, got {}", score);
+        assert!(
+            score > 0.3,
+            "18 concepts at D=32 should be cramped, got {}",
+            score
+        );
     }
 
     // -- Signed cancellation reduces overexposure --
@@ -700,8 +718,12 @@ mod tests {
         let score_mix = oracle_mix.check_overexposure(&warm_mix);
 
         // Mixed should have lower or equal overexposure due to cancellation
-        assert!(score_mix <= score_pos + 0.1,
-            "mixed should have ≤ overexposure: pos={}, mix={}", score_pos, score_mix);
+        assert!(
+            score_mix <= score_pos + 0.1,
+            "mixed should have ≤ overexposure: pos={}, mix={}",
+            score_pos,
+            score_mix
+        );
     }
 
     // -- Flush decision transitions --
@@ -762,8 +784,11 @@ mod tests {
             let err = (warm_original[i] - warm_reconstructed[i]).abs();
             max_err = max_err.max(err);
         }
-        assert!(max_err <= 1,
-            "warm → hot → warm should be within quantization error, got max_err={}", max_err);
+        assert!(
+            max_err <= 1,
+            "warm → hot → warm should be within quantization error, got max_err={}",
+            max_err
+        );
     }
 
     #[test]
@@ -772,10 +797,16 @@ mod tests {
         let lib = TemplateLibrary::generate(200, 16384, 65536, Base::Signed(5), 3, &mut rng);
         // Warm: 200 × 3 × 16384 = 9,830,400 bytes
         let warm_bytes = 200 * 3 * 16384;
-        assert_eq!(lib.warm.len() * lib.warm[0].len() * lib.warm[0][0].len(), warm_bytes);
+        assert_eq!(
+            lib.warm.len() * lib.warm[0].len() * lib.warm[0][0].len(),
+            warm_bytes
+        );
         // Hot: 200 × 3 × 65536 × 4 = 157,286,400 bytes
         let hot_elements = 200 * 3 * 65536;
-        assert_eq!(lib.hot.len() * lib.hot[0].len() * lib.hot[0][0].len(), hot_elements);
+        assert_eq!(
+            lib.hot.len() * lib.hot[0].len() * lib.hot[0][0].len(),
+            hot_elements
+        );
     }
 
     // -- Hebbian learning --
@@ -810,8 +841,12 @@ mod tests {
         };
 
         // Energy should change after Hebbian update
-        assert!((energy_after - energy_before).abs() > 0.1,
-            "Hebbian should change energy: before={}, after={}", energy_before, energy_after);
+        assert!(
+            (energy_after - energy_before).abs() > 0.1,
+            "Hebbian should change energy: before={}, after={}",
+            energy_before,
+            energy_after
+        );
     }
 
     #[test]
@@ -832,8 +867,10 @@ mod tests {
         oracle.surgical_cool(&hot, &lib);
 
         // Coefficients should have changed from the Hebbian update
-        assert!(oracle.coefficients.iter().any(|&c| (c - 0.5).abs() > 0.01),
-            "Hebbian + cool should change coefficients");
+        assert!(
+            oracle.coefficients.iter().any(|&c| (c - 0.5).abs() > 0.01),
+            "Hebbian + cool should change coefficients"
+        );
     }
 
     // -- Full lifecycle --
@@ -871,9 +908,14 @@ mod tests {
         // 7. Verify coefficients survived
         for i in 0..oracle.k() {
             let err = (oracle.coefficients[i] - original[i]).abs();
-            assert!(err < 0.05,
+            assert!(
+                err < 0.05,
                 "lifecycle coefficient[{}]: original={}, recovered={}, err={}",
-                i, original[i], oracle.coefficients[i], err);
+                i,
+                original[i],
+                oracle.coefficients[i],
+                err
+            );
         }
     }
 
@@ -924,10 +966,16 @@ mod tests {
         oracle.surgical_cool(&hot, &lib);
 
         // At least one coefficient should have changed significantly
-        let changed = oracle.coefficients.iter()
+        let changed = oracle
+            .coefficients
+            .iter()
             .zip([0.8f32, 0.6].iter())
             .any(|(&c, &orig)| (c - orig).abs() > 0.01);
-        assert!(changed, "anti-Hebbian should change coefficients: {:?}", oracle.coefficients);
+        assert!(
+            changed,
+            "anti-Hebbian should change coefficients: {:?}",
+            oracle.coefficients
+        );
     }
 
     // -- Mixed operations --
@@ -954,7 +1002,10 @@ mod tests {
         oracle.surgical_cool(&hot, &lib);
 
         // Concept 2 should now have a significant coefficient
-        assert!(oracle.coefficients[2].abs() > 0.05,
-            "concept 2 should have been added, got {}", oracle.coefficients[2]);
+        assert!(
+            oracle.coefficients[2].abs() > 0.05,
+            "concept 2 should have been added, got {}",
+            oracle.coefficients[2]
+        );
     }
 }

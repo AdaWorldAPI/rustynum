@@ -9,6 +9,9 @@
 //! Storage: 2 bytes per dimension (same as BF16).
 //! For 1024-D Jina embedding: 2KB per vector.
 
+use smallvec::SmallVec;
+use std::sync::OnceLock;
+
 // ---------------------------------------------------------------------------
 // Weights
 // ---------------------------------------------------------------------------
@@ -25,15 +28,48 @@ pub struct BF16Weights {
     pub mantissa: u16,
 }
 
+impl BF16Weights {
+    /// Create custom weights with overflow validation.
+    ///
+    /// The AVX-512 path accumulates `sign + 8×exponent + 7×mantissa` per BF16
+    /// pair in a u16 lane before widening to u32. This must not exceed 65535.
+    ///
+    /// Panics if the per-element maximum exceeds u16 range.
+    pub fn new(sign: u16, exponent: u16, mantissa: u16) -> Self {
+        let max_per_elem = sign as u32 + 8 * exponent as u32 + 7 * mantissa as u32;
+        assert!(
+            max_per_elem <= 65535,
+            "BF16Weights overflow: sign({}) + 8×exp({}) + 7×man({}) = {} > 65535. \
+             The AVX-512 path would silently wrap in u16 lanes.",
+            sign,
+            exponent,
+            mantissa,
+            max_per_elem,
+        );
+        Self {
+            sign,
+            exponent,
+            mantissa,
+        }
+    }
+}
+
 impl Default for BF16Weights {
     fn default() -> Self {
-        Self { sign: 256, exponent: 16, mantissa: 1 }
+        // 256 + 8×16 + 7×1 = 391 — safe
+        Self {
+            sign: 256,
+            exponent: 16,
+            mantissa: 1,
+        }
     }
 }
 
 impl PartialEq for BF16Weights {
     fn eq(&self, other: &Self) -> bool {
-        self.sign == other.sign && self.exponent == other.exponent && self.mantissa == other.mantissa
+        self.sign == other.sign
+            && self.exponent == other.exponent
+            && self.mantissa == other.mantissa
     }
 }
 
@@ -70,7 +106,10 @@ pub const TRAINING_WEIGHTS: BF16Weights = BF16Weights {
 /// Returns weighted distance.
 pub fn bf16_hamming_scalar(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     assert_eq!(a.len(), b.len());
-    assert!(a.len() % 2 == 0, "BF16 data must be even number of bytes");
+    assert!(
+        a.len().is_multiple_of(2),
+        "BF16 data must be even number of bytes"
+    );
 
     let mut total: u64 = 0;
 
@@ -110,9 +149,12 @@ pub fn bf16_hamming_scalar(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
 /// - VPOPCNTB for per-byte popcount
 /// - VPADDW for accumulation
 ///
-/// Requires: AVX-512BW + AVX-512VPOPCNTDQ (Ice Lake+)
+/// Requires: AVX-512BW + AVX-512BITALG (Ice Lake+)
+///
+/// Note: `_mm512_popcnt_epi8` is AVX-512 BITALG, not VPOPCNTDQ.
+/// VPOPCNTDQ provides 32/64-bit lane popcount; per-byte popcount is BITALG.
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx512f,avx512bw,avx512vpopcntdq")]
+#[target_feature(enable = "avx512f,avx512bw,avx512bitalg")]
 unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     use std::arch::x86_64::*;
 
@@ -127,9 +169,17 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
     let mask_0x7f = _mm512_set1_epi16(0x007F);
     let one = _mm512_set1_epi16(1);
 
-    // Accumulate in 32-bit to avoid overflow.
-    // Max per-element contribution: 256 + 8×16 + 7×1 = 391
-    // 32 elements per chunk × 391 = 12512 per chunk
+    // Accumulate in 32-bit to avoid u16 overflow.
+    //
+    // Per-element max (default weights): 256 + 8×16 + 7×1 = 391
+    // 32 BF16 pairs per 512-bit chunk → 12,512 per chunk.
+    // For 1024-D (32 chunks): 32 × 12,512 = 400,384 — fits u32 (max 4.29B).
+    // Even with TRAINING_WEIGHTS (1024/64/0): 1024 + 8×64 = 1,536 per elem,
+    // 32 × 1,536 × 32 chunks = 1,572,864 — still fits comfortably in u32.
+    //
+    // Overflow budget: safe for vectors up to ~2.7M dimensions with default
+    // weights, or ~87K dimensions with TRAINING_WEIGHTS. Beyond that, widen
+    // to u64 accumulators or add periodic reduction.
     let mut acc_lo = _mm512_setzero_si512();
     let mut acc_hi = _mm512_setzero_si512();
 
@@ -145,27 +195,22 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 
         // Exponent extraction: shift right 7, mask to 0xFF, popcount, weight
         let exp_shifted = _mm512_and_si512(_mm512_srli_epi16(xor, 7), mask_0xff);
-        let exp_popcnt = _mm512_and_si512(
-            _mm512_popcnt_epi8(exp_shifted),
-            mask_0xff,
-        );
+        let exp_popcnt = _mm512_and_si512(_mm512_popcnt_epi8(exp_shifted), mask_0xff);
         let exp_weighted = _mm512_mullo_epi16(exp_popcnt, w_exp);
 
         // Mantissa extraction: mask to 0x7F, popcount, weight
         let man_masked = _mm512_and_si512(xor, mask_0x7f);
-        let man_popcnt = _mm512_and_si512(
-            _mm512_popcnt_epi8(man_masked),
-            mask_0xff,
-        );
+        let man_popcnt = _mm512_and_si512(_mm512_popcnt_epi8(man_masked), mask_0xff);
         let man_weighted = _mm512_mullo_epi16(man_popcnt, w_man);
 
         // Sum per-element: sign + exp + man (u16, max ~391 with default weights)
-        let per_elem = _mm512_add_epi16(
-            _mm512_add_epi16(sign_weighted, exp_weighted),
-            man_weighted,
-        );
+        let per_elem =
+            _mm512_add_epi16(_mm512_add_epi16(sign_weighted, exp_weighted), man_weighted);
 
-        // Widen to u32 and accumulate
+        // Widen u16 lanes to u32 and accumulate in two halves.
+        // BF16 pairs are 2 bytes each so u16 lane boundaries coincide with
+        // BF16 element boundaries — even lanes are elements 0,2,4,...
+        // and odd lanes (shifted right 16 within each 32-bit word) are 1,3,5,...
         let even = _mm512_and_si512(per_elem, _mm512_set1_epi32(0x0000FFFF));
         let odd = _mm512_srli_epi32(per_elem, 16);
         acc_lo = _mm512_add_epi32(acc_lo, even);
@@ -190,15 +235,24 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 // Dispatch
 // ---------------------------------------------------------------------------
 
+/// Function pointer type for BF16 Hamming implementations.
+pub type BF16HammingFn = fn(&[u8], &[u8], &BF16Weights) -> u64;
+
 /// Select the fastest BF16-structured Hamming implementation for this CPU.
-pub fn select_bf16_hamming_fn() -> fn(&[u8], &[u8], &BF16Weights) -> u64 {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512vpopcntdq") {
-            return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
+///
+/// The result is cached in a `OnceLock` — the CPUID probe runs at most once.
+/// Safe to call in hot loops.
+pub fn select_bf16_hamming_fn() -> BF16HammingFn {
+    static FN: OnceLock<BF16HammingFn> = OnceLock::new();
+    *FN.get_or_init(|| {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
+                return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
+            }
         }
-    }
-    bf16_hamming_scalar
+        bf16_hamming_scalar
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +279,7 @@ pub fn fp32_to_bf16_bytes(floats: &[f32]) -> Vec<u8> {
 ///
 /// Lossless in the BF16 → FP32 direction (just adds zero mantissa bits).
 pub fn bf16_bytes_to_fp32(bytes: &[u8]) -> Vec<f32> {
-    assert!(bytes.len() % 2 == 0);
+    assert!(bytes.len().is_multiple_of(2));
     let mut out = Vec::with_capacity(bytes.len() / 2);
     for chunk in bytes.chunks_exact(2) {
         let bf16 = u16::from_le_bytes([chunk[0], chunk[1]]);
@@ -244,6 +298,9 @@ pub fn bf16_bytes_to_fp32(bytes: &[u8]) -> Vec<f32> {
 /// Returns per-dimension breakdown of what changed:
 /// sign flips, exponent changes, mantissa changes.
 /// This is the "structural gradient" — actionable learning signal.
+///
+/// Uses `SmallVec<[usize; 32]>` for dimension indices to avoid heap allocation
+/// in the common case (≤32 sign flips or magnitude shifts per diff).
 #[derive(Clone, Debug, Default)]
 pub struct BF16StructuralDiff {
     /// Number of dimensions where the sign flipped.
@@ -253,14 +310,14 @@ pub struct BF16StructuralDiff {
     /// Number of mantissa bits that changed (total across all dims).
     pub mantissa_bits_changed: usize,
     /// Indices of dimensions where sign flipped.
-    pub sign_flip_dims: Vec<usize>,
+    pub sign_flip_dims: SmallVec<[usize; 32]>,
     /// Indices of dimensions with exponent change >= 2 bits (magnitude shift >= 4x).
-    pub major_magnitude_shifts: Vec<usize>,
+    pub major_magnitude_shifts: SmallVec<[usize; 32]>,
 }
 
 pub fn structural_diff(a: &[u8], b: &[u8]) -> BF16StructuralDiff {
     assert_eq!(a.len(), b.len());
-    assert!(a.len() % 2 == 0);
+    assert!(a.len().is_multiple_of(2));
 
     let mut diff = BF16StructuralDiff::default();
     let n_dims = a.len() / 2;
@@ -313,7 +370,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Sign flip (1 bit * 256) + exponent same + mantissa same
-        assert!(d >= 256, "Sign flip should contribute at least 256, got {}", d);
+        assert!(
+            d >= 256,
+            "Sign flip should contribute at least 256, got {}",
+            d
+        );
     }
 
     #[test]
@@ -323,7 +384,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Only mantissa bits differ — should be very small
-        assert!(d < 8, "Small float change should be < 8 weighted distance, got {}", d);
+        assert!(
+            d < 8,
+            "Small float change should be < 8 weighted distance, got {}",
+            d
+        );
     }
 
     #[test]
@@ -333,7 +398,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Exponent changed significantly, no sign flip
-        assert!(d > 16 && d < 256, "Large magnitude should be between exp and sign weight, got {}", d);
+        assert!(
+            d > 16 && d < 256,
+            "Large magnitude should be between exp and sign weight, got {}",
+            d
+        );
     }
 
     #[test]
@@ -344,7 +413,13 @@ mod tests {
         for (o, b) in orig.iter().zip(back.iter()) {
             if o.is_finite() && *o != 0.0 {
                 let rel_err = ((o - b) / o).abs();
-                assert!(rel_err < 0.01, "Roundtrip error too large: {} -> {} (err {})", o, b, rel_err);
+                assert!(
+                    rel_err < 0.01,
+                    "Roundtrip error too large: {} -> {} (err {})",
+                    o,
+                    b,
+                    rel_err
+                );
             }
         }
     }
@@ -366,7 +441,7 @@ mod tests {
         let b = fp32_to_bf16_bytes(&[1.0, -2.0, 3.0, -4.0]);
         let diff = structural_diff(&a, &b);
         assert_eq!(diff.sign_flips, 2);
-        assert_eq!(diff.sign_flip_dims, vec![1, 3]);
+        assert_eq!(diff.sign_flip_dims.as_slice(), &[1, 3]);
     }
 
     #[test]
@@ -388,7 +463,11 @@ mod tests {
         let d = bf16_hamming_scalar(&a_bf16, &b_bf16, &JINA_WEIGHTS);
         // Very similar vectors — distance should be small relative to max
         let max_possible: u64 = 1024 * (256 + 8 * 32 + 7);
-        assert!(d < max_possible / 10, "Similar vectors should be < 10% of max distance, got {}", d);
+        assert!(
+            d < max_possible / 10,
+            "Similar vectors should be < 10% of max distance, got {}",
+            d
+        );
     }
 
     #[test]
@@ -396,7 +475,10 @@ mod tests {
         let a = fp32_to_bf16_bytes(&[1.0]);
         let b = fp32_to_bf16_bytes(&[1.007]);
         let d = bf16_hamming_scalar(&a, &b, &TRAINING_WEIGHTS);
-        assert_eq!(d, 0, "Training weights with mantissa=0 should ignore mantissa-only changes");
+        assert_eq!(
+            d, 0,
+            "Training weights with mantissa=0 should ignore mantissa-only changes"
+        );
     }
 
     #[test]
@@ -414,9 +496,7 @@ mod tests {
     fn test_avx512_matches_scalar() {
         #[cfg(target_arch = "x86_64")]
         {
-            if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512vpopcntdq")
-            {
+            if !is_x86_feature_detected!("avx512bw") || !is_x86_feature_detected!("avx512bitalg") {
                 return;
             }
             // 512 dims = 1024 bytes = 16 full AVX-512 chunks, no tail
@@ -435,9 +515,7 @@ mod tests {
     fn test_avx512_with_tail() {
         #[cfg(target_arch = "x86_64")]
         {
-            if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512vpopcntdq")
-            {
+            if !is_x86_feature_detected!("avx512bw") || !is_x86_feature_detected!("avx512bitalg") {
                 return;
             }
             // 37 dims = 74 bytes = 1 chunk (64 bytes) + 10 byte tail
@@ -481,7 +559,34 @@ mod tests {
 
         let d_sign = bf16_hamming_scalar(&a, &sign_flip, &w);
         let d_exp = bf16_hamming_scalar(&a, &big_exp, &w);
-        assert!(d_sign > d_exp,
-            "Sign flip ({}) should cost more than exponent shift ({})", d_sign, d_exp);
+        assert!(
+            d_sign > d_exp,
+            "Sign flip ({}) should cost more than exponent shift ({})",
+            d_sign,
+            d_exp
+        );
+    }
+
+    #[test]
+    fn test_weights_new_valid() {
+        let w = BF16Weights::new(256, 16, 1);
+        assert_eq!(w.sign, 256);
+        assert_eq!(w.exponent, 16);
+        assert_eq!(w.mantissa, 1);
+    }
+
+    #[test]
+    fn test_weights_new_max_safe() {
+        // Exactly at the limit: 65535 = sign + 8*exp + 7*man
+        // e.g. 0 + 8*8191 + 7*1 = 65535
+        let w = BF16Weights::new(0, 8191, 1);
+        assert_eq!(w.exponent, 8191);
+    }
+
+    #[test]
+    #[should_panic(expected = "BF16Weights overflow")]
+    fn test_weights_new_overflow_panics() {
+        // 4096 + 8*4096 + 7*4096 = 4096 + 32768 + 28672 = 65536 — wraps!
+        BF16Weights::new(4096, 4096, 4096);
     }
 }

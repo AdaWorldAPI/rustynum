@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use rustymkl::{vml, fft};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use rustymkl::{fft, vml};
 
 fn bench_vsexp(c: &mut Criterion) {
     let mut group = c.benchmark_group("vsexp");
@@ -20,8 +20,8 @@ fn bench_fft(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             b.iter(|| {
                 // Reset data each iteration
-                for i in 0..2 * n {
-                    data[i] = (i as f32 * 0.01).sin();
+                for (i, d) in data[..2 * n].iter_mut().enumerate() {
+                    *d = (i as f32 * 0.01).sin();
                 }
                 fft::fft_f32(&mut data, n);
             });

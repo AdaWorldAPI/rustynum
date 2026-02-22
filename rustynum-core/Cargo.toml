@@ -19,5 +19,6 @@ mkl = ["dep:intel-mkl-src"]
 
 [dependencies]
 intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-seq"], optional = true }
+smallvec = "1"
 
 [dev-dependencies]

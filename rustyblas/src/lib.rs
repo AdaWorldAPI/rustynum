@@ -1,3 +1,7 @@
+// BLAS functions match CBLAS signatures — many parameters are inherent to the API.
+// Numeric kernels use index loops on packed arrays where iterators hurt readability.
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+
 //! # RustyBLAS
 //!
 //! Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement.
@@ -30,12 +34,12 @@
 //! let m = 64;
 //! let k = 64;
 //! let n = 64;
-//! let _ = bb.alloc_f32("A", m * k);
-//! let _ = bb.alloc_f32("B", k * n);
-//! let _ = bb.alloc_f32("C", m * n);
+//! bb.alloc_f32("A", m * k);
+//! bb.alloc_f32("B", k * n);
+//! bb.alloc_f32("C", m * n);
 //!
 //! // Fill A, B...
-//! let (a, b, c) = bb.borrow_3_mut_f32("A", "B", "C");
+//! let (a, b, c) = bb.borrow_3_mut_f32("A", "B", "C").unwrap();
 //! a.fill(1.0);
 //! b.fill(1.0);
 //!
@@ -56,6 +60,8 @@ pub mod level3;
 pub use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
 
 // Re-export quantized GEMM entry points
-pub use bf16_gemm::{BF16, bf16_gemm_f32, mixed_precision_gemm};
-pub use int8_gemm::{int8_gemm_i32, int8_gemm_f32, quantize_f32_to_u8, quantize_f32_to_i8,
-    quantize_f32_to_i4, dequantize_i4_to_f32};
+pub use bf16_gemm::{bf16_gemm_f32, mixed_precision_gemm, BF16};
+pub use int8_gemm::{
+    dequantize_i4_to_f32, int8_gemm_f32, int8_gemm_i32, quantize_f32_to_i4, quantize_f32_to_i8,
+    quantize_f32_to_u8,
+};

@@ -25,9 +25,9 @@
 //! - **Adaptive** — pruning power depends on actual cluster radius, not σ
 //! - **Proven complexity** — O(k · 2^LFD · log 𝒩) for DFS Sieve
 
-use crate::tree::{ClamTree, hamming_inline};
-use std::collections::BinaryHeap;
+use crate::tree::{hamming_inline, ClamTree};
 use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 // ─────────────────────────────────────────────────────────────────────
 // Result types
@@ -57,19 +57,11 @@ pub struct KnnResult {
 }
 
 /// Configuration for search.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SearchConfig {
     /// For Repeated ρ-NN: initial radius as fraction of root radius.
     /// Default: 1/n where n = dataset cardinality.
     pub initial_radius_fraction: Option<f64>,
-}
-
-impl Default for SearchConfig {
-    fn default() -> Self {
-        SearchConfig {
-            initial_radius_fraction: None,
-        }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -95,13 +87,7 @@ impl Default for SearchConfig {
 ///
 /// So if `d(q, center) - radius > ρ`, no point p in the cluster can
 /// satisfy `d(q, p) ≤ ρ`.
-pub fn rho_nn(
-    tree: &ClamTree,
-    data: &[u8],
-    vec_len: usize,
-    query: &[u8],
-    rho: u64,
-) -> RhoNnResult {
+pub fn rho_nn(tree: &ClamTree, data: &[u8], vec_len: usize, query: &[u8], rho: u64) -> RhoNnResult {
     let mut hits = Vec::new();
     let mut distance_calls = 0usize;
     let mut clusters_pruned = 0usize;
@@ -238,7 +224,7 @@ pub fn knn_repeated_rho(
             // Collect LFDs from overlapping leaf clusters
             let mean_inv_lfd = estimate_local_lfd(tree, data, vec_len, query, rho);
             let ratio = k as f64 / result.hits.len() as f64;
-            let factor = ratio.powf(mean_inv_lfd).min(2.0).max(1.1);
+            let factor = ratio.powf(mean_inv_lfd).clamp(1.1, 2.0);
             rho = ((rho as f64) * factor).ceil() as u64;
         }
 
@@ -264,13 +250,7 @@ pub fn knn_repeated_rho(
 /// Used for the radius ratchet in Repeated ρ-NN (CAKES Equation 3).
 ///
 /// μ = (1/|Q|) · Σ(1/LFD(C)) for C in overlapping leaves
-fn estimate_local_lfd(
-    tree: &ClamTree,
-    data: &[u8],
-    vec_len: usize,
-    query: &[u8],
-    rho: u64,
-) -> f64 {
+fn estimate_local_lfd(tree: &ClamTree, data: &[u8], vec_len: usize, query: &[u8], rho: u64) -> f64 {
     let mut sum_inv_lfd = 0.0;
     let mut count = 0usize;
 
@@ -404,9 +384,7 @@ pub fn knn_dfs_sieve(
     }
 
     // Drain hits into sorted vec
-    let mut result: Vec<(usize, u64)> = hits.into_iter()
-        .map(|(d, idx)| (idx, d))
-        .collect();
+    let mut result: Vec<(usize, u64)> = hits.into_iter().map(|(d, idx)| (idx, d)).collect();
     result.sort_by_key(|&(_, d)| d);
 
     KnnResult {
@@ -436,7 +414,13 @@ mod tests {
     }
 
     /// Linear scan for ground truth.
-    fn linear_knn(data: &[u8], vec_len: usize, count: usize, query: &[u8], k: usize) -> Vec<(usize, u64)> {
+    fn linear_knn(
+        data: &[u8],
+        vec_len: usize,
+        count: usize,
+        query: &[u8],
+        k: usize,
+    ) -> Vec<(usize, u64)> {
         let mut dists: Vec<(usize, u64)> = (0..count)
             .map(|i| {
                 let point = &data[i * vec_len..(i + 1) * vec_len];
@@ -469,8 +453,12 @@ mod tests {
         assert!(!result.hits.is_empty());
         assert_eq!(result.hits[0].1, 0); // distance 0 = exact match
 
-        println!("ρ-NN(ρ=0): {} hits, {} distance calls, {} clusters pruned",
-            result.hits.len(), result.distance_calls, result.clusters_pruned);
+        println!(
+            "ρ-NN(ρ=0): {} hits, {} distance calls, {} clusters pruned",
+            result.hits.len(),
+            result.distance_calls,
+            result.clusters_pruned
+        );
     }
 
     #[test]
@@ -501,8 +489,11 @@ mod tests {
             .collect();
 
         // Hamming is a metric → exact recall
-        assert_eq!(result.hits.len(), ground_truth.len(),
-            "ρ-NN should have perfect recall for metric distances");
+        assert_eq!(
+            result.hits.len(),
+            ground_truth.len(),
+            "ρ-NN should have perfect recall for metric distances"
+        );
     }
 
     #[test]
@@ -529,11 +520,15 @@ mod tests {
         // Check exact recall: our k-th hit should match linear scan's k-th hit distance
         let our_max_dist = result.hits.last().unwrap().1;
         let gt_max_dist = ground_truth.last().unwrap().1;
-        assert_eq!(our_max_dist, gt_max_dist,
-            "k-NN should find exact same max distance as linear scan");
+        assert_eq!(
+            our_max_dist, gt_max_dist,
+            "k-NN should find exact same max distance as linear scan"
+        );
 
-        println!("Repeated ρ-NN: {} distance calls, {} pruned (vs {} linear)",
-            result.distance_calls, result.clusters_pruned, count);
+        println!(
+            "Repeated ρ-NN: {} distance calls, {} pruned (vs {} linear)",
+            result.distance_calls, result.clusters_pruned, count
+        );
     }
 
     #[test]
@@ -560,11 +555,15 @@ mod tests {
         // Verify exact recall
         let our_max_dist = result.hits.last().unwrap().1;
         let gt_max_dist = ground_truth.last().unwrap().1;
-        assert_eq!(our_max_dist, gt_max_dist,
-            "DFS Sieve should find exact same max distance as linear scan");
+        assert_eq!(
+            our_max_dist, gt_max_dist,
+            "DFS Sieve should find exact same max distance as linear scan"
+        );
 
-        println!("DFS Sieve: {} distance calls, {} pruned (vs {} linear)",
-            result.distance_calls, result.clusters_pruned, count);
+        println!(
+            "DFS Sieve: {} distance calls, {} pruned (vs {} linear)",
+            result.distance_calls, result.clusters_pruned, count
+        );
     }
 
     #[test]
@@ -587,11 +586,16 @@ mod tests {
         let result = knn_dfs_sieve(&tree, &data, vec_len, query, k);
 
         let speedup = count as f64 / result.distance_calls as f64;
-        println!("DFS Sieve speedup: {:.1}x ({} calls vs {} linear), {} pruned",
-            speedup, result.distance_calls, count, result.clusters_pruned);
+        println!(
+            "DFS Sieve speedup: {:.1}x ({} calls vs {} linear), {} pruned",
+            speedup, result.distance_calls, count, result.clusters_pruned
+        );
 
         // With random data, speedup may be modest, but should prune something
-        assert!(result.clusters_pruned > 0, "should prune at least some clusters");
+        assert!(
+            result.clusters_pruned > 0,
+            "should prune at least some clusters"
+        );
     }
 
     #[test]

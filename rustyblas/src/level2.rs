@@ -58,11 +58,18 @@ pub fn sgemv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_sgemv(
-                layout as i32, trans as i32,
-                m as i32, n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                x.as_ptr(), incx as i32,
-                beta, y.as_mut_ptr(), incy as i32,
+                layout as i32,
+                trans as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                x.as_ptr(),
+                incx as i32,
+                beta,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -196,11 +203,18 @@ pub fn dgemv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dgemv(
-                layout as i32, trans as i32,
-                m as i32, n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                x.as_ptr(), incx as i32,
-                beta, y.as_mut_ptr(), incy as i32,
+                layout as i32,
+                trans as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                x.as_ptr(),
+                incx as i32,
+                beta,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -331,10 +345,16 @@ pub fn sger(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_sger(
-                layout as i32, m as i32, n as i32,
-                alpha, x.as_ptr(), incx as i32,
-                y.as_ptr(), incy as i32,
-                a.as_mut_ptr(), lda as i32,
+                layout as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                x.as_ptr(),
+                incx as i32,
+                y.as_ptr(),
+                incy as i32,
+                a.as_mut_ptr(),
+                lda as i32,
             );
         }
         return;
@@ -400,10 +420,16 @@ pub fn dger(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dger(
-                layout as i32, m as i32, n as i32,
-                alpha, x.as_ptr(), incx as i32,
-                y.as_ptr(), incy as i32,
-                a.as_mut_ptr(), lda as i32,
+                layout as i32,
+                m as i32,
+                n as i32,
+                alpha,
+                x.as_ptr(),
+                incx as i32,
+                y.as_ptr(),
+                incy as i32,
+                a.as_mut_ptr(),
+                lda as i32,
             );
         }
         return;
@@ -475,11 +501,17 @@ pub fn ssymv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_ssymv(
-                layout as i32, uplo as i32,
-                n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                x.as_ptr(), incx as i32,
-                beta, y.as_mut_ptr(), incy as i32,
+                layout as i32,
+                uplo as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                x.as_ptr(),
+                incx as i32,
+                beta,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -571,11 +603,17 @@ pub fn dsymv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dsymv(
-                layout as i32, uplo as i32,
-                n as i32, alpha,
-                a.as_ptr(), lda as i32,
-                x.as_ptr(), incx as i32,
-                beta, y.as_mut_ptr(), incy as i32,
+                layout as i32,
+                uplo as i32,
+                n as i32,
+                alpha,
+                a.as_ptr(),
+                lda as i32,
+                x.as_ptr(),
+                incx as i32,
+                beta,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -667,9 +705,15 @@ pub fn strmv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_strmv(
-                layout as i32, uplo as i32, trans as i32, diag as i32,
-                n as i32, a.as_ptr(), lda as i32,
-                x.as_mut_ptr(), incx as i32,
+                layout as i32,
+                uplo as i32,
+                trans as i32,
+                diag as i32,
+                n as i32,
+                a.as_ptr(),
+                lda as i32,
+                x.as_mut_ptr(),
+                incx as i32,
             );
         }
         return;
@@ -680,7 +724,11 @@ pub fn strmv(
     match (layout, uplo, trans) {
         (Layout::RowMajor, Uplo::Upper, Transpose::NoTrans) => {
             for i in 0..n {
-                let mut sum = if unit { x[i * incx] } else { a[i * lda + i] * x[i * incx] };
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
                 let len = n - (i + 1);
                 if len > 0 && incx == 1 {
                     sum += simd::dot_f32(&a[i * lda + (i + 1)..i * lda + n], &x[(i + 1)..n]);
@@ -694,7 +742,11 @@ pub fn strmv(
         }
         (Layout::RowMajor, Uplo::Lower, Transpose::NoTrans) => {
             for i in (0..n).rev() {
-                let mut sum = if unit { x[i * incx] } else { a[i * lda + i] * x[i * incx] };
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
                 if i > 0 && incx == 1 {
                     sum += simd::dot_f32(&a[i * lda..i * lda + i], &x[..i]);
                 } else {
@@ -711,7 +763,17 @@ pub fn strmv(
                 (Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => Uplo::Upper,
                 (u, _) => u,
             };
-            strmv(layout, effective_uplo, Transpose::NoTrans, diag, n, a, lda, x, incx);
+            strmv(
+                layout,
+                effective_uplo,
+                Transpose::NoTrans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
@@ -739,9 +801,15 @@ pub fn strsv(
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_strsv(
-                layout as i32, uplo as i32, trans as i32, diag as i32,
-                n as i32, a.as_ptr(), lda as i32,
-                x.as_mut_ptr(), incx as i32,
+                layout as i32,
+                uplo as i32,
+                trans as i32,
+                diag as i32,
+                n as i32,
+                a.as_ptr(),
+                lda as i32,
+                x.as_mut_ptr(),
+                incx as i32,
             );
         }
         return;
@@ -785,7 +853,17 @@ pub fn strsv(
                 (Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => Uplo::Upper,
                 (u, _) => u,
             };
-            strsv(layout, effective_uplo, Transpose::NoTrans, diag, n, a, lda, x, incx);
+            strsv(
+                layout,
+                effective_uplo,
+                Transpose::NoTrans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
@@ -799,7 +877,20 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let x = vec![1.0f32, 1.0];
         let mut y = vec![0.0f32; 2];
-        sgemv(Layout::RowMajor, Transpose::NoTrans, 2, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        sgemv(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![3.0, 7.0]);
     }
 
@@ -808,7 +899,20 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let x = vec![1.0f32, 1.0];
         let mut y = vec![10.0f32, 20.0];
-        sgemv(Layout::RowMajor, Transpose::NoTrans, 2, 2, 2.0, &a, 2, &x, 1, 3.0, &mut y, 1);
+        sgemv(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            2,
+            2,
+            2.0,
+            &a,
+            2,
+            &x,
+            1,
+            3.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![36.0, 74.0]);
     }
 
@@ -817,7 +921,20 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let x = vec![1.0f32, 1.0];
         let mut y = vec![0.0f32; 2];
-        sgemv(Layout::RowMajor, Transpose::Trans, 2, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        sgemv(
+            Layout::RowMajor,
+            Transpose::Trans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![4.0, 6.0]);
     }
 
@@ -827,7 +944,20 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let x = vec![1.0f32, 0.0, 1.0]; // x[0]=1, x[2]=1 with incx=2
         let mut y = vec![0.0f32; 2];
-        sgemv(Layout::RowMajor, Transpose::NoTrans, 2, 2, 1.0, &a, 2, &x, 2, 0.0, &mut y, 1);
+        sgemv(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            2,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![3.0, 7.0]);
     }
 
@@ -837,7 +967,20 @@ mod tests {
         let a = vec![1.0f32, 2.0, 3.0, 4.0];
         let x = vec![1.0f32, 1.0];
         let mut y = vec![0.0f32; 2];
-        sgemv(Layout::ColMajor, Transpose::NoTrans, 2, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        sgemv(
+            Layout::ColMajor,
+            Transpose::NoTrans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         // A*x = [[1,3],[2,4]] * [1,1] = [4, 6]
         assert_eq!(y, vec![4.0, 6.0]);
     }
@@ -847,7 +990,20 @@ mod tests {
         let a = vec![1.0f64, 2.0, 3.0, 4.0];
         let x = vec![2.0f64, 3.0];
         let mut y = vec![0.0f64; 2];
-        dgemv(Layout::RowMajor, Transpose::NoTrans, 2, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        dgemv(
+            Layout::RowMajor,
+            Transpose::NoTrans,
+            2,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![8.0, 18.0]);
     }
 
@@ -885,7 +1041,19 @@ mod tests {
         let a = vec![1.0f32, 2.0, 0.0, 3.0]; // upper triangle
         let x = vec![1.0f32, 1.0];
         let mut y = vec![0.0f32; 2];
-        ssymv(Layout::RowMajor, Uplo::Upper, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        ssymv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![3.0, 5.0]);
     }
 
@@ -894,7 +1062,19 @@ mod tests {
         let a = vec![1.0f64, 2.0, 0.0, 3.0];
         let x = vec![1.0f64, 1.0];
         let mut y = vec![0.0f64; 2];
-        dsymv(Layout::RowMajor, Uplo::Upper, 2, 1.0, &a, 2, &x, 1, 0.0, &mut y, 1);
+        dsymv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            2,
+            1.0,
+            &a,
+            2,
+            &x,
+            1,
+            0.0,
+            &mut y,
+            1,
+        );
         assert_eq!(y, vec![3.0, 5.0]);
     }
 
@@ -903,8 +1083,15 @@ mod tests {
         let a = vec![2.0f32, 0.0, 1.0, 3.0];
         let mut x = vec![4.0f32, 7.0];
         strsv(
-            Layout::RowMajor, Uplo::Lower, Transpose::NoTrans,
-            rustynum_core::layout::Diag::NonUnit, 2, &a, 2, &mut x, 1,
+            Layout::RowMajor,
+            Uplo::Lower,
+            Transpose::NoTrans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
         );
         assert!((x[0] - 2.0).abs() < 1e-6);
         assert!((x[1] - 5.0 / 3.0).abs() < 1e-5);
@@ -917,8 +1104,15 @@ mod tests {
         let a = vec![2.0f32, 3.0, 0.0, 4.0];
         let mut x = vec![1.0f32, 2.0];
         strmv(
-            Layout::RowMajor, Uplo::Upper, Transpose::NoTrans,
-            rustynum_core::layout::Diag::NonUnit, 2, &a, 2, &mut x, 1,
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::NoTrans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
         );
         assert_eq!(x, vec![8.0, 8.0]);
     }

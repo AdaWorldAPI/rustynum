@@ -19,10 +19,9 @@
 //! absent from the OR-mask guarantee a minimum distance contribution.
 
 use std::collections::{BinaryHeap, HashMap};
-use std::cmp::Reverse;
 
+use crate::lod_pyramid::{or_mask_lower_bound, LodAnnotation};
 use rustynum_clam::tree::ClamTree;
-use crate::lod_pyramid::{LodAnnotation, or_mask_lower_bound};
 
 // ─────────────────────────────────────────────────────────────────────
 // LodIndex — sidecar annotation for CLAM trees
@@ -35,7 +34,6 @@ use crate::lod_pyramid::{LodAnnotation, or_mask_lower_bound};
 #[derive(Debug, Clone)]
 pub struct LodIndex {
     annotations: HashMap<usize, LodAnnotation>,
-    vec_bytes: usize,
 }
 
 impl LodIndex {
@@ -46,7 +44,7 @@ impl LodIndex {
     pub fn build(tree: &ClamTree, data: &[u8], vec_bytes: usize) -> Self {
         let mut annotations = HashMap::with_capacity(tree.nodes.len());
         Self::build_recursive(tree, data, vec_bytes, 0, &mut annotations);
-        LodIndex { annotations, vec_bytes }
+        LodIndex { annotations }
     }
 
     fn build_recursive(
@@ -61,10 +59,7 @@ impl LodIndex {
         if node.is_leaf() {
             // Leaf: OR all fingerprints in this cluster
             let fps = tree.cluster_points(node, data, vec_bytes);
-            let ann = LodAnnotation::from_fingerprints(
-                fps.map(|(_, fp)| fp),
-                vec_bytes,
-            );
+            let ann = LodAnnotation::from_fingerprints(fps.map(|(_, fp)| fp), vec_bytes);
             annotations.insert(node_idx, ann);
         } else {
             // Internal: recurse on children, then OR children's masks
@@ -97,11 +92,14 @@ impl LodIndex {
             }
 
             let or_popcount = or_mask.iter().map(|b| b.count_ones() as u64).sum();
-            annotations.insert(node_idx, LodAnnotation {
-                or_mask,
-                or_popcount,
-                cardinality,
-            });
+            annotations.insert(
+                node_idx,
+                LodAnnotation {
+                    or_mask,
+                    or_popcount,
+                    cardinality,
+                },
+            );
         }
     }
 
@@ -308,11 +306,7 @@ pub fn lod_knn_search_oneshot(
 }
 
 /// Build a LodIndex for an existing ClamTree (alias for `LodIndex::build`).
-pub fn annotate_tree_with_lod(
-    tree: &ClamTree,
-    data: &[u8],
-    vec_bytes: usize,
-) -> LodIndex {
+pub fn annotate_tree_with_lod(tree: &ClamTree, data: &[u8], vec_bytes: usize) -> LodIndex {
     LodIndex::build(tree, data, vec_bytes)
 }
 

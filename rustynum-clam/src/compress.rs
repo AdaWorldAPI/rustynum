@@ -45,7 +45,7 @@
 //! ```
 //! This only touches the diff positions, not the full 2048 bytes.
 
-use crate::tree::{ClamTree, hamming_inline};
+use crate::tree::{hamming_inline, ClamTree};
 
 // ─────────────────────────────────────────────────────────────────────
 // Encoding types
@@ -138,6 +138,7 @@ pub enum CompressionMode {
 
 /// Per-cluster compression metadata.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ClusterCompression {
     mode: CompressionMode,
     unitary_cost: usize,
@@ -198,12 +199,7 @@ impl CompressedTree {
     /// * `data`    — original flat dataset
     /// * `vec_len` — bytes per vector
     /// * `count`   — number of vectors
-    pub fn compress(
-        tree: &ClamTree,
-        data: &[u8],
-        vec_len: usize,
-        count: usize,
-    ) -> Self {
+    pub fn compress(tree: &ClamTree, data: &[u8], vec_len: usize, count: usize) -> Self {
         let num_nodes = tree.nodes.len();
         let mut comp: Vec<Option<ClusterCompression>> = vec![None; num_nodes];
         let mut cluster_modes = vec![CompressionMode::Unitary; num_nodes];
@@ -258,7 +254,11 @@ impl CompressedTree {
             comp[node_idx] = Some(ClusterCompression {
                 mode,
                 unitary_cost,
-                recursive_cost: if cluster.is_leaf() { unitary_cost } else { min_cost },
+                recursive_cost: if cluster.is_leaf() {
+                    unitary_cost
+                } else {
+                    min_cost
+                },
                 min_cost,
             });
         }
@@ -266,7 +266,13 @@ impl CompressedTree {
         // Now build the actual encodings for each point.
         // Walk the tree: for unitary clusters, encode all points from that center.
         // For recursive clusters, delegate to children.
-        let mut encodings = vec![XorDiffEncoding { positions: vec![], values: vec![] }; count];
+        let mut encodings = vec![
+            XorDiffEncoding {
+                positions: vec![],
+                values: vec![]
+            };
+            count
+        ];
         let mut encoding_centers = vec![0usize; count];
 
         Self::assign_encodings(
@@ -281,16 +287,22 @@ impl CompressedTree {
 
         // Compute stats
         let uncompressed_bytes = count * vec_len;
-        let compressed_bytes: usize = encodings.iter().map(|e| e.storage_cost()).sum::<usize>()
-            + count * 2; // 2 bytes per point for center reference overhead
+        let compressed_bytes: usize =
+            encodings.iter().map(|e| e.storage_cost()).sum::<usize>() + count * 2; // 2 bytes per point for center reference overhead
         let ratio = if compressed_bytes > 0 {
             uncompressed_bytes as f64 / compressed_bytes as f64
         } else {
             f64::INFINITY
         };
 
-        let unitary_clusters = cluster_modes.iter().filter(|&&m| m == CompressionMode::Unitary).count();
-        let recursive_clusters = cluster_modes.iter().filter(|&&m| m == CompressionMode::Recursive).count();
+        let unitary_clusters = cluster_modes
+            .iter()
+            .filter(|&&m| m == CompressionMode::Unitary)
+            .count();
+        let recursive_clusters = cluster_modes
+            .iter()
+            .filter(|&&m| m == CompressionMode::Recursive)
+            .count();
 
         CompressedTree {
             encodings,
@@ -329,10 +341,26 @@ impl CompressedTree {
         } else {
             // Recursive: delegate to children
             if let Some(left) = cluster.left {
-                Self::assign_encodings(tree, data, vec_len, left, modes, encodings, encoding_centers);
+                Self::assign_encodings(
+                    tree,
+                    data,
+                    vec_len,
+                    left,
+                    modes,
+                    encodings,
+                    encoding_centers,
+                );
             }
             if let Some(right) = cluster.right {
-                Self::assign_encodings(tree, data, vec_len, right, modes, encodings, encoding_centers);
+                Self::assign_encodings(
+                    tree,
+                    data,
+                    vec_len,
+                    right,
+                    modes,
+                    encodings,
+                    encoding_centers,
+                );
             }
         }
     }
@@ -380,6 +408,12 @@ impl CompressedTree {
 /// sharing the same cluster center.
 pub struct DistanceCache {
     entries: std::collections::HashMap<usize, u64>,
+}
+
+impl Default for DistanceCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DistanceCache {
@@ -520,8 +554,10 @@ mod tests {
 
         let dist_q_point_compressed = enc.hamming_from_query(&query, &center, dist_q_center);
 
-        assert_eq!(dist_q_point_compressed, dist_q_point_exact,
-            "Compressive Hamming should match exact Hamming");
+        assert_eq!(
+            dist_q_point_compressed, dist_q_point_exact,
+            "Compressive Hamming should match exact Hamming"
+        );
     }
 
     #[test]
@@ -539,10 +575,12 @@ mod tests {
 
         let compressed = CompressedTree::compress(&tree, &data, vec_len, count);
 
-        println!("Random data compression: {:.2}x ({} → {} bytes)",
+        println!(
+            "Random data compression: {:.2}x ({} → {} bytes)",
             compressed.stats.ratio,
             compressed.stats.uncompressed_bytes,
-            compressed.stats.compressed_bytes);
+            compressed.stats.compressed_bytes
+        );
 
         // Random data: compression ratio may be < 1 (expansion)
         // That's expected — panCAKES shines on self-similar data
@@ -551,8 +589,11 @@ mod tests {
         for i in 0..count {
             let decompressed = compressed.decompress_point(i, &data, vec_len);
             let original = &data[i * vec_len..(i + 1) * vec_len];
-            assert_eq!(&decompressed, original,
-                "Decompressed point {} should match original", i);
+            assert_eq!(
+                &decompressed, original,
+                "Decompressed point {} should match original",
+                i
+            );
         }
     }
 
@@ -575,15 +616,19 @@ mod tests {
 
         let compressed = CompressedTree::compress(&tree, &data, vec_len, count);
 
-        println!("Clustered data compression: {:.2}x ({} → {} bytes)",
+        println!(
+            "Clustered data compression: {:.2}x ({} → {} bytes)",
             compressed.stats.ratio,
             compressed.stats.uncompressed_bytes,
-            compressed.stats.compressed_bytes);
+            compressed.stats.compressed_bytes
+        );
 
         // Clustered data with low noise should compress well
-        assert!(compressed.stats.ratio > 1.0,
+        assert!(
+            compressed.stats.ratio > 1.0,
             "Clustered data should achieve compression ratio > 1.0, got {:.2}",
-            compressed.stats.ratio);
+            compressed.stats.ratio
+        );
 
         // Verify lossless
         for i in 0..count {
@@ -617,8 +662,11 @@ mod tests {
         for i in 0..count {
             let exact = hamming_inline(query, &data[i * vec_len..(i + 1) * vec_len]);
             let comp = compressed.hamming_to_compressed(query, i, &data, vec_len, &mut cache);
-            assert_eq!(comp, exact,
-                "Compressive Hamming for point {} should match exact ({} vs {})", i, comp, exact);
+            assert_eq!(
+                comp, exact,
+                "Compressive Hamming for point {} should match exact ({} vs {})",
+                i, comp, exact
+            );
         }
     }
 
@@ -639,9 +687,10 @@ mod tests {
         let tree = ClamTree::build(&data, vec_len, count, &config);
         let compressed = CompressedTree::compress(&tree, &data, vec_len, count);
 
-        println!("Compression modes: {} unitary, {} recursive",
-            compressed.stats.unitary_clusters,
-            compressed.stats.recursive_clusters);
+        println!(
+            "Compression modes: {} unitary, {} recursive",
+            compressed.stats.unitary_clusters, compressed.stats.recursive_clusters
+        );
 
         // With enough data, should have both modes
         // (shallow clusters may prefer recursive, deep clusters unitary)

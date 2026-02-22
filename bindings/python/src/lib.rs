@@ -1,5 +1,8 @@
 // bindings/python/src/lib.rs
 
+#![allow(non_local_definitions)]
+#![allow(clippy::too_many_arguments)]
+
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 

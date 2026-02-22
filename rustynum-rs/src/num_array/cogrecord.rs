@@ -51,18 +51,13 @@ pub struct CogRecord {
 }
 
 /// Sweep mode for batch CogRecord queries.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum SweepMode {
     /// Pure Hamming distance across all 4 containers.
+    #[default]
     Hamming,
     /// Hamming for META/CAM/BTREE, int8 cosine for EMBED.
     Hybrid,
-}
-
-impl Default for SweepMode {
-    fn default() -> Self {
-        Self::Hamming
-    }
 }
 
 /// Result of a 4-channel sweep: distances per container.
@@ -87,7 +82,12 @@ impl CogRecord {
         debug_assert_eq!(cam.len(), CONTAINER_BYTES);
         debug_assert_eq!(btree.len(), CONTAINER_BYTES);
         debug_assert_eq!(embed.len(), CONTAINER_BYTES);
-        Self { meta, cam, btree, embed }
+        Self {
+            meta,
+            cam,
+            btree,
+            embed,
+        }
     }
 
     /// Create a zeroed CogRecord.
@@ -133,19 +133,27 @@ impl CogRecord {
     pub fn sweep_adaptive(&self, other: &Self, thresholds: [u64; 4]) -> Option<[u64; 4]> {
         // Stage 1: META — cheapest rejection (type mismatch)
         let d0 = self.meta.hamming_distance(&other.meta);
-        if d0 > thresholds[META] { return None; }
+        if d0 > thresholds[META] {
+            return None;
+        }
 
         // Stage 2: CAM — content similarity
         let d1 = self.cam.hamming_distance(&other.cam);
-        if d1 > thresholds[CAM] { return None; }
+        if d1 > thresholds[CAM] {
+            return None;
+        }
 
         // Stage 3: BTREE — structural position
         let d2 = self.btree.hamming_distance(&other.btree);
-        if d2 > thresholds[BTREE] { return None; }
+        if d2 > thresholds[BTREE] {
+            return None;
+        }
 
         // Stage 4: EMBED — embedding similarity
         let d3 = self.embed.hamming_distance(&other.embed);
-        if d3 > thresholds[EMBED] { return None; }
+        if d3 > thresholds[EMBED] {
+            return None;
+        }
 
         Some([d0, d1, d2, d3])
     }
@@ -187,26 +195,41 @@ impl CogRecord {
 
             // Stage 1: META
             let d0 = hamming_fn(query_meta, &record[0..CONTAINER_BYTES]);
-            if d0 > thresholds[META] { continue; }
+            if d0 > thresholds[META] {
+                continue;
+            }
 
             // Stage 2: CAM
             let d1 = hamming_fn(query_cam, &record[CONTAINER_BYTES..2 * CONTAINER_BYTES]);
-            if d1 > thresholds[CAM] { continue; }
+            if d1 > thresholds[CAM] {
+                continue;
+            }
 
             // Stage 3: BTREE
-            let d2 = hamming_fn(query_btree, &record[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES]);
-            if d2 > thresholds[BTREE] { continue; }
+            let d2 = hamming_fn(
+                query_btree,
+                &record[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES],
+            );
+            if d2 > thresholds[BTREE] {
+                continue;
+            }
 
             // Stage 4: EMBED Hamming
             let embed_slice = &record[3 * CONTAINER_BYTES..4 * CONTAINER_BYTES];
             let d3 = hamming_fn(query_embed, embed_slice);
-            if d3 > thresholds[EMBED] { continue; }
+            if d3 > thresholds[EMBED] {
+                continue;
+            }
 
             // Precision tier: VNNI cosine on EMBED
             let cosine = if query_norm > 0.0 {
                 let dot = dot_fn(query_embed, embed_slice);
                 let cand_norm = (dot_fn(embed_slice, embed_slice) as f64).sqrt();
-                if cand_norm > 0.0 { dot as f64 / (query_norm * cand_norm) } else { 0.0 }
+                if cand_norm > 0.0 {
+                    dot as f64 / (query_norm * cand_norm)
+                } else {
+                    0.0
+                }
             } else {
                 0.0
             };
@@ -215,9 +238,7 @@ impl CogRecord {
         }
 
         // Sort by cosine descending (most similar first)
-        results.sort_unstable_by(|a, b| {
-            b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
         results
     }
@@ -236,7 +257,12 @@ impl CogRecord {
 
     /// Construct from flat 8192-byte representation.
     pub fn from_bytes(data: &[u8]) -> Self {
-        assert_eq!(data.len(), COGRECORD_BYTES, "CogRecord requires {} bytes", COGRECORD_BYTES);
+        assert_eq!(
+            data.len(),
+            COGRECORD_BYTES,
+            "CogRecord requires {} bytes",
+            COGRECORD_BYTES
+        );
         Self {
             meta: NumArrayU8::new(data[0..CONTAINER_BYTES].to_vec()),
             cam: NumArrayU8::new(data[CONTAINER_BYTES..2 * CONTAINER_BYTES].to_vec()),
@@ -295,22 +321,30 @@ pub fn sweep_cogrecords(
         // Stage 1: META
         let meta_slice = &record_bytes[0..CONTAINER_BYTES];
         let d0 = rustynum_core::simd::hamming_distance(query.meta.get_data(), meta_slice);
-        if d0 > thresholds[META] { continue; }
+        if d0 > thresholds[META] {
+            continue;
+        }
 
         // Stage 2: CAM
         let cam_slice = &record_bytes[CONTAINER_BYTES..2 * CONTAINER_BYTES];
         let d1 = rustynum_core::simd::hamming_distance(query.cam.get_data(), cam_slice);
-        if d1 > thresholds[CAM] { continue; }
+        if d1 > thresholds[CAM] {
+            continue;
+        }
 
         // Stage 3: BTREE
         let btree_slice = &record_bytes[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES];
         let d2 = rustynum_core::simd::hamming_distance(query.btree.get_data(), btree_slice);
-        if d2 > thresholds[BTREE] { continue; }
+        if d2 > thresholds[BTREE] {
+            continue;
+        }
 
         // Stage 4: EMBED
         let embed_slice = &record_bytes[3 * CONTAINER_BYTES..4 * CONTAINER_BYTES];
         let d3 = rustynum_core::simd::hamming_distance(query.embed.get_data(), embed_slice);
-        if d3 > thresholds[EMBED] { continue; }
+        if d3 > thresholds[EMBED] {
+            continue;
+        }
 
         results.push(SweepResult {
             index: i,
@@ -320,7 +354,6 @@ pub fn sweep_cogrecords(
 
     results
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -434,8 +467,11 @@ mod tests {
         assert_eq!(results[0].0, 0); // indices
         assert_eq!(results[1].0, 2);
         // Identical vectors → cosine ~1.0
-        assert!((results[0].2 - 1.0).abs() < 0.01,
-            "Expected cosine ~1.0, got {}", results[0].2);
+        assert!(
+            (results[0].2 - 1.0).abs() < 0.01,
+            "Expected cosine ~1.0, got {}",
+            results[0].2
+        );
     }
 
     #[test]

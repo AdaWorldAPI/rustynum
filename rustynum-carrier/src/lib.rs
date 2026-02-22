@@ -1,3 +1,6 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+
 //! # rustynum-carrier
 //!
 //! Frozen snapshot of the CogRecordV3 + carrier waveform model from `rustynum-holo`,
@@ -34,29 +37,21 @@
 //! (`focus.rs`) that provides 3D spatial sub-selection within containers. This
 //! archive preserves the pure carrier + phase implementation for reference.
 
-pub mod phase;
-pub mod cogrecord_v3;
 pub mod carrier;
+pub mod cogrecord_v3;
+pub mod phase;
 
 pub use phase::{
-    phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
-    phase_unbind_i8,
-    wasserstein_sorted_i8, wasserstein_search_adaptive,
-    circular_distance_i8,
-    phase_histogram_16, histogram_l1_distance,
-    phase_bundle_circular, phase_bundle_approximate,
-    project_5d_to_phase, recover_5d_from_phase, generate_5d_basis,
-    sort_phase_vector, unsort_phase_vector,
+    circular_distance_i8, generate_5d_basis, histogram_l1_distance, phase_bind_i8,
+    phase_bind_i8_inplace, phase_bundle_approximate, phase_bundle_circular, phase_histogram_16,
+    phase_inverse_i8, phase_unbind_i8, project_5d_to_phase, recover_5d_from_phase,
+    sort_phase_vector, unsort_phase_vector, wasserstein_search_adaptive, wasserstein_sorted_i8,
 };
 
-pub use cogrecord_v3::{
-    CogRecordV3, HybridThresholds, HybridDistances, CONTAINER_BYTES,
-};
+pub use cogrecord_v3::{CogRecordV3, HybridDistances, HybridThresholds, CONTAINER_BYTES};
 
 pub use carrier::{
-    CarrierBasis, CarrierRecord, CarrierThresholds, CarrierDistances,
-    CARRIER_FREQUENCIES, CARRIER_AMPLITUDE,
-    carrier_encode, carrier_decode, carrier_bundle,
-    carrier_distance_l1, carrier_correlation,
-    carrier_spectrum, spectral_distance,
+    carrier_bundle, carrier_correlation, carrier_decode, carrier_distance_l1, carrier_encode,
+    carrier_spectrum, spectral_distance, CarrierBasis, CarrierDistances, CarrierRecord,
+    CarrierThresholds, CARRIER_AMPLITUDE, CARRIER_FREQUENCIES,
 };

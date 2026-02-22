@@ -15,7 +15,7 @@
 //! Write-Ahead Logging (re-reference IS cleaning).
 
 use crate::linalg::cholesky_solve;
-use crate::sweep::{Base, generate_templates, DIMS, BASES, BUNDLE_SIZES};
+use crate::sweep::{generate_templates, Base, BASES, BUNDLE_SIZES, DIMS};
 use rand::Rng;
 
 // ---------------------------------------------------------------------------
@@ -100,7 +100,8 @@ impl XTransPattern {
     /// Perfect uniformity = 0.0.
     pub fn size_uniformity(&self) -> f32 {
         let mean = self.d as f32 / self.channels as f32;
-        let variance: f32 = self.channel_positions
+        let variance: f32 = self
+            .channel_positions
             .iter()
             .map(|ch| {
                 let diff = ch.len() as f32 - mean;
@@ -225,11 +226,7 @@ pub fn organic_write_f32(
 /// Read a concept from the container using only its channel positions.
 ///
 /// Returns (cosine_similarity, projection_amplitude).
-pub fn organic_read(
-    container: &[i8],
-    template: &[i8],
-    positions: &[usize],
-) -> (f32, f32) {
+pub fn organic_read(container: &[i8], template: &[i8], positions: &[usize]) -> (f32, f32) {
     let mut dot = 0.0f64;
     let mut energy = 0.0f64;
     let mut template_energy = 0.0f64;
@@ -360,8 +357,7 @@ impl OrganicWAL {
         let positions = &self.pattern.channel_positions[channel];
 
         // Step 3: Organic write of the orthogonalized template
-        let absorption =
-            organic_write_f32(container, &orthogonal, amplitude, positions);
+        let absorption = organic_write_f32(container, &orthogonal, amplitude, positions);
 
         // Step 4: Update coefficients from projections (learning)
         for i in 0..self.k() {
@@ -433,8 +429,7 @@ impl OrganicWAL {
         let channel = concept_idx % self.pattern.channels;
         let positions = &self.pattern.channel_positions[channel];
 
-        let absorption =
-            organic_write_f32(container, &orthogonal, effective_amplitude, positions);
+        let absorption = organic_write_f32(container, &orthogonal, effective_amplitude, positions);
 
         // Update coefficients with per-concept plasticity
         for i in 0..self.k() {
@@ -442,8 +437,7 @@ impl OrganicWAL {
             if i == concept_idx {
                 self.coefficients[i] += effective_amplitude * absorption;
             } else {
-                self.coefficients[i] +=
-                    learning_rate * target_plasticity * projections[i];
+                self.coefficients[i] += learning_rate * target_plasticity * projections[i];
             }
         }
 
@@ -494,8 +488,8 @@ impl OrganicWAL {
                     // Same channel: dot product over shared positions
                     let mut dot = 0.0f64;
                     for &p in pos_i {
-                        dot += self.known_templates[i][p] as f64
-                            * self.known_templates[j][p] as f64;
+                        dot +=
+                            self.known_templates[i][p] as f64 * self.known_templates[j][p] as f64;
                     }
                     gram[i * k + j] = dot;
                     gram[j * k + i] = dot;
@@ -540,10 +534,7 @@ impl OrganicWAL {
         let d = self.known_templates[concept_idx].len();
         assert_eq!(template.len(), d);
         self.known_templates[concept_idx].copy_from_slice(template);
-        self.template_norms[concept_idx] = template
-            .iter()
-            .map(|&v| (v as f64) * (v as f64))
-            .sum();
+        self.template_norms[concept_idx] = template.iter().map(|&v| (v as f64) * (v as f64)).sum();
     }
 
     /// Compute the residual: container minus reconstructed known-concept contributions.
@@ -666,12 +657,12 @@ impl PlasticityTracker {
 
         // Bathtub curve with base-aware initial scaling
         match count {
-            0..=2 => (0.5 * self.base_scale).clamp(0.15, 1.0),  // New: cautious (base-scaled)
+            0..=2 => (0.5 * self.base_scale).clamp(0.15, 1.0), // New: cautious (base-scaled)
             3..=5 => (0.8 * self.base_scale).clamp(0.3, 1.0),  // Young: absorbing (base-scaled)
-            6..=20 => 1.0,  // Active: full plasticity (always)
-            21..=50 => 0.5, // Consolidating: stabilizing
-            51..=200 => 0.2, // Stable: rigid
-            _ => 0.1,       // Ancient: very rigid
+            6..=20 => 1.0,                                     // Active: full plasticity (always)
+            21..=50 => 0.5,                                    // Consolidating: stabilizing
+            51..=200 => 0.2,                                   // Stable: rigid
+            _ => 0.1,                                          // Ancient: very rigid
         }
     }
 
@@ -795,8 +786,7 @@ pub fn organic_flush(
     for i in 0..wal.k() {
         if i < extracted.len() {
             let blend = 0.8;
-            wal.coefficients[i] =
-                blend * extracted[i] + (1.0 - blend) * wal.coefficients[i];
+            wal.coefficients[i] = blend * extracted[i] + (1.0 - blend) * wal.coefficients[i];
         }
     }
 
@@ -924,13 +914,7 @@ pub fn measure_recovery_organic(
 
     for i in 0..k {
         let result = if use_plasticity {
-            wal.write_plastic(
-                &mut container,
-                i,
-                amplitudes[i],
-                0.1,
-                &mut plasticity,
-            )
+            wal.write_plastic(&mut container, i, amplitudes[i], 0.1, &mut plasticity)
         } else {
             wal.write(&mut container, i, amplitudes[i], 0.1)
         };
@@ -951,8 +935,7 @@ pub fn measure_recovery_organic(
 
     // Read back all concepts
     let readbacks = wal.read_all(&container);
-    let mean_similarity: f32 =
-        readbacks.iter().map(|(_, sim, _)| sim).sum::<f32>() / k as f32;
+    let mean_similarity: f32 = readbacks.iter().map(|(_, sim, _)| sim).sum::<f32>() / k as f32;
 
     OrganicResult {
         d,
@@ -1089,10 +1072,15 @@ pub fn stress_test_absorption(
     let mut k = 1;
     while k <= max_k {
         k_values.push(k);
-        if k < 8 { k *= 2; }
-        else if k < 64 { k += 8; }
-        else if k < 256 { k += 32; }
-        else { k += 64; }
+        if k < 8 {
+            k *= 2;
+        } else if k < 64 {
+            k += 8;
+        } else if k < 256 {
+            k += 32;
+        } else {
+            k += 64;
+        }
     }
     if *k_values.last().unwrap_or(&0) != max_k {
         k_values.push(max_k);
@@ -1144,8 +1132,10 @@ pub fn run_absorption_stress_test() {
         (4096, Base::Signed(5), 64, 512),
     ];
 
-    println!("{:>6} {:>12} {:>4} {:>4} {:>8} {:>8} {:>8} {:>8} {:>10}",
-        "D", "Base", "Ch", "K", "MeanAbs", "MinAbs", "Error", "Sim", "Flush");
+    println!(
+        "{:>6} {:>12} {:>4} {:>4} {:>8} {:>8} {:>8} {:>8} {:>10}",
+        "D", "Base", "Ch", "K", "MeanAbs", "MinAbs", "Error", "Sim", "Flush"
+    );
     println!("{}", "-".repeat(82));
 
     for (d, base, channels, max_k) in &configs {
@@ -1165,18 +1155,36 @@ pub fn run_absorption_stress_test() {
             } else {
                 ""
             };
-            println!("{:>6} {:>12} {:>4} {:>4} {:>8.4} {:>8.4} {:>8.4} {:>8.4} {:>10}{}",
-                d, base.name(), channels, pt.k,
-                pt.mean_absorption, pt.min_absorption,
-                pt.mean_error, pt.mean_similarity,
-                flush_str, marker);
+            println!(
+                "{:>6} {:>12} {:>4} {:>4} {:>8.4} {:>8.4} {:>8.4} {:>8.4} {:>10}{}",
+                d,
+                base.name(),
+                channels,
+                pt.k,
+                pt.mean_absorption,
+                pt.min_absorption,
+                pt.mean_error,
+                pt.mean_similarity,
+                flush_str,
+                marker
+            );
         }
 
         match breaking_k {
-            Some(bk) => println!("  >> D={}, {}, C={}: BREAKS at K={}\n",
-                d, base.name(), channels, bk),
-            None => println!("  >> D={}, {}, C={}: NO BREAK up to K={}\n",
-                d, base.name(), channels, max_k),
+            Some(bk) => println!(
+                "  >> D={}, {}, C={}: BREAKS at K={}\n",
+                d,
+                base.name(),
+                channels,
+                bk
+            ),
+            None => println!(
+                "  >> D={}, {}, C={}: NO BREAK up to K={}\n",
+                d,
+                base.name(),
+                channels,
+                max_k
+            ),
         }
     }
 }
@@ -1197,8 +1205,10 @@ pub fn run_plasticity_comparison() {
     let channels = 16;
     let k_values = [1, 3, 5, 8, 13];
 
-    println!("{:>12} {:>4} {:>10} {:>8} {:>8}  {:>10} {:>8} {:>8}",
-        "Base", "K", "Mode", "Error", "Sim", "Mode", "Error", "Sim");
+    println!(
+        "{:>12} {:>4} {:>10} {:>8} {:>8}  {:>10} {:>8} {:>8}",
+        "Base", "K", "Mode", "Error", "Sim", "Mode", "Error", "Sim"
+    );
     println!("{}", "-".repeat(82));
 
     for &base in &bases {
@@ -1218,15 +1228,25 @@ pub fn run_plasticity_comparison() {
             let amplitudes: Vec<f32> = (0..k).map(|_| rng.gen_range(0.3f32..0.8f32)).collect();
             for i in 0..k {
                 wal_old.write_plastic(
-                    &mut container_old, i, amplitudes[i], 0.1, &mut plasticity_old);
+                    &mut container_old,
+                    i,
+                    amplitudes[i],
+                    0.1,
+                    &mut plasticity_old,
+                );
             }
 
             let extracted_old = wal_old.surgical_extract(&container_old);
-            let err_old: f32 = (0..k).map(|i|
-                (wal_old.coefficients[i] - extracted_old[i]).abs()
-            ).sum::<f32>() / k as f32;
-            let sim_old: f32 = wal_old.read_all(&container_old).iter()
-                .map(|(_, s, _)| *s).sum::<f32>() / k as f32;
+            let err_old: f32 = (0..k)
+                .map(|i| (wal_old.coefficients[i] - extracted_old[i]).abs())
+                .sum::<f32>()
+                / k as f32;
+            let sim_old: f32 = wal_old
+                .read_all(&container_old)
+                .iter()
+                .map(|(_, s, _)| *s)
+                .sum::<f32>()
+                / k as f32;
 
             // Base-aware plasticity (new behavior)
             let pattern_new = XTransPattern::new(d, channels);
@@ -1241,15 +1261,25 @@ pub fn run_plasticity_comparison() {
 
             for i in 0..k {
                 wal_new.write_plastic(
-                    &mut container_new, i, amplitudes[i], 0.1, &mut plasticity_new);
+                    &mut container_new,
+                    i,
+                    amplitudes[i],
+                    0.1,
+                    &mut plasticity_new,
+                );
             }
 
             let extracted_new = wal_new.surgical_extract(&container_new);
-            let err_new: f32 = (0..k).map(|i|
-                (wal_new.coefficients[i] - extracted_new[i]).abs()
-            ).sum::<f32>() / k as f32;
-            let sim_new: f32 = wal_new.read_all(&container_new).iter()
-                .map(|(_, s, _)| *s).sum::<f32>() / k as f32;
+            let err_new: f32 = (0..k)
+                .map(|i| (wal_new.coefficients[i] - extracted_new[i]).abs())
+                .sum::<f32>()
+                / k as f32;
+            let sim_new: f32 = wal_new
+                .read_all(&container_new)
+                .iter()
+                .map(|(_, s, _)| *s)
+                .sum::<f32>()
+                / k as f32;
 
             let improvement = if err_old > 0.001 {
                 (err_old - err_new) / err_old * 100.0
@@ -1257,11 +1287,18 @@ pub fn run_plasticity_comparison() {
                 0.0
             };
 
-            println!("{:>12} {:>4} {:>10} {:>8.4} {:>8.4}  {:>10} {:>8.4} {:>8.4}  {:>+5.1}%",
-                base.name(), k,
-                "fixed", err_old, sim_old,
-                "base-aware", err_new, sim_new,
-                improvement);
+            println!(
+                "{:>12} {:>4} {:>10} {:>8.4} {:>8.4}  {:>10} {:>8.4} {:>8.4}  {:>+5.1}%",
+                base.name(),
+                k,
+                "fixed",
+                err_old,
+                sim_old,
+                "base-aware",
+                err_new,
+                sim_new,
+                improvement
+            );
         }
         println!();
     }
@@ -1275,8 +1312,8 @@ pub fn run_plasticity_comparison() {
 mod tests {
     use super::*;
     use crate::sweep::Base;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     fn seeded_rng() -> StdRng {
         StdRng::seed_from_u64(42)
@@ -1324,7 +1361,11 @@ mod tests {
         let mut covered = vec![false; 2048];
         for ch in 0..16 {
             for &pos in &pat.channel_positions[ch] {
-                assert!(!covered[pos], "Position {} assigned to multiple channels", pos);
+                assert!(
+                    !covered[pos],
+                    "Position {} assigned to multiple channels",
+                    pos
+                );
                 covered[pos] = true;
             }
         }
@@ -1693,7 +1734,7 @@ mod tests {
     fn test_plasticity_decaying_concept() {
         let mut tracker = PlasticityTracker::new(3, 50);
         tracker.record_write(0); // write once
-        // Advance clock past decay window by writing to other concepts
+                                 // Advance clock past decay window by writing to other concepts
         for _ in 0..60 {
             tracker.record_write(1);
         }
@@ -1713,7 +1754,8 @@ mod tests {
         assert!(
             (p - expected).abs() < 1e-4,
             "Signed(5) new plasticity = {}, expected {}",
-            p, expected
+            p,
+            expected
         );
     }
 
@@ -1726,7 +1768,8 @@ mod tests {
         assert!(
             (p - expected).abs() < 1e-3,
             "Signed(9) new plasticity = {:.4}, expected {:.4}",
-            p, expected
+            p,
+            expected
         );
     }
 
@@ -1753,10 +1796,13 @@ mod tests {
         let wide = PlasticityTracker::new_base_aware(3, 50, Base::Signed(9));
 
         let p_narrow = narrow.plasticity(0); // 0.75
-        let p_wide = wide.plasticity(0);     // 0.444
-        assert!(p_narrow > p_wide,
+        let p_wide = wide.plasticity(0); // 0.444
+        assert!(
+            p_narrow > p_wide,
             "Narrow base ({:.4}) should be LESS cautious than wide ({:.4})",
-            p_narrow, p_wide);
+            p_narrow,
+            p_wide
+        );
     }
 
     #[test]
@@ -1992,8 +2038,7 @@ mod tests {
     #[test]
     fn test_measure_recovery_organic_runs() {
         let mut rng = seeded_rng();
-        let result =
-            measure_recovery_organic(2048, Base::Signed(5), 16, 8, false, &mut rng);
+        let result = measure_recovery_organic(2048, Base::Signed(5), 16, 8, false, &mut rng);
         assert_eq!(result.d, 2048);
         assert_eq!(result.channels, 16);
         assert_eq!(result.k, 8);
@@ -2005,8 +2050,7 @@ mod tests {
     #[test]
     fn test_measure_recovery_organic_with_plasticity() {
         let mut rng = seeded_rng();
-        let result =
-            measure_recovery_organic(2048, Base::Signed(5), 16, 8, true, &mut rng);
+        let result = measure_recovery_organic(2048, Base::Signed(5), 16, 8, true, &mut rng);
         assert!(result.use_plasticity);
         assert!(result.mean_absorption > 0.0);
     }
@@ -2014,8 +2058,7 @@ mod tests {
     #[test]
     fn test_organic_csv_output() {
         let mut rng = seeded_rng();
-        let result =
-            measure_recovery_organic(2048, Base::Signed(5), 16, 8, false, &mut rng);
+        let result = measure_recovery_organic(2048, Base::Signed(5), 16, 8, false, &mut rng);
         let csv = organic_results_to_csv(&[result]);
         assert!(csv.contains("organic"));
         assert!(csv.contains("2048"));
@@ -2025,8 +2068,7 @@ mod tests {
     #[test]
     fn test_organic_channels_16_d2048_k13() {
         let mut rng = seeded_rng();
-        let result =
-            measure_recovery_organic(2048, Base::Signed(5), 16, 13, false, &mut rng);
+        let result = measure_recovery_organic(2048, Base::Signed(5), 16, 13, false, &mut rng);
         // This is the key comparison point with the carrier model
         assert!(
             result.mean_absorption > 0.5,
@@ -2052,9 +2094,7 @@ mod tests {
         }
         // No position should be true in multiple masks
         for j in 0..256 {
-            let count: usize = (0..8)
-                .map(|ch| mr.warm_channel_masks[ch][j] as usize)
-                .sum();
+            let count: usize = (0..8).map(|ch| mr.warm_channel_masks[ch][j] as usize).sum();
             assert_eq!(count, 1, "Position {} in {} masks, expected 1", j, count);
         }
     }

@@ -1,3 +1,7 @@
+// Oracle/sweep functions carry many configuration parameters by design.
+// Numeric loops on projections/amplitudes/scores use index access for clarity.
+#![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+
 //! # rustynum-oracle
 //!
 //! Three-temperature holographic oracle with exhaustive capacity sweep.
@@ -13,67 +17,62 @@
 //! The oracle is the thinking/storage tier. The 8KB CogRecordV3 in `rustynum-holo`
 //! remains as the fast-rejection search tier.
 
-pub mod linalg;
-pub mod sweep;
-pub mod oracle;
-pub mod organic;
 pub mod aiwar_ghost;
 pub mod ghost_discovery;
-pub mod recognize;
+pub mod linalg;
 pub mod nars;
+pub mod oracle;
+pub mod organic;
+pub mod recognize;
+pub mod sweep;
 
-pub use linalg::{
-    cholesky_solve, condition_number,
-    upsample_to_f32, downsample_to_base,
-};
+pub use linalg::{cholesky_solve, condition_number, downsample_to_base, upsample_to_f32};
 
 pub use sweep::{
-    Base, DIMS, BASES, AXES, BUNDLE_SIZES, BIND_DEPTHS,
-    generate_template, generate_templates,
-    bind, bind_deep, bundle,
-    measure_recovery, measure_recovery_multiaxis,
-    measure_bell_coefficient,
-    run_sweep,
-    RecoveryResult, AxisResult, MultiAxisResult,
+    bind, bind_deep, bundle, generate_template, generate_templates, measure_bell_coefficient,
+    measure_recovery, measure_recovery_multiaxis, run_sweep, AxisResult, Base, MultiAxisResult,
+    RecoveryResult, AXES, BASES, BIND_DEPTHS, BUNDLE_SIZES, DIMS,
 };
 
-pub use oracle::{
-    Oracle, Temperature, FlushAction,
-    TemplateLibrary,
-    MaterializedHolograph,
-};
+pub use oracle::{FlushAction, MaterializedHolograph, Oracle, Temperature, TemplateLibrary};
 
-pub use organic::{
-    XTransPattern, MultiResPattern,
-    receptivity, organic_write, organic_write_f32, organic_read,
-    OrganicWAL, WriteResult,
-    PlasticityTracker, AbsorptionTracker,
-    FlushResult, organic_flush,
-    OrganicResult, measure_recovery_organic, run_organic_sweep,
-    organic_results_to_csv,
-    StressPoint, stress_test_absorption,
-    run_absorption_stress_test, run_plasticity_comparison,
-    ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
-};
 pub use organic::FlushAction as OrganicFlushAction;
+pub use organic::{
+    measure_recovery_organic, organic_flush, organic_read, organic_results_to_csv, organic_write,
+    organic_write_f32, receptivity, run_absorption_stress_test, run_organic_sweep,
+    run_plasticity_comparison, stress_test_absorption, AbsorptionTracker, FlushResult,
+    MultiResPattern, OrganicResult, OrganicWAL, PlasticityTracker, StressPoint, WriteResult,
+    XTransPattern, ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
+};
 
 pub use nars::{
-    unbind, forward_bind, reverse_unbind,
-    Entity as NarsEntity, Role as NarsRole,
-    reverse_trace, CausalTrace, TraceStep,
-    granger_signal, granger_scan,
-    find_similar_pairs, SimilarPair,
+    bf16_granger_causal_map,
+    bf16_granger_causal_scan,
+    bf16_reverse_trace,
+    classify_learning_event,
+    find_similar_pairs,
+    forward_bind,
+    granger_scan,
+    granger_signal,
+    reverse_trace,
+    reverse_unbind,
+    unbind,
+    BF16CausalTrace,
     // BF16 causal pipeline
-    BF16Entity, CausalFeatureMap,
-    bf16_granger_causal_map, bf16_granger_causal_scan,
-    BF16TraceStep, BF16CausalTrace, bf16_reverse_trace,
-    BF16LearningEvent, LearningInterpretation, classify_learning_event,
+    BF16Entity,
+    BF16LearningEvent,
+    BF16TraceStep,
+    CausalFeatureMap,
+    CausalTrace,
+    Entity as NarsEntity,
+    LearningInterpretation,
+    Role as NarsRole,
+    SimilarPair,
+    TraceStep,
 };
 
 pub use recognize::{
-    Projector64K, Recognizer, RecognitionResult, RecognitionMethod,
-    ExperimentResult,
-    hamming_64k, hamming_similarity_64k,
+    hamming_64k, hamming_similarity_64k, print_recognition_results, run_recognition,
     run_recognition_experiment, run_recognition_sweep, run_recognition_sweep_fast,
-    print_recognition_results, run_recognition,
+    ExperimentResult, Projector64K, RecognitionMethod, RecognitionResult, Recognizer,
 };

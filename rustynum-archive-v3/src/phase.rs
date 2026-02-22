@@ -19,7 +19,10 @@ use std::f64::consts::PI;
 /// Property: `phase_bind(phase_bind(a, b), phase_inverse(b)) == a`
 pub fn phase_bind_i8(a: &[u8], b: &[u8]) -> Vec<u8> {
     assert_eq!(a.len(), b.len());
-    a.iter().zip(b.iter()).map(|(&x, &y)| x.wrapping_add(y)).collect()
+    a.iter()
+        .zip(b.iter())
+        .map(|(&x, &y)| x.wrapping_add(y))
+        .collect()
 }
 
 /// In-place phase binding (avoids allocation).
@@ -43,7 +46,11 @@ pub fn phase_inverse_i8(v: &[u8]) -> Vec<u8> {
 /// EXACT inverse of phase_bind — no noise, no information loss.
 pub fn phase_unbind_i8(bound: &[u8], key: &[u8]) -> Vec<u8> {
     assert_eq!(bound.len(), key.len());
-    bound.iter().zip(key.iter()).map(|(&x, &y)| x.wrapping_sub(y)).collect()
+    bound
+        .iter()
+        .zip(key.iter())
+        .map(|(&x, &y)| x.wrapping_sub(y))
+        .collect()
 }
 
 // -------------------------------------------------------------------------
@@ -80,7 +87,7 @@ pub fn wasserstein_search_adaptive(
     let sample_16 = vec_len / 16;
     let sample_4 = vec_len / 4;
     let threshold_stage1 = max_distance / 16 + max_distance / 32; // ~1.5× scaled
-    let threshold_stage2 = max_distance / 4 + max_distance / 16;  // ~1.25× scaled
+    let threshold_stage2 = max_distance / 4 + max_distance / 16; // ~1.25× scaled
 
     for i in 0..n {
         let offset = i * vec_len;
@@ -248,10 +255,7 @@ pub fn generate_5d_basis(seed: u64) -> [[u8; 2048]; 5] {
 ///   `out[j] = (coords[0]·basis[0][j] + ... + coords[4]·basis[4][j]) mod 256`
 ///
 /// Nearby 5D coordinates produce phase vectors with small circular_distance.
-pub fn project_5d_to_phase(
-    coords: &[f64; 5],
-    basis: &[[u8; 2048]; 5],
-) -> Vec<u8> {
+pub fn project_5d_to_phase(coords: &[f64; 5], basis: &[[u8; 2048]; 5]) -> Vec<u8> {
     let mut out = vec![0u8; 2048];
     for j in 0..2048 {
         let mut sum = 0.0f64;
@@ -267,10 +271,7 @@ pub fn project_5d_to_phase(
 /// Uses circular correlation with each basis vector.
 ///
 /// Precision: ~5.5 bits per coordinate for 2048 elements.
-pub fn recover_5d_from_phase(
-    record: &[u8],
-    basis: &[[u8; 2048]; 5],
-) -> [f64; 5] {
+pub fn recover_5d_from_phase(record: &[u8], basis: &[[u8; 2048]; 5]) -> [f64; 5] {
     let scale = 2.0 * PI / 256.0;
     let mut coords = [0.0f64; 5];
 
@@ -344,7 +345,7 @@ mod tests {
     #[test]
     fn test_phase_bind_inverse_round_trip() {
         let a: Vec<u8> = (0..2048).map(|i| (i * 13 % 256) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|i| (i * 7 + 42 % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| (i * 7 + 42) as u8).collect();
         let bound = phase_bind_i8(&a, &b);
         let inv_b = phase_inverse_i8(&b);
         let recovered = phase_bind_i8(&bound, &inv_b);
@@ -365,7 +366,7 @@ mod tests {
     #[test]
     fn test_phase_unbind_exact_round_trip() {
         let a: Vec<u8> = (0..2048).map(|i| (i * 41 % 256) as u8).collect();
-        let b: Vec<u8> = (0..2048).map(|i| (i * 59 + 7 % 256) as u8).collect();
+        let b: Vec<u8> = (0..2048).map(|i| (i * 59 + 7) as u8).collect();
         let bound = phase_bind_i8(&a, &b);
         let recovered = phase_unbind_i8(&bound, &b);
         assert_eq!(recovered, a);
@@ -374,7 +375,7 @@ mod tests {
     #[test]
     fn test_phase_unbind_equals_bind_inverse() {
         let a: Vec<u8> = (0..256).map(|i| i as u8).collect();
-        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 17 % 256) as u8).collect();
+        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 17) as u8).collect();
         let unbind_result = phase_unbind_i8(&a, &b);
         let bind_inv_result = phase_bind_i8(&a, &phase_inverse_i8(&b));
         assert_eq!(unbind_result, bind_inv_result);
@@ -448,7 +449,7 @@ mod tests {
     #[test]
     fn test_circular_distance_symmetry() {
         let a: Vec<u8> = (0..256).map(|i| i as u8).collect();
-        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 100 % 256) as u8).collect();
+        let b: Vec<u8> = (0..256).map(|i| (i * 3 + 100) as u8).collect();
         assert_eq!(circular_distance_i8(&a, &b), circular_distance_i8(&b, &a));
     }
 
@@ -456,7 +457,9 @@ mod tests {
     fn test_circular_distance_triangle_inequality() {
         let mut rng = SplitMix64(123);
         let mut make_vec = || {
-            (0..2048).map(|_| (rng.next() % 256) as u8).collect::<Vec<u8>>()
+            (0..2048)
+                .map(|_| (rng.next() % 256) as u8)
+                .collect::<Vec<u8>>()
         };
         let a = make_vec();
         let b = make_vec();
@@ -511,7 +514,7 @@ mod tests {
         phase_bundle_circular(&[&a, &b], &mut out);
         // Circular mean of 254 and 2 should be approximately 0 (±1 due to rounding)
         for &v in &out {
-            assert!(v <= 1 || v >= 255, "expected ~0, got {}", v);
+            assert!(v <= 1 || v == 255, "expected ~0, got {}", v);
         }
     }
 
@@ -552,7 +555,12 @@ mod tests {
         let v3 = project_5d_to_phase(&p3, &basis);
         let dist_far = circular_distance_i8(&v1, &v3);
 
-        assert!(dist_near < dist_far, "nearby points should have smaller distance: near={} far={}", dist_near, dist_far);
+        assert!(
+            dist_near < dist_far,
+            "nearby points should have smaller distance: near={} far={}",
+            dist_near,
+            dist_far
+        );
     }
 
     #[test]
@@ -591,7 +599,10 @@ mod tests {
             assert!(
                 err < 0.35,
                 "dim {} recovery error {:.4} too large (original={}, recovered={})",
-                d, err, original[d], recovered[d]
+                d,
+                err,
+                original[d],
+                recovered[d]
             );
         }
     }
@@ -617,7 +628,10 @@ mod tests {
         let (sb, _) = sort_phase_vector(&b);
 
         let w = wasserstein_sorted_i8(&sa, &sb);
-        assert!(w > 0, "distinct random vectors should have nonzero Wasserstein");
+        assert!(
+            w > 0,
+            "distinct random vectors should have nonzero Wasserstein"
+        );
     }
 
     #[test]
@@ -643,7 +657,11 @@ mod tests {
     fn test_phase_unbind_after_bundle_recovers() {
         // Bundle 3 phase vectors, unbind one, verify recovery
         let mut rng = SplitMix64(777);
-        let mut make_vec = || (0..2048).map(|_| (rng.next() % 256) as u8).collect::<Vec<u8>>();
+        let mut make_vec = || {
+            (0..2048)
+                .map(|_| (rng.next() % 256) as u8)
+                .collect::<Vec<u8>>()
+        };
 
         let a = make_vec();
         let b = make_vec();
@@ -663,7 +681,8 @@ mod tests {
         assert!(
             dist_to_a < dist_to_random,
             "recovery should be closer to original: to_a={} to_random={}",
-            dist_to_a, dist_to_random
+            dist_to_a,
+            dist_to_random
         );
     }
 

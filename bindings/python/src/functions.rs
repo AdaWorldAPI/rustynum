@@ -10,7 +10,7 @@ use crate::array_u8::PyNumArrayU8;
 
 #[pyfunction]
 pub fn zeros_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF32::zeros(shape);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -18,7 +18,7 @@ pub fn zeros_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
 
 #[pyfunction]
 pub fn ones_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF32::ones(shape);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -26,7 +26,7 @@ pub fn ones_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
 
 #[pyfunction]
 pub fn matmul_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
             return Err(PyTypeError::new_err(
                 "Both NumArrayF32 instances must be 2D for matrix multiplication.",
@@ -39,7 +39,7 @@ pub fn matmul_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF3
 
 #[pyfunction]
 pub fn dot_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = a.inner.dot(&b.inner);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -47,7 +47,7 @@ pub fn dot_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> 
 
 #[pyfunction]
 pub fn arange_f32(start: f32, end: f32, step: f32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF32::arange(start, end, step);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -55,7 +55,7 @@ pub fn arange_f32(start: f32, end: f32, step: f32) -> PyResult<PyNumArrayF32> {
 
 #[pyfunction]
 pub fn linspace_f32(start: f32, end: f32, num: usize) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF32::linspace(start, end, num);
         Ok(PyNumArrayF32 { inner: result })
     })
@@ -63,7 +63,7 @@ pub fn linspace_f32(start: f32, end: f32, num: usize) -> PyResult<PyNumArrayF32>
 
 #[pyfunction]
 pub fn mean_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
@@ -77,7 +77,7 @@ pub fn mean_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArray
 
 #[pyfunction]
 pub fn median_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
@@ -153,7 +153,7 @@ pub fn concatenate_f32(arrays: Vec<PyNumArrayF32>, axis: usize) -> PyResult<PyNu
 
 #[pyfunction]
 pub fn zeros_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF64::zeros(shape);
         Ok(PyNumArrayF64 { inner: result })
     })
@@ -161,7 +161,7 @@ pub fn zeros_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
 
 #[pyfunction]
 pub fn ones_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF64::ones(shape);
         Ok(PyNumArrayF64 { inner: result })
     })
@@ -169,7 +169,7 @@ pub fn ones_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
 
 #[pyfunction]
 pub fn matmul_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
             return Err(PyTypeError::new_err(
                 "Both NumArrayF64 instances must be 2D for matrix multiplication.",
@@ -182,7 +182,7 @@ pub fn matmul_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF6
 
 #[pyfunction]
 pub fn dot_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = a.inner.dot(&b.inner);
         Ok(PyNumArrayF64 { inner: result })
     })
@@ -190,7 +190,7 @@ pub fn dot_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> 
 
 #[pyfunction]
 pub fn arange_f64(start: f64, end: f64, step: f64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF64::arange(start, end, step);
         Ok(PyNumArrayF64 { inner: result })
     })
@@ -198,7 +198,7 @@ pub fn arange_f64(start: f64, end: f64, step: f64) -> PyResult<PyNumArrayF64> {
 
 #[pyfunction]
 pub fn linspace_f64(start: f64, end: f64, num: usize) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = NumArrayF64::linspace(start, end, num);
         Ok(PyNumArrayF64 { inner: result })
     })
@@ -206,7 +206,7 @@ pub fn linspace_f64(start: f64, end: f64, num: usize) -> PyResult<PyNumArrayF64>
 
 #[pyfunction]
 pub fn mean_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
@@ -220,7 +220,7 @@ pub fn mean_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArray
 
 #[pyfunction]
 pub fn median_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
@@ -301,7 +301,7 @@ pub fn norm_f32(
     axis: Option<&PyList>,
     keepdims: Option<bool>,
 ) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -320,7 +320,7 @@ pub fn norm_f64(
     axis: Option<&PyList>,
     keepdims: Option<bool>,
 ) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|py| {
+    Python::with_gil(|_py| {
         let result = match axis {
             Some(axis_list) => {
                 let axis_vec: Vec<usize> = axis_list.extract()?;
@@ -339,14 +339,18 @@ pub fn norm_f64(
 #[pyfunction]
 pub fn bundle_u8(vectors: Vec<PyRef<PyNumArrayU8>>) -> PyResult<PyNumArrayU8> {
     let refs: Vec<&NumArrayU8> = vectors.iter().map(|v| &v.inner).collect();
-    Ok(PyNumArrayU8 { inner: NumArrayU8::bundle(&refs) })
+    Ok(PyNumArrayU8 {
+        inner: NumArrayU8::bundle(&refs),
+    })
 }
 
 /// Hamming distance between two byte arrays (VPOPCNTDQ-accelerated).
 #[pyfunction]
 pub fn hamming_distance(a: Vec<u8>, b: Vec<u8>) -> PyResult<u64> {
     if a.len() != b.len() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Arrays must be same length"));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Arrays must be same length",
+        ));
     }
     Ok(rustynum_core::simd::hamming_distance(&a, &b))
 }
@@ -354,32 +358,55 @@ pub fn hamming_distance(a: Vec<u8>, b: Vec<u8>) -> PyResult<u64> {
 /// Batch Hamming: distances from query to each row in database.
 /// database is flat, with num_rows rows of row_bytes each.
 #[pyfunction]
-pub fn hamming_batch(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize) -> PyResult<Vec<u64>> {
+pub fn hamming_batch(
+    query: Vec<u8>,
+    database: Vec<u8>,
+    num_rows: usize,
+    row_bytes: usize,
+) -> PyResult<Vec<u64>> {
     if query.len() != row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Query must be {} bytes, got {}", row_bytes, query.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Query must be {} bytes, got {}",
+            row_bytes,
+            query.len()
+        )));
     }
     if database.len() != num_rows * row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Database must be {} bytes, got {}",
+            num_rows * row_bytes,
+            database.len()
+        )));
     }
-    Ok(rustynum_core::simd::hamming_batch(&query, &database, num_rows, row_bytes))
+    Ok(rustynum_core::simd::hamming_batch(
+        &query, &database, num_rows, row_bytes,
+    ))
 }
 
 /// Top-K nearest by Hamming distance. Returns (indices, distances).
 #[pyfunction]
-pub fn hamming_top_k(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize, k: usize) -> PyResult<(Vec<usize>, Vec<u64>)> {
+pub fn hamming_top_k(
+    query: Vec<u8>,
+    database: Vec<u8>,
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> PyResult<(Vec<usize>, Vec<u64>)> {
     if query.len() != row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Query must be {} bytes, got {}", row_bytes, query.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Query must be {} bytes, got {}",
+            row_bytes,
+            query.len()
+        )));
     }
     if database.len() != num_rows * row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Database must be {} bytes, got {}",
+            num_rows * row_bytes,
+            database.len()
+        )));
     }
-    Ok(rustynum_core::simd::hamming_top_k(&query, &database, num_rows, row_bytes, k))
+    Ok(rustynum_core::simd::hamming_top_k(
+        &query, &database, num_rows, row_bytes, k,
+    ))
 }

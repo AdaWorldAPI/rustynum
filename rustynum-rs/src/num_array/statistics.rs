@@ -107,7 +107,6 @@ where
     /// let sorted_array = array.sort();
     /// println!("Sorted array: {:?}", sorted_array.get_data());
     /// ```
-
     pub fn sort(&self) -> NumArray<T, Ops> {
         let mut sorted_data = self.data.clone();
         sorted_data.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -128,8 +127,6 @@ where
     /// let median_array = array.median();
     /// println!("Median array: {:?}", median_array.get_data());
     /// ```
-    ///
-
     pub fn median(&self) -> NumArray<T, Ops> {
         let sorted_data = self.sort();
         let median = Self::calculate_median(sorted_data.get_data());
@@ -156,7 +153,6 @@ where
     /// let median_array = array.median_axis(Some(&[1]));
     /// println!("Median array: {:?}", median_array.get_data());
     /// ```
-
     pub fn median_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axis) => {
@@ -194,9 +190,9 @@ where
                     .collect::<Vec<_>>();
 
                 if reduced_shape.is_empty() {
-                    return NumArray::new(reduced_data);
+                    NumArray::new(reduced_data)
                 } else {
-                    return NumArray::new_with_shape(reduced_data, reduced_shape);
+                    NumArray::new_with_shape(reduced_data, reduced_shape)
                 }
             }
             None => self.median(),
@@ -205,7 +201,7 @@ where
 
     fn calculate_median(values: &[T]) -> T {
         let len = values.len();
-        if len % 2 == 0 {
+        if len.is_multiple_of(2) {
             (values[len / 2 - 1] + values[len / 2]) / T::from_u32(2)
         } else {
             values[len / 2]
@@ -317,7 +313,10 @@ where
     /// assert!((p50 - 3.0).abs() < 1e-5);
     /// ```
     pub fn percentile(&self, p: T) -> NumArray<T, Ops> {
-        assert!(!self.data.is_empty(), "Cannot compute percentile of empty array.");
+        assert!(
+            !self.data.is_empty(),
+            "Cannot compute percentile of empty array."
+        );
         assert!(
             p >= T::from_u32(0) && p <= T::from_u32(100),
             "Percentile must be between 0 and 100."
@@ -390,8 +389,7 @@ where
                 }
 
                 let reduced_size: usize = reduced_shape.iter().product();
-                let mut accumulator =
-                    vec![T::from_u32(0); total_elements_to_reduce * reduced_size];
+                let mut accumulator = vec![T::from_u32(0); total_elements_to_reduce * reduced_size];
                 let mut acc_slices: Vec<&mut [T]> =
                     accumulator.chunks_mut(total_elements_to_reduce).collect();
                 let mut counts = vec![0usize; reduced_size];
@@ -488,7 +486,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::num_array::{NumArrayF32, NumArrayF64};
 
     #[test]

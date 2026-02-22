@@ -22,15 +22,18 @@
 //! and backward compatibility.
 
 #![feature(portable_simd)]
+#![allow(clippy::needless_range_loop)]
 
-pub mod cogrecord;
-pub mod hdc;
-pub mod graph;
-pub mod projection;
 pub mod binding_matrix;
+pub mod cogrecord;
+pub mod graph;
+pub mod hdc;
+pub mod projection;
 
-pub use cogrecord::{CogRecord, SweepMode, SweepResult, sweep_cogrecords};
-pub use cogrecord::{CONTAINER_BYTES, CONTAINER_BITS, COGRECORD_BYTES, META, CAM, BTREE, EMBED};
-pub use graph::{VerbCodebook, encode_edge_explicit, decode_target_explicit};
+pub use binding_matrix::{
+    binding_popcount_3d, find_discriminative_spots, find_holographic_sweet_spot,
+};
+pub use cogrecord::{sweep_cogrecords, CogRecord, SweepMode, SweepResult};
+pub use cogrecord::{BTREE, CAM, COGRECORD_BYTES, CONTAINER_BITS, CONTAINER_BYTES, EMBED, META};
+pub use graph::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
 pub use projection::{simhash_batch_project, simhash_project};
-pub use binding_matrix::{binding_popcount_3d, find_holographic_sweet_spot, find_discriminative_spots};

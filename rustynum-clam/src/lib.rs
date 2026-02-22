@@ -1,3 +1,6 @@
+// Tree traversal and compress/search routines use index loops for clarity.
+#![allow(clippy::needless_range_loop)]
+
 //! # rustynum-clam
 //!
 //! CLAM (Clustering, Learning and Approximation of Manifolds) integration
@@ -31,11 +34,11 @@
 //! - panCAKES: Prior, Howard, Light, Ishaq, Daniels. arXiv:2409.12161
 //! - CHAODA:   Ishaq, Howard, Daniels. IEEE Big Data 2021. arXiv:2103.11774
 
-pub mod tree;
-pub mod search;
 pub mod compress;
+pub mod search;
+pub mod tree;
 
-pub use tree::{ClamTree, Cluster, Distance, HammingDistance, HammingSIMD, Lfd};
-pub use tree::{hamming_batch_simd, hamming_top_k_simd};
-pub use search::{RhoNnResult, KnnResult, SearchConfig};
 pub use compress::{CompressedTree, CompressionStats};
+pub use search::{KnnResult, RhoNnResult, SearchConfig};
+pub use tree::{hamming_batch_simd, hamming_top_k_simd};
+pub use tree::{ClamTree, Cluster, Distance, HammingDistance, HammingSIMD, Lfd};

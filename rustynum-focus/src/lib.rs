@@ -1,3 +1,6 @@
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+
 //! # rustynum-focus
 //!
 //! Frozen snapshot of the CogRecordV3 + carrier + focus-gating model from
@@ -38,44 +41,30 @@
 //! delta-cube relationship storage, and 3D spatial transforms. This archive
 //! preserves the carrier + focus implementation for reference.
 
-pub mod phase;
-pub mod cogrecord_v3;
 pub mod carrier;
+pub mod cogrecord_v3;
 pub mod focus;
+pub mod phase;
 
 pub use phase::{
-    phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
-    phase_unbind_i8,
-    wasserstein_sorted_i8, wasserstein_search_adaptive,
-    circular_distance_i8,
-    phase_histogram_16, histogram_l1_distance,
-    phase_bundle_circular, phase_bundle_approximate,
-    project_5d_to_phase, recover_5d_from_phase, generate_5d_basis,
-    sort_phase_vector, unsort_phase_vector,
+    circular_distance_i8, generate_5d_basis, histogram_l1_distance, phase_bind_i8,
+    phase_bind_i8_inplace, phase_bundle_approximate, phase_bundle_circular, phase_histogram_16,
+    phase_inverse_i8, phase_unbind_i8, project_5d_to_phase, recover_5d_from_phase,
+    sort_phase_vector, unsort_phase_vector, wasserstein_search_adaptive, wasserstein_sorted_i8,
 };
 
-pub use cogrecord_v3::{
-    CogRecordV3, HybridThresholds, HybridDistances, CONTAINER_BYTES,
-};
+pub use cogrecord_v3::{CogRecordV3, HybridDistances, HybridThresholds, CONTAINER_BYTES};
 
 pub use carrier::{
-    CarrierBasis, CarrierRecord, CarrierThresholds, CarrierDistances,
-    CARRIER_FREQUENCIES, CARRIER_AMPLITUDE,
-    carrier_encode, carrier_decode, carrier_bundle,
-    carrier_distance_l1, carrier_correlation,
-    carrier_spectrum, spectral_distance,
+    carrier_bundle, carrier_correlation, carrier_decode, carrier_distance_l1, carrier_encode,
+    carrier_spectrum, spectral_distance, CarrierBasis, CarrierDistances, CarrierRecord,
+    CarrierThresholds, CARRIER_AMPLITUDE, CARRIER_FREQUENCIES,
 };
 
 pub use focus::{
-    FocusDensity, FocusRegistry,
-    pack_focus, unpack_focus,
-    concept_to_focus, materialize_focus_mask,
-    focus_xor, focus_read, focus_add, focus_sub,
-    focus_xor_materialized, focus_add_materialized,
-    focus_hamming, focus_l1,
-    focus_bind_binary, focus_bind_phase, focus_unbind_phase,
-    focus_carrier_encode,
-    focus_delta, CompactDelta,
-    focus_xor_auto,
-    FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z,
+    concept_to_focus, focus_add, focus_add_materialized, focus_bind_binary, focus_bind_phase,
+    focus_carrier_encode, focus_delta, focus_hamming, focus_l1, focus_read, focus_sub,
+    focus_unbind_phase, focus_xor, focus_xor_auto, focus_xor_materialized, materialize_focus_mask,
+    pack_focus, unpack_focus, CompactDelta, FocusDensity, FocusRegistry, FOCUS_DIM_X, FOCUS_DIM_Y,
+    FOCUS_DIM_Z,
 };

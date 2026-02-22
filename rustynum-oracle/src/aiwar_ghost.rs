@@ -11,11 +11,9 @@
 //! Runs across Signed(5), Signed(7), Signed(9) with base-aware plasticity
 //! to show how base width affects ghost detection.
 
+use crate::organic::{AbsorptionTracker, OrganicWAL, PlasticityTracker, XTransPattern};
+use crate::sweep::{bind, generate_template, Base};
 use std::collections::{HashMap, HashSet};
-use crate::sweep::{Base, generate_template, bind};
-use crate::organic::{
-    XTransPattern, OrganicWAL, PlasticityTracker, AbsorptionTracker,
-};
 
 // ---------------------------------------------------------------------------
 // Part 1: Entity & Edge types
@@ -113,23 +111,33 @@ pub struct AiWarGraph {
 }
 
 impl AiWarGraph {
-    pub fn entity_count(&self) -> usize { self.entities.len() }
-    pub fn edge_count(&self) -> usize { self.edges.len() }
+    pub fn entity_count(&self) -> usize {
+        self.entities.len()
+    }
+    pub fn edge_count(&self) -> usize {
+        self.edges.len()
+    }
 
     pub fn get(&self, id: &str) -> Option<&Entity> {
         self.id_to_index.get(id).map(|&i| &self.entities[i])
     }
 
     pub fn edges_of(&self, id: &str) -> Vec<&Edge> {
-        self.edges.iter()
+        self.edges
+            .iter()
             .filter(|e| e.source_id == id || e.target_id == id)
             .collect()
     }
 
     pub fn neighbors(&self, id: &str) -> Vec<&Entity> {
-        self.edges_of(id).iter()
+        self.edges_of(id)
+            .iter()
             .filter_map(|e| {
-                let other = if e.source_id == id { &e.target_id } else { &e.source_id };
+                let other = if e.source_id == id {
+                    &e.target_id
+                } else {
+                    &e.source_id
+                };
                 self.get(other)
             })
             .collect()
@@ -273,14 +281,18 @@ pub fn parse_graph(json: &serde_json::Value) -> AiWarGraph {
         }
     }
 
-    AiWarGraph { entities, edges, id_to_index }
+    AiWarGraph {
+        entities,
+        edges,
+        id_to_index,
+    }
 }
 
 pub fn load_graph_from_file(path: &str) -> AiWarGraph {
-    let data = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
-    let json: serde_json::Value = serde_json::from_str(&data)
-        .unwrap_or_else(|e| panic!("Failed to parse JSON: {}", e));
+    let data =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
+    let json: serde_json::Value =
+        serde_json::from_str(&data).unwrap_or_else(|e| panic!("Failed to parse JSON: {}", e));
     parse_graph(&json)
 }
 
@@ -298,8 +310,12 @@ impl SeededRng {
 }
 
 impl rand::RngCore for SeededRng {
-    fn next_u32(&mut self) -> u32 { self.0.next_u64() as u32 }
-    fn next_u64(&mut self) -> u64 { self.0.next_u64() }
+    fn next_u32(&mut self) -> u32 {
+        self.0.next_u64() as u32
+    }
+    fn next_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         for chunk in dest.chunks_mut(8) {
             let val = self.next_u64().to_le_bytes();
@@ -337,7 +353,9 @@ fn extract_axis_values(e: &Entity) -> Vec<String> {
     let a = &e.axes;
     let mut vals = Vec::new();
 
-    if let Some(v) = &a.current_status { vals.push(format!("status:{}", v)); }
+    if let Some(v) = &a.current_status {
+        vals.push(format!("status:{}", v));
+    }
     if let Some(v) = &a.system_type {
         for part in v.split(',') {
             let part = part.trim();
@@ -346,7 +364,9 @@ fn extract_axis_values(e: &Entity) -> Vec<String> {
             }
         }
     }
-    if let Some(v) = &a.ml_task { vals.push(format!("ml:{}", v)); }
+    if let Some(v) = &a.ml_task {
+        vals.push(format!("ml:{}", v));
+    }
     if let Some(v) = &a.military_use {
         for part in v.split(',') {
             let part = part.trim();
@@ -355,8 +375,12 @@ fn extract_axis_values(e: &Entity) -> Vec<String> {
             }
         }
     }
-    if let Some(v) = &a.civic_use { vals.push(format!("civic:{}", v)); }
-    if let Some(v) = &a.purpose { vals.push(format!("purpose:{}", v)); }
+    if let Some(v) = &a.civic_use {
+        vals.push(format!("civic:{}", v));
+    }
+    if let Some(v) = &a.purpose {
+        vals.push(format!("purpose:{}", v));
+    }
     if let Some(v) = &a.capacity {
         for part in v.split(',') {
             let part = part.trim();
@@ -365,7 +389,9 @@ fn extract_axis_values(e: &Entity) -> Vec<String> {
             }
         }
     }
-    if let Some(v) = &a.output { vals.push(format!("output:{}", v)); }
+    if let Some(v) = &a.output {
+        vals.push(format!("output:{}", v));
+    }
     if let Some(v) = &a.impact {
         for part in v.split(',') {
             let part = part.trim();
@@ -374,7 +400,9 @@ fn extract_axis_values(e: &Entity) -> Vec<String> {
             }
         }
     }
-    if let Some(v) = &a.stakeholder_type { vals.push(format!("stype:{}", v)); }
+    if let Some(v) = &a.stakeholder_type {
+        vals.push(format!("stype:{}", v));
+    }
     if let Some(v) = &a.airo_type {
         for part in v.split(',') {
             let part = part.trim();
@@ -402,7 +430,9 @@ pub fn generate_entity_templates(
     overlap_per_axis: f32,
 ) -> Vec<Vec<i8>> {
     // Per-entity random component (seeded by ID)
-    let entity_components: Vec<Vec<i8>> = graph.entities.iter()
+    let entity_components: Vec<Vec<i8>> = graph
+        .entities
+        .iter()
         .map(|e| generate_from_seed(d, base, hash_string(&e.id)))
         .collect();
 
@@ -423,29 +453,34 @@ pub fn generate_entity_templates(
     let min_val = base.min_val() as f32;
     let max_val = base.max_val() as f32;
 
-    graph.entities.iter().enumerate().map(|(i, entity)| {
-        let axis_vals = extract_axis_values(entity);
-        let n_axes = axis_vals.len();
-        let total_overlap = (n_axes as f32 * overlap_per_axis).min(0.6);
-        let entity_weight = 1.0 - total_overlap;
-        let per_axis_weight = if n_axes > 0 {
-            total_overlap / n_axes as f32
-        } else {
-            0.0
-        };
+    graph
+        .entities
+        .iter()
+        .enumerate()
+        .map(|(i, entity)| {
+            let axis_vals = extract_axis_values(entity);
+            let n_axes = axis_vals.len();
+            let total_overlap = (n_axes as f32 * overlap_per_axis).min(0.6);
+            let entity_weight = 1.0 - total_overlap;
+            let per_axis_weight = if n_axes > 0 {
+                total_overlap / n_axes as f32
+            } else {
+                0.0
+            };
 
-        let mut template = vec![0i8; d];
-        for j in 0..d {
-            let mut val = entity_weight * entity_components[i][j] as f32;
-            for av in &axis_vals {
-                if let Some(basis) = axis_bases.get(av.as_str()) {
-                    val += per_axis_weight * basis[j] as f32;
+            let mut template = vec![0i8; d];
+            for j in 0..d {
+                let mut val = entity_weight * entity_components[i][j] as f32;
+                for av in &axis_vals {
+                    if let Some(basis) = axis_bases.get(av.as_str()) {
+                        val += per_axis_weight * basis[j] as f32;
+                    }
                 }
+                template[j] = val.round().clamp(min_val, max_val) as i8;
             }
-            template[j] = val.round().clamp(min_val, max_val) as i8;
-        }
-        template
-    }).collect()
+            template
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -513,9 +548,15 @@ pub fn encode_edges_signed_raw(
         encoded += 1;
     }
 
-    eprintln!("  Encoded {} edges via raw accumulation (D={}, {})", encoded, d, base.name());
+    eprintln!(
+        "  Encoded {} edges via raw accumulation (D={}, {})",
+        encoded,
+        d,
+        base.name()
+    );
 
-    accum.iter()
+    accum
+        .iter()
         .map(|&v| v.round().clamp(s_min, s_max) as i8)
         .collect()
 }
@@ -563,9 +604,7 @@ pub fn encode_edges_organic(
 
     // Write all edges through WAL with base-aware plasticity
     for i in 0..encoded {
-        let result = wal.write_plastic(
-            &mut container, i, amplitudes[i], 0.1, &mut plasticity,
-        );
+        let result = wal.write_plastic(&mut container, i, amplitudes[i], 0.1, &mut plasticity);
         absorption_tracker.record(result.absorption);
     }
 
@@ -576,10 +615,19 @@ pub fn encode_edges_organic(
     let residual = wal.compute_residual(&container, &coefficients);
     let res_energy = residual.iter().map(|&v| v * v).sum::<f32>() / residual.len() as f32;
 
-    eprintln!("  Encoded {} edges via OrganicWAL (D={}, C={}, {})",
-        encoded, d, channels, base.name());
-    eprintln!("  Absorption: avg={:.4}, min={:.4}  Residual energy: {:.4}",
-        absorption_tracker.average(), absorption_tracker.minimum(), res_energy);
+    eprintln!(
+        "  Encoded {} edges via OrganicWAL (D={}, C={}, {})",
+        encoded,
+        d,
+        channels,
+        base.name()
+    );
+    eprintln!(
+        "  Absorption: avg={:.4}, min={:.4}  Residual energy: {:.4}",
+        absorption_tracker.average(),
+        absorption_tracker.minimum(),
+        res_energy
+    );
 
     OrganicEncodeResult {
         container,
@@ -672,7 +720,9 @@ pub fn probe_ghost_connections(
 
     for i in 0..n {
         for j in (i + 1)..n {
-            if existing.contains(&(i, j)) { continue; }
+            if existing.contains(&(i, j)) {
+                continue;
+            }
 
             let probe = bind(&templates[i], &templates[j], base);
             let direct_strength = cosine_similarity_i8(&probe, container);
@@ -692,9 +742,12 @@ pub fn probe_ghost_connections(
         }
     }
 
-    ghosts.sort_by(|a, b| b.ghost_signal.abs()
-        .partial_cmp(&a.ghost_signal.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
+    ghosts.sort_by(|a, b| {
+        b.ghost_signal
+            .abs()
+            .partial_cmp(&a.ghost_signal.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     ghosts.truncate(top_k);
     ghosts
@@ -712,11 +765,15 @@ pub fn probe_entity_ghosts(
     top_k: usize,
 ) -> Vec<GhostConnection> {
     let target = &graph.entities[target_idx];
-    let existing_neighbors: HashSet<String> = graph.edges_of(&target.id)
+    let existing_neighbors: HashSet<String> = graph
+        .edges_of(&target.id)
         .iter()
         .map(|e| {
-            if e.source_id == target.id { e.target_id.clone() }
-            else { e.source_id.clone() }
+            if e.source_id == target.id {
+                e.target_id.clone()
+            } else {
+                e.source_id.clone()
+            }
         })
         .collect();
 
@@ -728,8 +785,12 @@ pub fn probe_entity_ghosts(
     };
 
     for &idx in &candidates {
-        if idx == target_idx { continue; }
-        if existing_neighbors.contains(&graph.entities[idx].id) { continue; }
+        if idx == target_idx {
+            continue;
+        }
+        if existing_neighbors.contains(&graph.entities[idx].id) {
+            continue;
+        }
 
         let probe = bind(&templates[target_idx], &templates[idx], base);
         let direct_strength = cosine_similarity_i8(&probe, container);
@@ -748,63 +809,12 @@ pub fn probe_entity_ghosts(
         });
     }
 
-    ghosts.sort_by(|a, b| b.ghost_signal.abs()
-        .partial_cmp(&a.ghost_signal.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
-
-    ghosts.truncate(top_k);
-    ghosts
-}
-
-/// Probe ghosts between two sets of entities.
-fn probe_pair_ghosts(
-    graph: &AiWarGraph,
-    set_a: &[usize],
-    set_b: &[usize],
-    container: &[i8],
-    residual: &[f32],
-    templates: &[Vec<i8>],
-    base: Base,
-    top_k: usize,
-) -> Vec<GhostConnection> {
-    let mut existing: HashSet<(usize, usize)> = HashSet::new();
-    for edge in &graph.edges {
-        if let (Some(&s), Some(&t)) = (
-            graph.id_to_index.get(&edge.source_id),
-            graph.id_to_index.get(&edge.target_id),
-        ) {
-            existing.insert((s, t));
-            existing.insert((t, s));
-        }
-    }
-
-    let mut ghosts = Vec::new();
-    for &i in set_a {
-        for &j in set_b {
-            if i == j { continue; }
-            if existing.contains(&(i, j)) { continue; }
-
-            let probe = bind(&templates[i], &templates[j], base);
-            let direct_strength = cosine_similarity_i8(&probe, container);
-            let residual_strength = cosine_similarity_mixed(&probe, residual);
-
-            ghosts.push(GhostConnection {
-                entity_a: i,
-                entity_b: j,
-                name_a: graph.entities[i].name.clone(),
-                name_b: graph.entities[j].name.clone(),
-                type_a: graph.entities[i].entity_type.clone(),
-                type_b: graph.entities[j].entity_type.clone(),
-                direct_strength,
-                residual_strength,
-                ghost_signal: residual_strength,
-            });
-        }
-    }
-
-    ghosts.sort_by(|a, b| b.ghost_signal.abs()
-        .partial_cmp(&a.ghost_signal.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
+    ghosts.sort_by(|a, b| {
+        b.ghost_signal
+            .abs()
+            .partial_cmp(&a.ghost_signal.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     ghosts.truncate(top_k);
     ghosts
@@ -843,11 +853,15 @@ fn probe_dual_entity(
     top_k: usize,
 ) -> Vec<DualGhost> {
     let target = &graph.entities[target_idx];
-    let existing_neighbors: HashSet<String> = graph.edges_of(&target.id)
+    let existing_neighbors: HashSet<String> = graph
+        .edges_of(&target.id)
         .iter()
         .map(|e| {
-            if e.source_id == target.id { e.target_id.clone() }
-            else { e.source_id.clone() }
+            if e.source_id == target.id {
+                e.target_id.clone()
+            } else {
+                e.source_id.clone()
+            }
         })
         .collect();
 
@@ -858,8 +872,12 @@ fn probe_dual_entity(
 
     let mut ghosts = Vec::new();
     for &idx in &candidates {
-        if idx == target_idx { continue; }
-        if existing_neighbors.contains(&graph.entities[idx].id) { continue; }
+        if idx == target_idx {
+            continue;
+        }
+        if existing_neighbors.contains(&graph.entities[idx].id) {
+            continue;
+        }
 
         let probe = bind(&templates[target_idx], &templates[idx], base);
         let signed_strength = cosine_similarity_i8(&probe, signed_container);
@@ -880,9 +898,12 @@ fn probe_dual_entity(
     }
 
     // Sort by signed strength (absolute) for primary ranking
-    ghosts.sort_by(|a, b| b.signed_strength.abs()
-        .partial_cmp(&a.signed_strength.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
+    ghosts.sort_by(|a, b| {
+        b.signed_strength
+            .abs()
+            .partial_cmp(&a.signed_strength.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     ghosts.truncate(top_k);
     ghosts
@@ -913,8 +934,12 @@ fn probe_dual_pairs(
     let mut ghosts = Vec::new();
     for &i in set_a {
         for &j in set_b {
-            if i == j { continue; }
-            if existing.contains(&(i, j)) { continue; }
+            if i == j {
+                continue;
+            }
+            if existing.contains(&(i, j)) {
+                continue;
+            }
 
             let probe = bind(&templates[i], &templates[j], base);
             let signed_strength = cosine_similarity_i8(&probe, signed_container);
@@ -935,9 +960,12 @@ fn probe_dual_pairs(
         }
     }
 
-    ghosts.sort_by(|a, b| b.signed_strength.abs()
-        .partial_cmp(&a.signed_strength.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
+    ghosts.sort_by(|a, b| {
+        b.signed_strength
+            .abs()
+            .partial_cmp(&a.signed_strength.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     ghosts.truncate(top_k);
     ghosts
@@ -947,17 +975,21 @@ fn print_dual_ghosts(title: &str, ghosts: &[DualGhost], max_rows: usize) {
     println!("{}", "=".repeat(100));
     println!("  {}", title);
     println!("{}", "=".repeat(100));
-    println!("  {:25} {:25} {:>9} {:>9} {:>9}",
-        "Entity A", "Entity B", "Signed", "OrgDirect", "OrgResid");
+    println!(
+        "  {:25} {:25} {:>9} {:>9} {:>9}",
+        "Entity A", "Entity B", "Signed", "OrgDirect", "OrgResid"
+    );
     println!("{}", "-".repeat(100));
 
     for g in ghosts.iter().take(max_rows) {
-        println!("  {} {} {:>+9.4} {:>+9.4} {:>+9.4}",
+        println!(
+            "  {} {} {:>+9.4} {:>+9.4} {:>+9.4}",
             truncate_str(&g.name_a, 25),
             truncate_str(&g.name_b, 25),
             g.signed_strength,
             g.organic_direct,
-            g.organic_residual);
+            g.organic_residual
+        );
     }
 
     println!("{}", "=".repeat(100));
@@ -980,21 +1012,29 @@ pub fn print_ghost_connections(title: &str, ghosts: &[GhostConnection], max_rows
     println!("{}", "=".repeat(90));
     println!("  {}", title);
     println!("{}", "=".repeat(90));
-    println!("  {:25} {:25} {:>8} {:>8} {:>8}",
-        "Entity A", "Entity B", "Direct", "Residual", "Ghost");
+    println!(
+        "  {:25} {:25} {:>8} {:>8} {:>8}",
+        "Entity A", "Entity B", "Direct", "Residual", "Ghost"
+    );
     println!("{}", "-".repeat(90));
 
     for g in ghosts.iter().take(max_rows) {
-        let mark = if g.ghost_signal > 0.02 { " +" }
-                   else if g.ghost_signal < -0.02 { " -" }
-                   else { "  " };
-        println!("  {} {} {:>+8.4} {:>+8.4} {:>+8.4}{}",
+        let mark = if g.ghost_signal > 0.02 {
+            " +"
+        } else if g.ghost_signal < -0.02 {
+            " -"
+        } else {
+            "  "
+        };
+        println!(
+            "  {} {} {:>+8.4} {:>+8.4} {:>+8.4}{}",
             truncate_str(&g.name_a, 25),
             truncate_str(&g.name_b, 25),
             g.direct_strength,
             g.residual_strength,
             g.ghost_signal,
-            mark);
+            mark
+        );
     }
 
     println!("{}", "=".repeat(90));
@@ -1011,9 +1051,15 @@ pub fn ghost_type_summary(ghosts: &[GhostConnection]) {
         entry.2 += g.direct_strength.abs();
     }
 
-    let mut sorted: Vec<(String, usize, f32, f32)> = type_counts.into_iter()
+    let mut sorted: Vec<(String, usize, f32, f32)> = type_counts
+        .into_iter()
         .map(|(k, (count, ghost_total, direct_total))| {
-            (k, count, ghost_total / count as f32, direct_total / count as f32)
+            (
+                k,
+                count,
+                ghost_total / count as f32,
+                direct_total / count as f32,
+            )
         })
         .collect();
     sorted.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
@@ -1021,10 +1067,16 @@ pub fn ghost_type_summary(ghosts: &[GhostConnection]) {
     println!("{}", "=".repeat(66));
     println!("  GHOST TYPE SUMMARY");
     println!("{}", "=".repeat(66));
-    println!("  {:30} {:>6} {:>12} {:>12}", "Type Pair", "Count", "Avg |Ghost|", "Avg |Direct|");
+    println!(
+        "  {:30} {:>6} {:>12} {:>12}",
+        "Type Pair", "Count", "Avg |Ghost|", "Avg |Direct|"
+    );
     println!("{}", "-".repeat(66));
     for (pair, count, avg_ghost, avg_direct) in &sorted {
-        println!("  {:30} {:>6} {:>12.4} {:>12.4}", pair, count, avg_ghost, avg_direct);
+        println!(
+            "  {:30} {:>6} {:>12.4} {:>12.4}",
+            pair, count, avg_ghost, avg_direct
+        );
     }
     println!("{}", "=".repeat(66));
 }
@@ -1047,73 +1099,111 @@ pub fn run_dual_scenarios(
     let lavender = graph.entities.iter().find(|e| e.name == "Lavender");
     if let Some(sys) = lavender {
         let ghosts = probe_dual_entity(
-            graph, sys.index,
-            signed_container, organic_container, organic_residual,
-            templates, base, None, 20,
+            graph,
+            sys.index,
+            signed_container,
+            organic_container,
+            organic_residual,
+            templates,
+            base,
+            None,
+            20,
         );
         print_dual_ghosts(
             "SCENARIO A: Ghost connections for 'Lavender' (Signed vs Organic)",
-            &ghosts, 20,
+            &ghosts,
+            20,
         );
     }
 
     // -- Scenario B: Person-to-person ghost connections --
     println!();
-    let person_indices: Vec<usize> = graph.entities.iter()
+    let person_indices: Vec<usize> = graph
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::Person)
         .map(|e| e.index)
         .collect();
 
     let person_ghosts = probe_dual_pairs(
-        graph, &person_indices, &person_indices,
-        signed_container, organic_container, organic_residual,
-        templates, base, 30,
+        graph,
+        &person_indices,
+        &person_indices,
+        signed_container,
+        organic_container,
+        organic_residual,
+        templates,
+        base,
+        30,
     );
     print_dual_ghosts(
         "SCENARIO B: Person <-> Person Ghost Network (Signed vs Organic)",
-        &person_ghosts, 30,
+        &person_ghosts,
+        30,
     );
 
     // -- Scenario C: System-to-nation ghost deployments --
     println!();
-    let nations: Vec<usize> = graph.entities.iter()
+    let nations: Vec<usize> = graph
+        .entities
+        .iter()
         .filter(|e| e.axes.stakeholder_type.as_deref() == Some("Nation"))
         .map(|e| e.index)
         .collect();
-    let systems: Vec<usize> = graph.entities.iter()
+    let systems: Vec<usize> = graph
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::System)
         .map(|e| e.index)
         .collect();
 
     let deploy_ghosts = probe_dual_pairs(
-        graph, &systems, &nations,
-        signed_container, organic_container, organic_residual,
-        templates, base, 30,
+        graph,
+        &systems,
+        &nations,
+        signed_container,
+        organic_container,
+        organic_residual,
+        templates,
+        base,
+        30,
     );
     print_dual_ghosts(
         "SCENARIO C: Ghost Deployments — System -> Nation (Signed vs Organic)",
-        &deploy_ghosts, 30,
+        &deploy_ghosts,
+        30,
     );
 
     // -- Scenario D: Civilian-military convergence --
     println!();
-    let civic: Vec<usize> = graph.entities.iter()
+    let civic: Vec<usize> = graph
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::CivicSystem)
         .map(|e| e.index)
         .collect();
-    let military: Vec<usize> = graph.entities.iter()
+    let military: Vec<usize> = graph
+        .entities
+        .iter()
         .filter(|e| e.entity_type == EntityType::System)
         .map(|e| e.index)
         .collect();
 
     let convergence_ghosts = probe_dual_pairs(
-        graph, &civic, &military,
-        signed_container, organic_container, organic_residual,
-        templates, base, 30,
+        graph,
+        &civic,
+        &military,
+        signed_container,
+        organic_container,
+        organic_residual,
+        templates,
+        base,
+        30,
     );
     print_dual_ghosts(
         "SCENARIO D: Civic <-> Military Ghost Convergence (Signed vs Organic)",
-        &convergence_ghosts, 30,
+        &convergence_ghosts,
+        30,
     );
 }
 
@@ -1150,31 +1240,44 @@ pub fn validate_known_edges(
         direct_strengths.push(ds);
         residual_strengths.push(rs);
 
-        let entry = by_type.entry(edge.edge_type.label().to_string())
+        let entry = by_type
+            .entry(edge.edge_type.label().to_string())
             .or_insert_with(|| (Vec::new(), Vec::new()));
         entry.0.push(ds);
         entry.1.push(rs);
     }
 
     let mean = |v: &[f32]| -> f32 {
-        if v.is_empty() { 0.0 } else { v.iter().sum::<f32>() / v.len() as f32 }
+        if v.is_empty() {
+            0.0
+        } else {
+            v.iter().sum::<f32>() / v.len() as f32
+        }
     };
 
     println!("{}", "=".repeat(66));
     println!("  KNOWN EDGE VALIDATION (Organic)");
     println!("{}", "=".repeat(66));
-    println!("  {} edges encoded, {} coefficients recovered", direct_strengths.len(), coefficients.len());
+    println!(
+        "  {} edges encoded, {} coefficients recovered",
+        direct_strengths.len(),
+        coefficients.len()
+    );
     println!();
     println!("  Direct (container):");
-    println!("    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}",
+    println!(
+        "    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}",
         mean(&direct_strengths),
         direct_strengths.iter().cloned().fold(f32::MAX, f32::min),
-        direct_strengths.iter().cloned().fold(f32::MIN, f32::max));
+        direct_strengths.iter().cloned().fold(f32::MIN, f32::max)
+    );
     println!("  Residual (after extraction):");
-    println!("    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}",
+    println!(
+        "    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}",
         mean(&residual_strengths),
         residual_strengths.iter().cloned().fold(f32::MAX, f32::min),
-        residual_strengths.iter().cloned().fold(f32::MIN, f32::max));
+        residual_strengths.iter().cloned().fold(f32::MIN, f32::max)
+    );
 
     // Coefficient stats
     if !coefficients.is_empty() {
@@ -1183,8 +1286,14 @@ pub fn validate_known_edges(
         let coeff_min = coefficients.iter().cloned().fold(f32::MAX, f32::min);
         let nonzero = coefficients.iter().filter(|&&c| c.abs() > 0.001).count();
         println!("  Surgical coefficients:");
-        println!("    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}, nonzero: {}/{}",
-            coeff_mean, coeff_min, coeff_max, nonzero, coefficients.len());
+        println!(
+            "    mean: {:>+.4}, min: {:>+.4}, max: {:>+.4}, nonzero: {}/{}",
+            coeff_mean,
+            coeff_min,
+            coeff_max,
+            nonzero,
+            coefficients.len()
+        );
     }
     println!();
 
@@ -1193,8 +1302,13 @@ pub fn validate_known_edges(
     type_keys.sort();
     for key in &type_keys {
         let (d, r) = &by_type[key];
-        println!("    {:12} ({:>3} edges)  direct={:>+.4}  residual={:>+.4}",
-            key, d.len(), mean(d), mean(r));
+        println!(
+            "    {:12} ({:>3} edges)  direct={:>+.4}  residual={:>+.4}",
+            key,
+            d.len(),
+            mean(d),
+            mean(r)
+        );
     }
     println!("{}", "=".repeat(66));
 }
@@ -1249,9 +1363,13 @@ fn quick_base_summary(
     let known_residual = residual_sum / edge_count.max(1) as f32;
 
     // Quick ghost sample: check a few non-edge pairs
-    let ghosts = probe_ghost_connections(graph, &enc.container, &enc.residual, &templates, base, 20);
+    let ghosts =
+        probe_ghost_connections(graph, &enc.container, &enc.residual, &templates, base, 20);
     let top_ghost = ghosts.first().map(|g| g.ghost_signal.abs()).unwrap_or(0.0);
-    let above_thresh = ghosts.iter().filter(|g| g.ghost_signal.abs() > 0.03).count();
+    let above_thresh = ghosts
+        .iter()
+        .filter(|g| g.ghost_signal.abs() > 0.03)
+        .count();
 
     BaseRunResult {
         _base: base,
@@ -1286,7 +1404,11 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
 
     // Load graph
     let graph = load_graph_from_file(graph_path);
-    println!("Loaded: {} entities, {} edges", graph.entity_count(), graph.edge_count());
+    println!(
+        "Loaded: {} entities, {} edges",
+        graph.entity_count(),
+        graph.edge_count()
+    );
 
     // Show entity type breakdown
     let mut type_counts: HashMap<&str, usize> = HashMap::new();
@@ -1321,8 +1443,10 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
     println!("{}", "=".repeat(100));
 
     let bases = [Base::Signed(5), Base::Signed(7), Base::Signed(9)];
-    println!("  {:>12} {:>8} {:>8} {:>10} {:>10} {:>10} {:>10} {:>8}",
-        "Base", "AbsAvg", "AbsMin", "ResEnergy", "KnownDir", "KnownRes", "TopGhost", "|G|>0.03");
+    println!(
+        "  {:>12} {:>8} {:>8} {:>10} {:>10} {:>10} {:>10} {:>8}",
+        "Base", "AbsAvg", "AbsMin", "ResEnergy", "KnownDir", "KnownRes", "TopGhost", "|G|>0.03"
+    );
     println!("{}", "-".repeat(100));
 
     let mut best_base = Base::Signed(7);
@@ -1330,10 +1454,17 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
 
     for &base in &bases {
         let r = quick_base_summary(&graph, d, base, channels, overlap_per_axis);
-        println!("  {:>12} {:>8.4} {:>8.4} {:>10.4} {:>+10.4} {:>+10.4} {:>+10.4} {:>8}",
-            base.name(), r.absorption_avg, r.absorption_min, r.residual_energy,
-            r.known_edge_direct_mean, r.known_edge_residual_mean,
-            r.top_ghost_strength, r.ghost_count_above_threshold);
+        println!(
+            "  {:>12} {:>8.4} {:>8.4} {:>10.4} {:>+10.4} {:>+10.4} {:>+10.4} {:>8}",
+            base.name(),
+            r.absorption_avg,
+            r.absorption_min,
+            r.residual_energy,
+            r.known_edge_direct_mean,
+            r.known_edge_residual_mean,
+            r.top_ghost_strength,
+            r.ghost_count_above_threshold
+        );
         if r.ghost_count_above_threshold > best_ghost_count {
             best_ghost_count = r.ghost_count_above_threshold;
             best_base = base;
@@ -1344,7 +1475,12 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
 
     // ── Full dual analysis ──
     let analysis_base = best_base;
-    println!("Generating templates for {} (D={}, overlap={})...", analysis_base.name(), d, overlap_per_axis);
+    println!(
+        "Generating templates for {} (D={}, overlap={})...",
+        analysis_base.name(),
+        d,
+        overlap_per_axis
+    );
     let templates = generate_entity_templates(&graph, d, analysis_base, overlap_per_axis);
     println!("  {} templates generated\n", templates.len());
 
@@ -1361,8 +1497,10 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
     // Validate known edges (organic)
     validate_known_edges(
         &graph,
-        &enc.container, &enc.residual,
-        &templates, analysis_base,
+        &enc.container,
+        &enc.residual,
+        &templates,
+        analysis_base,
         &enc.edge_coefficients,
     );
 
@@ -1389,7 +1527,10 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
         println!("  KNOWN EDGE VALIDATION (Raw Signed)");
         println!("{}", "=".repeat(66));
         println!("  {} edges validated", signed_strengths.len());
-        println!("  Raw signed: mean={:>+.4}, min={:>+.4}, max={:>+.4}", mean_s, min_s, max_s);
+        println!(
+            "  Raw signed: mean={:>+.4}, min={:>+.4}, max={:>+.4}",
+            mean_s, min_s, max_s
+        );
         println!("{}", "=".repeat(66));
     }
     println!();
@@ -1406,16 +1547,25 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
     run_dual_scenarios(
         &graph,
         &signed_container,
-        &enc.container, &enc.residual,
-        &templates, analysis_base,
+        &enc.container,
+        &enc.residual,
+        &templates,
+        analysis_base,
     );
 
     println!();
     println!("{}", "=".repeat(100));
     println!("  END OF AI WAR GHOST ORACLE (Signed vs Organic Dual Comparison)");
-    println!("  Base: {}  |  Organic absorption: avg={:.4} min={:.4}",
-        analysis_base.name(), enc.absorption_avg, enc.absorption_min);
-    println!("  Residual energy: {:.4}  |  {} edges encoded", enc.residual_energy, enc.edges_encoded);
+    println!(
+        "  Base: {}  |  Organic absorption: avg={:.4} min={:.4}",
+        analysis_base.name(),
+        enc.absorption_avg,
+        enc.absorption_min
+    );
+    println!(
+        "  Residual energy: {:.4}  |  {} edges encoded",
+        enc.residual_energy, enc.edges_encoded
+    );
     println!("{}", "=".repeat(100));
     println!();
 }
@@ -1446,27 +1596,50 @@ mod tests {
     fn test_parse_entity_counts() {
         let graph = load_graph_from_file(&test_graph_path());
         // 65 systems + 114 stakeholders + 23 civic + 7 historical + 12 people = 221
-        assert_eq!(graph.entity_count(), 221,
-            "Expected 221 entities, got {}", graph.entity_count());
+        assert_eq!(
+            graph.entity_count(),
+            221,
+            "Expected 221 entities, got {}",
+            graph.entity_count()
+        );
 
-        let systems = graph.entities.iter()
-            .filter(|e| e.entity_type == EntityType::System).count();
+        let systems = graph
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::System)
+            .count();
         assert_eq!(systems, 65, "Expected 65 systems, got {}", systems);
 
-        let stakeholders = graph.entities.iter()
-            .filter(|e| e.entity_type == EntityType::Stakeholder).count();
-        assert_eq!(stakeholders, 114, "Expected 114 stakeholders, got {}", stakeholders);
+        let stakeholders = graph
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Stakeholder)
+            .count();
+        assert_eq!(
+            stakeholders, 114,
+            "Expected 114 stakeholders, got {}",
+            stakeholders
+        );
 
-        let civic = graph.entities.iter()
-            .filter(|e| e.entity_type == EntityType::CivicSystem).count();
+        let civic = graph
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::CivicSystem)
+            .count();
         assert_eq!(civic, 23, "Expected 23 civic, got {}", civic);
 
-        let historical = graph.entities.iter()
-            .filter(|e| e.entity_type == EntityType::Historical).count();
+        let historical = graph
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Historical)
+            .count();
         assert_eq!(historical, 7, "Expected 7 historical, got {}", historical);
 
-        let people = graph.entities.iter()
-            .filter(|e| e.entity_type == EntityType::Person).count();
+        let people = graph
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Person)
+            .count();
         assert_eq!(people, 12, "Expected 12 people, got {}", people);
     }
 
@@ -1475,19 +1648,31 @@ mod tests {
         let graph = load_graph_from_file(&test_graph_path());
         // 114 develops + 79 deploys + 95 connection + 22 people + 21 place = 331
         let total = graph.edge_count();
-        assert!(total >= 300 && total <= 400,
-            "Expected ~331 edges, got {}", total);
+        assert!(
+            (300..=400).contains(&total),
+            "Expected ~331 edges, got {}",
+            total
+        );
 
-        let develops = graph.edges.iter()
-            .filter(|e| e.edge_type == EdgeType::Develops).count();
+        let develops = graph
+            .edges
+            .iter()
+            .filter(|e| e.edge_type == EdgeType::Develops)
+            .count();
         assert_eq!(develops, 114, "Expected 114 develops, got {}", develops);
 
-        let deploys = graph.edges.iter()
-            .filter(|e| e.edge_type == EdgeType::Deploys).count();
+        let deploys = graph
+            .edges
+            .iter()
+            .filter(|e| e.edge_type == EdgeType::Deploys)
+            .count();
         assert_eq!(deploys, 79, "Expected 79 deploys, got {}", deploys);
 
-        let connection = graph.edges.iter()
-            .filter(|e| e.edge_type == EdgeType::Connection).count();
+        let connection = graph
+            .edges
+            .iter()
+            .filter(|e| e.edge_type == EdgeType::Connection)
+            .count();
         assert_eq!(connection, 95, "Expected 95 connection, got {}", connection);
     }
 
@@ -1506,7 +1691,9 @@ mod tests {
         let neighbors = graph.neighbors("Lavender");
         assert!(!neighbors.is_empty(), "Lavender should have neighbors");
         // Unit 8200 develops Lavender
-        let has_unit8200 = neighbors.iter().any(|n| n.name.contains("Unit 8200") || n.id == "Unit8200");
+        let has_unit8200 = neighbors
+            .iter()
+            .any(|n| n.name.contains("Unit 8200") || n.id == "Unit8200");
         assert!(has_unit8200, "Unit 8200 should be a neighbor of Lavender");
     }
 
@@ -1533,10 +1720,12 @@ mod tests {
         let templates = generate_entity_templates(&graph, d, base, 0.05);
 
         // Find two systems that share ontology values (e.g., both Intelligence)
-        let intel_systems: Vec<usize> = graph.entities.iter()
+        let intel_systems: Vec<usize> = graph
+            .entities
+            .iter()
             .filter(|e| {
                 e.entity_type == EntityType::System
-                && e.axes.military_use.as_deref() == Some("Intelligence")
+                    && e.axes.military_use.as_deref() == Some("Intelligence")
             })
             .map(|e| e.index)
             .collect();
@@ -1547,18 +1736,21 @@ mod tests {
             let same_type_cos = cosine_similarity_i8(&templates[i], &templates[j]);
 
             // Find a system with different ontology
-            let diff_system = graph.entities.iter()
-                .find(|e| {
-                    e.entity_type == EntityType::Person
-                })
+            let diff_system = graph
+                .entities
+                .iter()
+                .find(|e| e.entity_type == EntityType::Person)
                 .map(|e| e.index);
 
             if let Some(k) = diff_system {
                 let diff_type_cos = cosine_similarity_i8(&templates[i], &templates[k]);
                 // Same-type correlation should be higher than cross-type
-                assert!(same_type_cos > diff_type_cos,
+                assert!(
+                    same_type_cos > diff_type_cos,
                     "Same ontology correlation ({:.4}) should exceed cross-type ({:.4})",
-                    same_type_cos, diff_type_cos);
+                    same_type_cos,
+                    diff_type_cos
+                );
             }
         }
     }
@@ -1574,26 +1766,32 @@ mod tests {
         let enc = encode_edges_organic(&graph, &templates, d, base, channels);
 
         // Container should not be all zeros
-        assert!(enc.container.iter().any(|&v| v != 0),
-            "Organic container should not be all zeros");
+        assert!(
+            enc.container.iter().any(|&v| v != 0),
+            "Organic container should not be all zeros"
+        );
 
         // Signed(7) container should be within [-3, 3]
-        for &v in &enc.container {
-            assert!(v >= -128 && v <= 127,
-                "Container value {} out of i8 range", v);
-        }
+        // i8 is always in [-128, 127] — this assertion documents intent
+        assert!(!enc.container.is_empty(), "Container should not be empty");
 
         // Absorption should be healthy
-        assert!(enc.absorption_avg > 0.9,
-            "Absorption avg={:.4}, expected > 0.9", enc.absorption_avg);
+        assert!(
+            enc.absorption_avg > 0.9,
+            "Absorption avg={:.4}, expected > 0.9",
+            enc.absorption_avg
+        );
 
         // Residual should exist (not all zeros)
         let res_nonzero = enc.residual.iter().filter(|&&v| v.abs() > 0.01).count();
         assert!(res_nonzero > 0, "Residual should have non-zero entries");
 
         // Coefficients should be recovered
-        assert_eq!(enc.edge_coefficients.len(), enc.edges_encoded,
-            "Should have one coefficient per encoded edge");
+        assert_eq!(
+            enc.edge_coefficients.len(),
+            enc.edges_encoded,
+            "Should have one coefficient per encoded edge"
+        );
     }
 
     #[test]
@@ -1606,12 +1804,13 @@ mod tests {
         let templates = generate_entity_templates(&graph, d, base, 0.05);
         let enc = encode_edges_organic(&graph, &templates, d, base, channels);
 
-        let ghosts = probe_ghost_connections(
-            &graph, &enc.container, &enc.residual,
-            &templates, base, 10,
-        );
+        let ghosts =
+            probe_ghost_connections(&graph, &enc.container, &enc.residual, &templates, base, 10);
 
-        assert!(!ghosts.is_empty(), "Should find at least some ghost connections");
+        assert!(
+            !ghosts.is_empty(),
+            "Should find at least some ghost connections"
+        );
         // Ghost signals should vary (not all zero)
         let has_nonzero = ghosts.iter().any(|g| g.ghost_signal.abs() > 0.001);
         assert!(has_nonzero, "Ghost signals should not all be zero");
@@ -1627,20 +1826,18 @@ mod tests {
         let templates = generate_entity_templates(&graph, d, base, 0.05);
         let enc = encode_edges_organic(&graph, &templates, d, base, channels);
 
-        let g1 = probe_ghost_connections(
-            &graph, &enc.container, &enc.residual,
-            &templates, base, 5,
-        );
-        let g2 = probe_ghost_connections(
-            &graph, &enc.container, &enc.residual,
-            &templates, base, 5,
-        );
+        let g1 =
+            probe_ghost_connections(&graph, &enc.container, &enc.residual, &templates, base, 5);
+        let g2 =
+            probe_ghost_connections(&graph, &enc.container, &enc.residual, &templates, base, 5);
 
         for (a, b) in g1.iter().zip(g2.iter()) {
             assert_eq!(a.entity_a, b.entity_a);
             assert_eq!(a.entity_b, b.entity_b);
-            assert!((a.ghost_signal - b.ghost_signal).abs() < 1e-6,
-                "Ghost signals should be reproducible");
+            assert!(
+                (a.ghost_signal - b.ghost_signal).abs() < 1e-6,
+                "Ghost signals should be reproducible"
+            );
         }
     }
 
@@ -1656,14 +1853,23 @@ mod tests {
 
         // With base-aware plasticity (Signed(5) gets scale=1.5),
         // absorption should still be healthy
-        assert!(enc.absorption_avg > 0.9,
-            "Signed(5) absorption avg={:.4}, expected > 0.9", enc.absorption_avg);
+        assert!(
+            enc.absorption_avg > 0.9,
+            "Signed(5) absorption avg={:.4}, expected > 0.9",
+            enc.absorption_avg
+        );
 
         // Coefficients should be mostly recovered
-        let nonzero = enc.edge_coefficients.iter()
-            .filter(|&&c| c.abs() > 0.001).count();
-        assert!(nonzero > enc.edges_encoded / 2,
+        let nonzero = enc
+            .edge_coefficients
+            .iter()
+            .filter(|&&c| c.abs() > 0.001)
+            .count();
+        assert!(
+            nonzero > enc.edges_encoded / 2,
             "Expected most coefficients to be nonzero, got {}/{}",
-            nonzero, enc.edges_encoded);
+            nonzero,
+            enc.edges_encoded
+        );
     }
 }

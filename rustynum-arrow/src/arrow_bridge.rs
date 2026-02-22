@@ -7,16 +7,12 @@
 //! because Arrow owns its buffer with a different allocator.
 
 use arrow::array::{
-    Array, ArrayRef, Float32Array, Float64Array, Int32Array, Int64Array,
-    RecordBatch, UInt8Array, FixedSizeBinaryArray, FixedSizeBinaryBuilder,
+    Array, ArrayRef, FixedSizeBinaryArray, FixedSizeBinaryBuilder, Float32Array, Float64Array,
+    Int32Array, Int64Array, RecordBatch, UInt8Array,
 };
 use arrow::buffer::{Buffer, ScalarBuffer};
-use arrow::datatypes::{
-    DataType, Field, Schema,
-};
-use rustynum_rs::{
-    CogRecord, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8,
-};
+use arrow::datatypes::{DataType, Field, Schema};
+use rustynum_rs::{CogRecord, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -82,7 +78,9 @@ pub fn cogrecord_schema() -> Schema {
 }
 
 /// Convert a slice of CogRecords into an Arrow RecordBatch.
-pub fn cogrecords_to_record_batch(records: &[CogRecord]) -> Result<RecordBatch, arrow::error::ArrowError> {
+pub fn cogrecords_to_record_batch(
+    records: &[CogRecord],
+) -> Result<RecordBatch, arrow::error::ArrowError> {
     let schema = Arc::new(cogrecord_schema());
     let n = records.len();
 
@@ -165,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_f64_round_trip() {
-        let data = vec![1.0f64, -2.5, 3.14159, 0.0];
+        let data = vec![1.0f64, -2.5, std::f64::consts::PI, 0.0];
         let arr = NumArrayF64::new(data.clone());
         let arrow = arr.into_arrow();
         assert_eq!(arrow.len(), 4);

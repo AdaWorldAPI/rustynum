@@ -50,22 +50,25 @@ static CAPS: OnceLock<ComputeCaps> = OnceLock::new();
 
 /// Which CPUID output register to check.
 #[derive(Clone, Copy)]
-enum CpuidReg { Eax, Ebx, Ecx, Edx }
+#[allow(dead_code)] // All four registers exist; only Edx used for current AMX checks.
+enum CpuidReg {
+    Eax,
+    Ebx,
+    Ecx,
+    Edx,
+}
 
 /// Check a specific CPUID feature bit (for AMX detection which lacks stable Rust macros).
 #[cfg(target_arch = "x86_64")]
 fn detect_cpuid_feature(leaf: u32, sub_leaf: u32, reg: CpuidReg, bit: u32) -> bool {
-    #[cfg(target_arch = "x86_64")]
-    unsafe {
-        let result = core::arch::x86_64::__cpuid_count(leaf, sub_leaf);
-        let val = match reg {
-            CpuidReg::Eax => result.eax,
-            CpuidReg::Ebx => result.ebx,
-            CpuidReg::Ecx => result.ecx,
-            CpuidReg::Edx => result.edx,
-        };
-        (val >> bit) & 1 != 0
-    }
+    let result = core::arch::x86_64::__cpuid_count(leaf, sub_leaf);
+    let val = match reg {
+        CpuidReg::Eax => result.eax,
+        CpuidReg::Ebx => result.ebx,
+        CpuidReg::Ecx => result.ecx,
+        CpuidReg::Edx => result.edx,
+    };
+    (val >> bit) & 1 != 0
 }
 
 /// Detect hardware capabilities (cached after first call).
@@ -114,6 +117,7 @@ pub fn detect() -> &'static ComputeCaps {
 }
 
 /// Check if Intel NPU is available (Meteor Lake+).
+#[allow(dead_code)]
 fn detect_npu() -> bool {
     // Check for /dev/accel* (Intel NPU device nodes on Linux)
     std::path::Path::new("/dev/accel/accel0").exists()
@@ -121,6 +125,7 @@ fn detect_npu() -> bool {
 }
 
 /// Detect Intel GPU via DRI device nodes.
+#[allow(dead_code)]
 fn detect_gpu() -> Option<String> {
     // Check for /dev/dri/renderD128 (Intel GPU render node)
     if std::path::Path::new("/dev/dri/renderD128").exists() {
@@ -134,7 +139,7 @@ fn detect_gpu() -> Option<String> {
 }
 
 /// Compute tier recommendation for a given workload.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum ComputeTier {
     /// INT8 VNNI: cheap prefilter, approximate stats, candidate selection
     Int8Vnni,
@@ -147,22 +152,12 @@ pub enum ComputeTier {
     /// GPU offload: very large dense compute
     Gpu,
     /// Scalar fallback
+    #[default]
     Scalar,
 }
 
-impl Default for ComputeTier {
-    fn default() -> Self {
-        Self::Scalar
-    }
-}
-
 /// Recommend compute tier based on workload characteristics.
-pub fn recommend_tier(
-    m: usize,
-    n: usize,
-    k: usize,
-    precision_required: Precision,
-) -> ComputeTier {
+pub fn recommend_tier(m: usize, n: usize, k: usize, precision_required: Precision) -> ComputeTier {
     let caps = detect();
     let total_flops = 2 * m * n * k;
 
@@ -199,20 +194,15 @@ pub fn recommend_tier(
 }
 
 /// Required precision level.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum Precision {
     /// ~1% error OK (prefiltering, candidate ranking, approximate stats)
     Approximate,
     /// BF16: ~0.4% relative error (training, inference)
     Half,
     /// Full f32 precision
+    #[default]
     Full,
-}
-
-impl Default for Precision {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 /// Print detected capabilities summary.
@@ -241,6 +231,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_detect_caps() {
         let caps = detect();
         // On this machine we know AVX-512 is available
@@ -250,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_recommend_tier() {
         let tier = recommend_tier(1024, 1024, 1024, Precision::Approximate);
         // Should recommend INT8 VNNI since we have it

@@ -45,14 +45,11 @@ fn parallel_into_slices<T: Send>(
 /// Parallel reduction — each thread computes a partial result, summed at the end.
 /// Zero synchronization during computation.
 #[inline]
-fn parallel_reduce_sum(
-    len: usize,
-    f: impl Fn(usize, usize) -> u64 + Send + Sync,
-) -> u64 {
+fn parallel_reduce_sum(len: usize, f: impl Fn(usize, usize) -> u64 + Send + Sync) -> u64 {
     let n_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let chunk_size = (len + n_threads - 1) / n_threads;
+    let chunk_size = len.div_ceil(n_threads);
     let f = &f;
     std::thread::scope(|s| {
         let mut handles = Vec::new();
@@ -63,7 +60,6 @@ fn parallel_reduce_sum(
         handles.into_iter().map(|h| h.join().unwrap()).sum()
     })
 }
-
 
 pub trait SimdOps<T> {
     fn matrix_multiply(a: &[T], b: &[T], c: &mut [T], m: usize, k: usize, n: usize);
@@ -182,8 +178,9 @@ impl SimdOps<u8> for u8x64 {
         Self::transpose(b, &mut b_transposed, k, n);
 
         let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get()).unwrap_or(4);
-        let rows_per_thread = (m + n_threads - 1) / n_threads;
+            .map(|t| t.get())
+            .unwrap_or(4);
+        let rows_per_thread = m.div_ceil(n_threads);
         parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
             let row_start = offset / n;
             let rows_this = chunk.len() / n;
@@ -398,8 +395,9 @@ impl SimdOps<f32> for f32x16 {
         Self::transpose(b, &mut b_transposed, k, n);
 
         let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get()).unwrap_or(4);
-        let rows_per_thread = (m + n_threads - 1) / n_threads;
+            .map(|t| t.get())
+            .unwrap_or(4);
+        let rows_per_thread = m.div_ceil(n_threads);
         parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
             let row_start = offset / n;
             let rows_this = chunk.len() / n;
@@ -671,8 +669,9 @@ impl SimdOps<f64> for f64x8 {
         Self::transpose(b, &mut b_transposed, k, n);
 
         let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get()).unwrap_or(4);
-        let rows_per_thread = (m + n_threads - 1) / n_threads;
+            .map(|t| t.get())
+            .unwrap_or(4);
+        let rows_per_thread = m.div_ceil(n_threads);
         parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
             let row_start = offset / n;
             let rows_this = chunk.len() / n;
@@ -940,8 +939,9 @@ impl SimdOps<i32> for i32x16 {
         let mut b_transposed = vec![0i32; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
         let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get()).unwrap_or(4);
-        let rows_per_thread = (m + n_threads - 1) / n_threads;
+            .map(|t| t.get())
+            .unwrap_or(4);
+        let rows_per_thread = m.div_ceil(n_threads);
         parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
             let row_start = offset / n;
             let rows_this = chunk.len() / n;
@@ -1186,8 +1186,9 @@ impl SimdOps<i64> for i64x8 {
         let mut b_transposed = vec![0i64; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
         let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get()).unwrap_or(4);
-        let rows_per_thread = (m + n_threads - 1) / n_threads;
+            .map(|t| t.get())
+            .unwrap_or(4);
+        let rows_per_thread = m.div_ceil(n_threads);
         parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
             let row_start = offset / n;
             let rows_this = chunk.len() / n;
@@ -1430,16 +1431,21 @@ impl SimdOps<i64> for i64x8 {
 impl BitwiseSimdOps<u8> for u8x64 {
     #[inline]
     fn bitwise_and(a: &[u8], b: &[u8], out: &mut [u8]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_and_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_and_chunk_u8(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1449,16 +1455,21 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_xor(a: &[u8], b: &[u8], out: &mut [u8]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_xor_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_xor_chunk_u8(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1468,16 +1479,21 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_or(a: &[u8], b: &[u8], out: &mut [u8]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_or_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_or_chunk_u8(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1487,13 +1503,14 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_not(a: &[u8], out: &mut [u8]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
                 bitwise_not_chunk_u8(&a[offset..offset + chunk.len()], chunk);
             });
@@ -1505,7 +1522,7 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_and_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = u8x64::splat(scalar);
         let chunks = len / LANES_8;
@@ -1536,7 +1553,7 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_xor_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = u8x64::splat(scalar);
         let chunks = len / LANES_8;
@@ -1564,7 +1581,7 @@ impl BitwiseSimdOps<u8> for u8x64 {
 
     #[inline]
     fn bitwise_or_scalar(a: &[u8], scalar: u8, out: &mut [u8]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = u8x64::splat(scalar);
         let chunks = len / LANES_8;
@@ -1717,15 +1734,20 @@ fn bitwise_not_chunk_u8(a: &[u8], out: &mut [u8]) {
 impl BitwiseSimdOps<i32> for i32x16 {
     #[inline]
     fn bitwise_and(a: &[i32], b: &[i32], out: &mut [i32]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_and_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_and_chunk_i32(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1734,15 +1756,20 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_xor(a: &[i32], b: &[i32], out: &mut [i32]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_xor_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_xor_chunk_i32(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1751,15 +1778,20 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_or(a: &[i32], b: &[i32], out: &mut [i32]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_or_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_or_chunk_i32(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -1768,12 +1800,13 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_not(a: &[i32], out: &mut [i32]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
                 bitwise_not_chunk_i32(&a[offset..offset + chunk.len()], chunk);
             });
@@ -1784,7 +1817,7 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_and_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i32x16::splat(scalar);
         let chunks = len / LANES_32;
@@ -1812,7 +1845,7 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_xor_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i32x16::splat(scalar);
         let chunks = len / LANES_32;
@@ -1840,7 +1873,7 @@ impl BitwiseSimdOps<i32> for i32x16 {
 
     #[inline]
     fn bitwise_or_scalar(a: &[i32], scalar: i32, out: &mut [i32]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i32x16::splat(scalar);
         let chunks = len / LANES_32;
@@ -1991,15 +2024,20 @@ fn bitwise_not_chunk_i32(a: &[i32], out: &mut [i32]) {
 impl BitwiseSimdOps<i64> for i64x8 {
     #[inline]
     fn bitwise_and(a: &[i64], b: &[i64], out: &mut [i64]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_and_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_and_chunk_i64(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -2008,15 +2046,20 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_xor(a: &[i64], b: &[i64], out: &mut [i64]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_xor_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_xor_chunk_i64(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -2025,15 +2068,20 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_or(a: &[i64], b: &[i64], out: &mut [i64]) {
-        debug_assert_eq!(a.len(), b.len());
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
-                bitwise_or_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
+                bitwise_or_chunk_i64(
+                    &a[offset..offset + chunk.len()],
+                    &b[offset..offset + chunk.len()],
+                    chunk,
+                );
             });
             return;
         }
@@ -2042,12 +2090,13 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_not(a: &[i64], out: &mut [i64]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (len + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = len.div_ceil(n_threads);
             parallel_into_slices(out, chunk_size, |offset, chunk| {
                 bitwise_not_chunk_i64(&a[offset..offset + chunk.len()], chunk);
             });
@@ -2058,7 +2107,7 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_and_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i64x8::splat(scalar);
         let chunks = len / LANES_64;
@@ -2086,7 +2135,7 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_xor_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i64x8::splat(scalar);
         let chunks = len / LANES_64;
@@ -2114,7 +2163,7 @@ impl BitwiseSimdOps<i64> for i64x8 {
 
     #[inline]
     fn bitwise_or_scalar(a: &[i64], scalar: i64, out: &mut [i64]) {
-        debug_assert_eq!(a.len(), out.len());
+        assert_eq!(a.len(), out.len());
         let len = a.len();
         let splat = i64x8::splat(scalar);
         let chunks = len / LANES_64;
@@ -2277,7 +2326,7 @@ fn bitwise_not_chunk_i64(a: &[i64], out: &mut [i64]) {
 impl HammingSimdOps for u8x64 {
     #[inline]
     fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
-        debug_assert_eq!(a.len(), b.len());
+        assert_eq!(a.len(), b.len());
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
@@ -2295,9 +2344,7 @@ impl HammingSimdOps for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            return parallel_reduce_sum(len, |start, end| {
-                popcount_chunk(&a[start..end])
-            });
+            return parallel_reduce_sum(len, |start, end| popcount_chunk(&a[start..end]));
         }
 
         popcount_chunk(a)
@@ -2309,15 +2356,16 @@ impl HammingSimdOps for u8x64 {
         vec_len: usize,
         count: usize,
     ) -> Vec<u64> {
-        debug_assert_eq!(a_vecs.len(), vec_len * count);
-        debug_assert_eq!(b_vecs.len(), vec_len * count);
+        assert_eq!(a_vecs.len(), vec_len * count);
+        assert_eq!(b_vecs.len(), vec_len * count);
 
         let mut results = vec![0u64; count];
 
         if count >= 16 {
             let n_threads = std::thread::available_parallelism()
-                .map(|t| t.get()).unwrap_or(4);
-            let chunk_size = (count + n_threads - 1) / n_threads;
+                .map(|t| t.get())
+                .unwrap_or(4);
+            let chunk_size = count.div_ceil(n_threads);
             parallel_into_slices(&mut results, chunk_size, |offset, chunk| {
                 for i in 0..chunk.len() {
                     let idx = offset + i;
@@ -2796,12 +2844,15 @@ mod tests {
         let b = [0x00FF00FFi32, 0x0F0F0F0F, -1, 0x0000FFFF];
         let mut out = [0i32; 4];
         i32x16::bitwise_and(&a, &b, &mut out);
-        assert_eq!(out, [
-            0x0F0F0F0Fi32 & 0x00FF00FFi32,
-            -1i32 & 0x0F0F0F0Fi32,
-            0 & -1,
-            0x12345678i32 & 0x0000FFFFi32,
-        ]);
+        assert_eq!(
+            out,
+            [
+                0x0F0F0F0Fi32 & 0x00FF00FFi32,
+                0x0F0F0F0Fi32,
+                0,
+                0x12345678i32 & 0x0000FFFFi32,
+            ]
+        );
     }
 
     #[test]

@@ -27,8 +27,8 @@
 
 use std::collections::HashSet;
 
-use crate::fragment_index::FragmentIndex;
 use crate::channel_index::ChannelIndex;
+use crate::fragment_index::FragmentIndex;
 use rustynum_core::simd::hamming_distance;
 use rustynum_rs::CogRecord;
 
@@ -99,7 +99,12 @@ impl CascadeIndices {
         let btree_index = ChannelIndex::build(2, &btree_flat, vec_len, count, min_cluster_size);
         let embed_index = ChannelIndex::build(3, &embed_flat, vec_len, count, min_cluster_size);
 
-        CascadeIndices { meta_index, cam_index, btree_index, embed_index }
+        CascadeIndices {
+            meta_index,
+            cam_index,
+            btree_index,
+            embed_index,
+        }
     }
 }
 
@@ -122,8 +127,10 @@ pub fn indexed_cascade_search(
     indices: &CascadeIndices,
     thresholds: [u64; 4],
 ) -> IndexedCascadeResult {
-    let mut stats = IndexedCascadeStats::default();
-    stats.fragments_total = indices.meta_index.num_fragments();
+    let mut stats = IndexedCascadeStats {
+        fragments_total: indices.meta_index.num_fragments(),
+        ..Default::default()
+    };
 
     let q_meta = query.meta.data_slice();
     let q_cam = query.cam.data_slice();
@@ -137,9 +144,9 @@ pub fn indexed_cascade_search(
     let mut survivor_rows: HashSet<usize> = HashSet::new();
     for frag in &overlapping {
         // Map cluster-ordered positions → original row IDs
-        let orig_ids = indices.meta_index.original_row_ids(
-            frag.row_id_start, frag.row_id_end,
-        );
+        let orig_ids = indices
+            .meta_index
+            .original_row_ids(frag.row_id_start, frag.row_id_end);
         for orig_id in orig_ids {
             let dist = hamming_distance(q_meta, records[orig_id].meta.data_slice());
             stats.meta_scanned += 1;
@@ -151,11 +158,20 @@ pub fn indexed_cascade_search(
 
     // ── Stage 2: CAM via sidecar index ──
     let cam_candidates = indices.cam_index.overlapping_row_ids(q_cam, thresholds[1]);
-    // Intersect with META survivors
-    let cam_check: Vec<usize> = survivor_rows.iter()
-        .filter(|id| cam_candidates.contains(id))
-        .copied()
-        .collect();
+    // Intersect: iterate the smaller set, probe the larger (both are HashSets).
+    let cam_check: Vec<usize> = if survivor_rows.len() <= cam_candidates.len() {
+        survivor_rows
+            .iter()
+            .filter(|id| cam_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        cam_candidates
+            .iter()
+            .filter(|id| survivor_rows.contains(id))
+            .copied()
+            .collect()
+    };
     stats.cam_fetched = cam_check.len();
 
     let mut cam_survivors: HashSet<usize> = HashSet::new();
@@ -167,11 +183,22 @@ pub fn indexed_cascade_search(
     }
 
     // ── Stage 3: BTREE via sidecar index ──
-    let btree_candidates = indices.btree_index.overlapping_row_ids(q_btree, thresholds[2]);
-    let btree_check: Vec<usize> = cam_survivors.iter()
-        .filter(|id| btree_candidates.contains(id))
-        .copied()
-        .collect();
+    let btree_candidates = indices
+        .btree_index
+        .overlapping_row_ids(q_btree, thresholds[2]);
+    let btree_check: Vec<usize> = if cam_survivors.len() <= btree_candidates.len() {
+        cam_survivors
+            .iter()
+            .filter(|id| btree_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        btree_candidates
+            .iter()
+            .filter(|id| cam_survivors.contains(id))
+            .copied()
+            .collect()
+    };
     stats.btree_fetched = btree_check.len();
 
     let mut btree_survivors: HashSet<usize> = HashSet::new();
@@ -183,11 +210,22 @@ pub fn indexed_cascade_search(
     }
 
     // ── Stage 4: EMBED via sidecar index ──
-    let embed_candidates = indices.embed_index.overlapping_row_ids(q_embed, thresholds[3]);
-    let embed_check: Vec<usize> = btree_survivors.iter()
-        .filter(|id| embed_candidates.contains(id))
-        .copied()
-        .collect();
+    let embed_candidates = indices
+        .embed_index
+        .overlapping_row_ids(q_embed, thresholds[3]);
+    let embed_check: Vec<usize> = if btree_survivors.len() <= embed_candidates.len() {
+        btree_survivors
+            .iter()
+            .filter(|id| embed_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        embed_candidates
+            .iter()
+            .filter(|id| btree_survivors.contains(id))
+            .copied()
+            .collect()
+    };
     stats.embed_fetched = embed_check.len();
 
     let mut hits = Vec::new();
@@ -212,27 +250,27 @@ pub fn indexed_cascade_search(
 ///
 /// Call this after appending new CogRecords to the dataset. The primary
 /// FragmentIndex is NOT updated here — new records go into a logical
-/// "pending" set. Call `rebuild_primary()` periodically.
+/// "pending" set visible only to sidecar stages (CAM/BTREE/EMBED).
+/// Call `rebuild()` periodically to reconstruct the META fragment index.
 ///
 /// # Arguments
 /// * `indices` — mutable reference to the cascade indices
 /// * `new_records` — the newly appended CogRecords
 /// * `base_row_id` — the row ID of the first new record
-pub fn learn(
-    indices: &mut CascadeIndices,
-    new_records: &[CogRecord],
-    base_row_id: usize,
-) {
+pub fn learn(indices: &mut CascadeIndices, new_records: &[CogRecord], base_row_id: usize) {
     // Build insertion batches for each sidecar channel.
-    let cam_batch: Vec<(usize, &[u8])> = new_records.iter()
+    let cam_batch: Vec<(usize, &[u8])> = new_records
+        .iter()
         .enumerate()
         .map(|(i, rec)| (base_row_id + i, rec.cam.data_slice()))
         .collect();
-    let btree_batch: Vec<(usize, &[u8])> = new_records.iter()
+    let btree_batch: Vec<(usize, &[u8])> = new_records
+        .iter()
         .enumerate()
         .map(|(i, rec)| (base_row_id + i, rec.btree.data_slice()))
         .collect();
-    let embed_batch: Vec<(usize, &[u8])> = new_records.iter()
+    let embed_batch: Vec<(usize, &[u8])> = new_records
+        .iter()
         .enumerate()
         .map(|(i, rec)| (base_row_id + i, rec.embed.data_slice()))
         .collect();
@@ -296,13 +334,19 @@ mod tests {
 
         let indices = CascadeIndices::build(&records, 5);
         let result = indexed_cascade_search(
-            &query, &records, &indices,
+            &query,
+            &records,
+            &indices,
             [0, 0, 0, 0], // exact match only
         );
 
         assert!(
-            result.hits.iter().any(|&(idx, dists)| idx == 25 && dists == [0, 0, 0, 0]),
-            "should find exact match at index 25, got {:?}", result.hits,
+            result
+                .hits
+                .iter()
+                .any(|&(idx, dists)| idx == 25 && dists == [0, 0, 0, 0]),
+            "should find exact match at index 25, got {:?}",
+            result.hits,
         );
     }
 
@@ -342,9 +386,12 @@ mod tests {
         // It uses triangle inequality which is conservative, so no false negatives.
         for &(flat_idx, flat_dists) in &flat_hits {
             assert!(
-                indexed_hits.iter().any(|&(idx, dists)| idx == flat_idx && dists == flat_dists),
+                indexed_hits
+                    .iter()
+                    .any(|&(idx, dists)| idx == flat_idx && dists == flat_dists),
                 "indexed cascade missed flat hit at row {} with dists {:?}",
-                flat_idx, flat_dists,
+                flat_idx,
+                flat_dists,
             );
         }
     }
@@ -367,13 +414,15 @@ mod tests {
         assert!(
             result.stats.fragments_pruned > 0 || result.stats.fragments_total <= 1,
             "expected some pruning: total={}, pruned={}",
-            result.stats.fragments_total, result.stats.fragments_pruned,
+            result.stats.fragments_total,
+            result.stats.fragments_pruned,
         );
 
         // Meta scan should be less than total records.
         assert!(
             result.stats.meta_scanned <= 100,
-            "meta_scanned={} should be <= 100", result.stats.meta_scanned,
+            "meta_scanned={} should be <= 100",
+            result.stats.meta_scanned,
         );
     }
 
@@ -422,7 +471,10 @@ mod tests {
 
         // Fragments pruned + surviving = total
         let surviving = result.stats.fragments_total - result.stats.fragments_pruned;
-        assert!(surviving > 0, "at least one fragment should survive for own query");
+        assert!(
+            surviving > 0,
+            "at least one fragment should survive for own query"
+        );
 
         // Cascade: cam_fetched <= meta_scanned, btree <= cam, embed <= btree
         assert!(result.stats.cam_fetched <= result.stats.meta_scanned);

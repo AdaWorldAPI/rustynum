@@ -6,9 +6,9 @@
 //! Naming convention follows MKL: `vs` prefix = single-precision vector,
 //! `vd` prefix = double-precision vector.
 
+use rustynum_core::simd::{F32_LANES, F64_LANES};
 use std::simd::num::SimdFloat;
 use std::simd::StdFloat;
-use rustynum_core::simd::{F32_LANES, F64_LANES};
 
 // SIMD vector types selected by feature flag
 #[cfg(feature = "avx512")]
@@ -38,7 +38,7 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -63,7 +63,7 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -92,7 +92,7 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -117,7 +117,7 @@ pub fn vdln(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -146,7 +146,7 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -171,7 +171,7 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -200,7 +200,7 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -225,7 +225,7 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -254,8 +254,8 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -281,8 +281,8 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -308,8 +308,8 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -342,7 +342,7 @@ pub fn vssin(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -369,7 +369,7 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(x.len(), out.len());
+    assert_eq!(x.len(), out.len());
     let len = x.len();
     let chunks = len / F32_LANES;
     let half_pi = F32Simd::splat(std::f32::consts::FRAC_PI_2);
@@ -398,8 +398,8 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
         }
         return;
     }
-    debug_assert_eq!(a.len(), b.len());
-    debug_assert_eq!(a.len(), out.len());
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), out.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -431,19 +431,21 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// 4. Scale by 2^n via IEEE 754 exponent bit manipulation (ldexp)
 #[inline(always)]
 fn simd_exp_f32(x: F32Simd) -> F32Simd {
-    let ln2_inv = F32Simd::splat(1.442695040888963f32); // 1/ln(2)
-    let ln2_hi = F32Simd::splat(0.693145751953125f32);
-    let ln2_lo = F32Simd::splat(1.428606765330187e-6f32);
+    let ln2_inv = F32Simd::splat(std::f32::consts::LOG2_E);
+    let ln2_hi = F32Simd::splat(0.693_145_75_f32);
+    let ln2_lo = F32Simd::splat(1.428_606_8e-6_f32);
 
     // Polynomial coefficients (minimax on [-ln2/2, ln2/2])
     let c1 = F32Simd::splat(1.0);
     let c2 = F32Simd::splat(0.5);
-    let c3 = F32Simd::splat(0.16666666666666666);
-    let c4 = F32Simd::splat(0.041666666666666664);
-    let c5 = F32Simd::splat(0.008333333333333333);
+    let c3 = F32Simd::splat(0.166_666_67);
+    let c4 = F32Simd::splat(0.041_666_668);
+    let c5 = F32Simd::splat(0.008_333_334);
 
     // Clamp to avoid overflow
-    let x_clamped = x.simd_max(F32Simd::splat(-87.0)).simd_min(F32Simd::splat(88.0));
+    let x_clamped = x
+        .simd_max(F32Simd::splat(-87.0))
+        .simd_min(F32Simd::splat(88.0));
 
     // n = round(x / ln2)
     let n = (x_clamped * ln2_inv + F32Simd::splat(0.5)).floor();
@@ -472,7 +474,7 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
 /// ldexp via IEEE 754 f64 exponent bit manipulation.
 #[inline(always)]
 fn simd_exp_f64(x: F64Simd) -> F64Simd {
-    let ln2_inv = F64Simd::splat(1.4426950408889634f64);
+    let ln2_inv = F64Simd::splat(std::f64::consts::LOG2_E);
     let ln2_hi = F64Simd::splat(6.93145751953125e-1f64);
     let ln2_lo = F64Simd::splat(1.42860676533018e-6f64);
 
@@ -485,7 +487,9 @@ fn simd_exp_f64(x: F64Simd) -> F64Simd {
     let c6 = F64Simd::splat(1.0 / 720.0);
     let c7 = F64Simd::splat(1.0 / 5040.0);
 
-    let x_clamped = x.simd_max(F64Simd::splat(-708.0)).simd_min(F64Simd::splat(709.0));
+    let x_clamped = x
+        .simd_max(F64Simd::splat(-708.0))
+        .simd_min(F64Simd::splat(709.0));
     let n = (x_clamped * ln2_inv + F64Simd::splat(0.5)).floor();
     let r = x_clamped - n * ln2_hi - n * ln2_lo;
 
@@ -530,13 +534,10 @@ fn simd_ln_f32(x: F32Simd) -> F32Simd {
     let u = (m - one) / (m + one);
     let u2 = u * u;
 
-    let poly = one + u2 * (
-        F32Simd::splat(1.0 / 3.0) + u2 * (
-            F32Simd::splat(1.0 / 5.0) + u2 * (
-                F32Simd::splat(1.0 / 7.0) + u2 * F32Simd::splat(1.0 / 9.0)
-            )
-        )
-    );
+    let poly = one
+        + u2 * (F32Simd::splat(1.0 / 3.0)
+            + u2 * (F32Simd::splat(1.0 / 5.0)
+                + u2 * (F32Simd::splat(1.0 / 7.0) + u2 * F32Simd::splat(1.0 / 9.0))));
     let ln_m = F32Simd::splat(2.0) * u * poly;
 
     exp_f32 * F32Simd::splat(std::f32::consts::LN_2) + ln_m
@@ -560,8 +561,8 @@ fn simd_ln_f64(x: F64Simd) -> F64Simd {
     let exp_f64 = F64Simd::from_array(exp_f64_arr);
 
     // Normalize mantissa to [1, 2)
-    let mantissa_bits = (bits & U64Simd::splat(0x000F_FFFF_FFFF_FFFF))
-        | U64Simd::splat(0x3FF0_0000_0000_0000);
+    let mantissa_bits =
+        (bits & U64Simd::splat(0x000F_FFFF_FFFF_FFFF)) | U64Simd::splat(0x3FF0_0000_0000_0000);
     let m = F64Simd::from_bits(mantissa_bits);
 
     let one = F64Simd::splat(1.0);
@@ -569,19 +570,14 @@ fn simd_ln_f64(x: F64Simd) -> F64Simd {
     let u2 = u * u;
 
     // Higher-degree series for f64 precision
-    let poly = one + u2 * (
-        F64Simd::splat(1.0 / 3.0) + u2 * (
-            F64Simd::splat(1.0 / 5.0) + u2 * (
-                F64Simd::splat(1.0 / 7.0) + u2 * (
-                    F64Simd::splat(1.0 / 9.0) + u2 * (
-                        F64Simd::splat(1.0 / 11.0) + u2 * (
-                            F64Simd::splat(1.0 / 13.0) + u2 * F64Simd::splat(1.0 / 15.0)
-                        )
-                    )
-                )
-            )
-        )
-    );
+    let poly = one
+        + u2 * (F64Simd::splat(1.0 / 3.0)
+            + u2 * (F64Simd::splat(1.0 / 5.0)
+                + u2 * (F64Simd::splat(1.0 / 7.0)
+                    + u2 * (F64Simd::splat(1.0 / 9.0)
+                        + u2 * (F64Simd::splat(1.0 / 11.0)
+                            + u2 * (F64Simd::splat(1.0 / 13.0)
+                                + u2 * F64Simd::splat(1.0 / 15.0)))))));
     let ln_m = F64Simd::splat(2.0) * u * poly;
 
     exp_f64 * F64Simd::splat(std::f64::consts::LN_2) + ln_m
@@ -601,7 +597,7 @@ fn simd_sin_f32(x: F32Simd) -> F32Simd {
 
     // Cody-Waite constants for π (hi + lo = π to ~24 digits)
     let pi_hi = F32Simd::splat(3.140625f32);
-    let pi_lo = F32Simd::splat(9.67653589793e-4f32);
+    let pi_lo = F32Simd::splat(9.676_536e-4_f32);
 
     // Range reduction: n = round(x/π)
     let n = (x * inv_pi + F32Simd::splat(0.5)).floor();
@@ -611,13 +607,10 @@ fn simd_sin_f32(x: F32Simd) -> F32Simd {
 
     // sin(r) ≈ r * (1 + r²(-1/6 + r²(1/120 + r²(-1/5040 + r²/362880))))
     let r2 = r * r;
-    let poly = F32Simd::splat(1.0) + r2 * (
-        F32Simd::splat(-1.0 / 6.0) + r2 * (
-            F32Simd::splat(1.0 / 120.0) + r2 * (
-                F32Simd::splat(-1.0 / 5040.0) + r2 * F32Simd::splat(1.0 / 362880.0)
-            )
-        )
-    );
+    let poly = F32Simd::splat(1.0)
+        + r2 * (F32Simd::splat(-1.0 / 6.0)
+            + r2 * (F32Simd::splat(1.0 / 120.0)
+                + r2 * (F32Simd::splat(-1.0 / 5040.0) + r2 * F32Simd::splat(1.0 / 362880.0))));
     let sin_r = r * poly;
 
     // Sign correction: if n is odd, negate result.
@@ -646,7 +639,9 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() / expected.max(1e-10) < 1e-4,
                 "vsexp mismatch at {}: {} vs {}",
-                i, out[i], expected
+                i,
+                out[i],
+                expected
             );
         }
     }
@@ -662,7 +657,10 @@ mod tests {
             assert!(
                 rel_err < 1e-6,
                 "vdexp mismatch at {}: {} vs {} (rel_err={})",
-                i, out[i], expected, rel_err
+                i,
+                out[i],
+                expected,
+                rel_err
             );
         }
     }
@@ -677,7 +675,10 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() < 1e-4,
                 "vsln mismatch at {}: {} vs {} (input={})",
-                i, out[i], expected, x[i]
+                i,
+                out[i],
+                expected,
+                x[i]
             );
         }
     }
@@ -692,7 +693,10 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() < 1e-8,
                 "vdln mismatch at {}: {} vs {} (input={})",
-                i, out[i], expected, x[i]
+                i,
+                out[i],
+                expected,
+                x[i]
             );
         }
     }
@@ -743,7 +747,10 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() < 1e-4,
                 "vssin mismatch at {}: {} vs {} (input={})",
-                i, out[i], expected, x[i]
+                i,
+                out[i],
+                expected,
+                x[i]
             );
         }
     }
@@ -758,15 +765,19 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() < 1e-3,
                 "vscos mismatch at {}: {} vs {} (input={})",
-                i, out[i], expected, x[i]
+                i,
+                out[i],
+                expected,
+                x[i]
             );
         }
     }
 
     #[test]
     fn test_vspow() {
-        let a: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
-                               9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0];
+        let a: Vec<f32> = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ];
         let b: Vec<f32> = vec![2.0; 16];
         let mut out = vec![0.0f32; 16];
         vspow(&a, &b, &mut out);
@@ -775,7 +786,9 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() / expected.max(1.0) < 1e-3,
                 "vspow mismatch at {}: {} vs {}",
-                i, out[i], expected
+                i,
+                out[i],
+                expected
             );
         }
     }
@@ -790,7 +803,9 @@ mod tests {
             assert!(
                 (out[i] - expected).abs() / expected.max(1e-10) < 1e-4,
                 "exp({}) = {} vs expected {}",
-                x[i], out[i], expected
+                x[i],
+                out[i],
+                expected
             );
         }
     }
@@ -807,7 +822,9 @@ mod tests {
             let sum = sin_out[i] * sin_out[i] + cos_out[i] * cos_out[i];
             assert!(
                 (sum - 1.0).abs() < 1e-3,
-                "sin²+cos² = {} at x={}", sum, x[i]
+                "sin²+cos² = {} at x={}",
+                sum,
+                x[i]
             );
         }
     }

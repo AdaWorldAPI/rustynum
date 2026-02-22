@@ -1,5 +1,5 @@
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rustynum_oracle::sweep::*;
 
 fn main() {
@@ -13,21 +13,26 @@ fn main() {
             for &axes in AXES {
                 for &k in BUNDLE_SIZES {
                     for &bind_depth in BIND_DEPTHS {
-                        if bind_depth > axes { continue; }
-                        if k > d / 10 { continue; }
+                        if bind_depth > axes {
+                            continue;
+                        }
+                        if k > d / 10 {
+                            continue;
+                        }
 
                         let mut sum_error = 0.0f32;
                         let mut sum_max_error = 0.0f32;
                         let mut sum_bell = 0.0f32;
 
                         for _ in 0..reps {
-                            let result = measure_recovery_multiaxis(
-                                d, base, axes, k, bind_depth, &mut rng,
-                            );
+                            let result =
+                                measure_recovery_multiaxis(d, base, axes, k, bind_depth, &mut rng);
                             sum_error += result.combined_error;
                             sum_bell += result.bell_coefficient;
                             // Get max error from per-axis
-                            let max_ax = result.per_axis.iter()
+                            let max_ax = result
+                                .per_axis
+                                .iter()
                                 .map(|a| a.mean_error)
                                 .fold(0.0f32, f32::max);
                             sum_max_error += max_ax;
@@ -40,7 +45,8 @@ fn main() {
                         // Also get single-axis details for noise/cancellation
                         let single = measure_recovery(d, base, k, &mut rng);
 
-                        println!("{},{},{},{},{},{},{},{:.6},{:.6},{:.2},{:.6},{:.4},{:.4},{:.1},{}",
+                        println!(
+                            "{},{},{},{},{},{},{},{:.6},{:.6},{:.2},{:.6},{:.4},{:.4},{:.1},{}",
                             d,
                             base.name(),
                             base.is_signed(),

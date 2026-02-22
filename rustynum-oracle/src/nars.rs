@@ -14,7 +14,7 @@
 //! Granger signal G(A→B,τ) = d(A_t, B_{t+τ}) - d(B_t, B_{t+τ})
 //! gives directionality: G < 0 ⇒ A predicts B (A is closer to future B).
 
-use crate::sweep::{Base, bind};
+use crate::sweep::{bind, Base};
 
 // ---------------------------------------------------------------------------
 // Unbind
@@ -49,9 +49,10 @@ pub fn unbind(bound: &[i8], role: &[i8], base: Base) -> Vec<i8> {
         Base::Signed(_) => {
             // Negate role, then bind (saturating add + clamp).
             // Widen to i16 to handle i8::MIN correctly: -(-128) = 128 → clamp to 127.
-            let neg_role: Vec<i8> = role.iter().map(|&v| {
-                (-(v as i16)).clamp(-128, 127) as i8
-            }).collect();
+            let neg_role: Vec<i8> = role
+                .iter()
+                .map(|&v| (-(v as i16)).clamp(-128, 127) as i8)
+                .collect();
             bind(bound, &neg_role, base)
         }
     }
@@ -228,12 +229,11 @@ pub fn reverse_trace(
 /// If G ≈ 0: A and B are equidistant from future B — inconclusive.
 ///
 /// Returns the mean Granger signal across all valid time steps.
-pub fn granger_signal(
-    series_a: &[Vec<i8>],
-    series_b: &[Vec<i8>],
-    tau: usize,
-) -> f64 {
-    assert!(tau > 0, "Granger signal requires tau > 0 (lag must be at least 1)");
+pub fn granger_signal(series_a: &[Vec<i8>], series_b: &[Vec<i8>], tau: usize) -> f64 {
+    assert!(
+        tau > 0,
+        "Granger signal requires tau > 0 (lag must be at least 1)"
+    );
     assert_eq!(series_a.len(), series_b.len());
     let n = series_a.len();
     if tau >= n {
@@ -250,18 +250,18 @@ pub fn granger_signal(
         count += 1;
     }
 
-    if count > 0 { sum / count as f64 } else { 0.0 }
+    if count > 0 {
+        sum / count as f64
+    } else {
+        0.0
+    }
 }
 
 /// Scan multiple lags to find the strongest Granger signal.
 ///
 /// Returns (best_lag, signal) where signal is the most negative G(A→B, τ).
 /// More negative means A is a stronger predictor of B at that lag.
-pub fn granger_scan(
-    series_a: &[Vec<i8>],
-    series_b: &[Vec<i8>],
-    max_lag: usize,
-) -> (usize, f64) {
+pub fn granger_scan(series_a: &[Vec<i8>], series_b: &[Vec<i8>], max_lag: usize) -> (usize, f64) {
     let mut best_lag = 1;
     let mut best_signal = f64::MAX;
 
@@ -298,10 +298,7 @@ pub struct SimilarPair {
 /// normalized distance; pairs below the threshold are structurally correlated.
 ///
 /// This is O(n²) brute force. Replace with CAKES ρ-NN for O(n·log n).
-pub fn find_similar_pairs(
-    entities: &[Entity],
-    radius_threshold: f64,
-) -> Vec<SimilarPair> {
+pub fn find_similar_pairs(entities: &[Entity], radius_threshold: f64) -> Vec<SimilarPair> {
     let mut pairs = Vec::new();
     let n = entities.len();
     if n == 0 {
@@ -325,7 +322,7 @@ pub fn find_similar_pairs(
         }
     }
 
-    pairs.sort_by(|a, b| a.distance.cmp(&b.distance));
+    pairs.sort_by_key(|a| a.distance);
     pairs
 }
 
@@ -398,7 +395,10 @@ mod tests {
         let bound = bind(&a, &role, base);
         let recovered = unbind(&bound, &role, base);
         // For non-saturating values, this should be exact
-        assert_eq!(a, recovered, "Signed unbind should recover when not saturating");
+        assert_eq!(
+            a, recovered,
+            "Signed unbind should recover when not saturating"
+        );
     }
 
     #[test]
@@ -408,18 +408,19 @@ mod tests {
         // unbind(3, 2): negate(2)=-2, bind(3,-2)=saturating_add(3,-2)=1
         // Original was 3, recovered is 1 — information was destroyed by clamping.
         let base = Base::Signed(7);
-        let a: Vec<i8> = vec![3];    // at the boundary
-        let role: Vec<i8> = vec![2];  // pushes past clamp
+        let a: Vec<i8> = vec![3]; // at the boundary
+        let role: Vec<i8> = vec![2]; // pushes past clamp
 
         let bound = bind(&a, &role, base);
         assert_eq!(bound, vec![3], "bind(3,2) clamps to 3");
 
         let recovered = unbind(&bound, &role, base);
-        assert_ne!(recovered, a,
+        assert_ne!(
+            recovered, a,
             "Signed unbind MUST be lossy when bind saturated: recovered {:?} vs original {:?}",
-            recovered, a);
-        assert_eq!(recovered, vec![1],
-            "unbind(3,2) = bind(3,-2) = 1 (not 3)");
+            recovered, a
+        );
+        assert_eq!(recovered, vec![1], "unbind(3,2) = bind(3,-2) = 1 (not 3)");
     }
 
     #[test]
@@ -430,8 +431,11 @@ mod tests {
         let result = unbind(&bound, &role, Base::Signed(7));
         // unbind(0, -128) should = bind(0, 127) since neg(-128) clamps to 127
         // bind(0, 127) with Signed(7) = (0 + 127).clamp(-3, 3) = 3
-        let expected = bind(&bound, &vec![127i8; 4], Base::Signed(7));
-        assert_eq!(result, expected, "unbind should negate i8::MIN to 127, not -128");
+        let expected = bind(&bound, &[127i8; 4], Base::Signed(7));
+        assert_eq!(
+            result, expected,
+            "unbind should negate i8::MIN to 127, not -128"
+        );
     }
 
     // --- Forward / Reverse roundtrip ---
@@ -475,10 +479,14 @@ mod tests {
 
         let trace = reverse_trace(&effect, &role, &entities, base, 3, 0.4);
         assert!(!trace.steps.is_empty());
-        assert_eq!(trace.steps[0].entity_id, cause.id,
-            "Reverse trace should recover the cause");
-        assert_eq!(trace.steps[0].distance, 0,
-            "Binary unbind should give exact recovery");
+        assert_eq!(
+            trace.steps[0].entity_id, cause.id,
+            "Reverse trace should recover the cause"
+        );
+        assert_eq!(
+            trace.steps[0].distance, 0,
+            "Binary unbind should give exact recovery"
+        );
         assert!(trace.steps[0].confident);
         assert!(trace.confident_depth >= 1);
     }
@@ -494,17 +502,28 @@ mod tests {
         let role = make_role("CAUSES", d, &mut rng, base);
 
         let b_vec = forward_bind(&a.vector, &role, base);
-        let b = Entity { id: 2, name: "B".to_string(), vector: b_vec };
+        let b = Entity {
+            id: 2,
+            name: "B".to_string(),
+            vector: b_vec,
+        };
 
         let c_vec = forward_bind(&b.vector, &role, base);
-        let c = Entity { id: 3, name: "C".to_string(), vector: c_vec };
+        let c = Entity {
+            id: 3,
+            name: "C".to_string(),
+            vector: c_vec,
+        };
 
         let entities = vec![a.clone(), b.clone(), c.clone()];
 
         // Reverse trace from C should recover: C → B → A
         let trace = reverse_trace(&c, &role, &entities, base, 5, 0.4);
-        assert!(trace.confident_depth >= 2,
-            "Should trace back at least 2 hops: got {}", trace.confident_depth);
+        assert!(
+            trace.confident_depth >= 2,
+            "Should trace back at least 2 hops: got {}",
+            trace.confident_depth
+        );
         assert_eq!(trace.steps[0].entity_id, b.id, "First hop should find B");
         assert_eq!(trace.steps[1].entity_id, a.id, "Second hop should find A");
     }
@@ -523,7 +542,11 @@ mod tests {
         let role2 = make_role("CAUSES_2", d, &mut rng, base);
 
         let b_vec = forward_bind(&a.vector, &role1, base);
-        let b = Entity { id: 2, name: "B".to_string(), vector: b_vec };
+        let b = Entity {
+            id: 2,
+            name: "B".to_string(),
+            vector: b_vec,
+        };
 
         // Only A and B in the entity set.
         // unbind(B, CAUSES_2) = B XOR CAUSES_2, which is random noise
@@ -533,8 +556,11 @@ mod tests {
         let trace = reverse_trace(&b, &role2, &entities, base, 5, 0.05);
         // First hop: unbind(B, CAUSES_2) = random → nearest entity has
         // normalized distance ~0.5, so it should NOT be confident.
-        assert_eq!(trace.confident_depth, 0,
-            "Wrong role should fail on first hop: confident_depth = {}", trace.confident_depth);
+        assert_eq!(
+            trace.confident_depth, 0,
+            "Wrong role should fail on first hop: confident_depth = {}",
+            trace.confident_depth
+        );
     }
 
     // --- Granger signal ---
@@ -543,7 +569,7 @@ mod tests {
     fn test_granger_signal_self_prediction() {
         let mut rng = SplitMix64::new(42);
         let d = 256;
-        let base = Base::Binary;
+        let _base = Base::Binary;
         let n = 20;
 
         // Series B with gradual drift: B_{t+1} is a noisy copy of B_t
@@ -555,7 +581,7 @@ mod tests {
             let mut next = prev.clone();
             // Flip ~5% of bits
             for i in 0..d {
-                if rng.next_u64() % 20 == 0 {
+                if rng.next_u64().is_multiple_of(20) {
                     next[i] ^= 1;
                 }
             }
@@ -570,8 +596,11 @@ mod tests {
         // Random A should NOT predict B (G ≈ 0 or positive)
         let g = granger_signal(&series_a, &series_b, 1);
         // B predicts itself better than random A does, so G should be >= 0
-        assert!(g >= -5.0,
-            "Random series should not strongly predict B: G = {}", g);
+        assert!(
+            g >= -5.0,
+            "Random series should not strongly predict B: G = {}",
+            g
+        );
     }
 
     #[test]
@@ -592,7 +621,7 @@ mod tests {
                 // B[t] = A[t-tau] with ~3% noise
                 let mut b = series_a[t - tau].clone();
                 for i in 0..d {
-                    if rng.next_u64() % 33 == 0 {
+                    if rng.next_u64().is_multiple_of(33) {
                         b[i] ^= 1;
                     }
                 }
@@ -604,13 +633,15 @@ mod tests {
 
         // A should predict B at lag tau: G(A→B,τ) should be negative
         let g = granger_signal(&series_a, &series_b, tau);
-        assert!(g < 0.0,
-            "A should predict B at lag {}: G = {}", tau, g);
+        assert!(g < 0.0, "A should predict B at lag {}: G = {}", tau, g);
 
         // Scan should find the best lag near tau
         let (best_lag, best_g) = granger_scan(&series_a, &series_b, 5);
-        assert_eq!(best_lag, tau,
-            "Best lag should be {}, got {} (G={})", tau, best_lag, best_g);
+        assert_eq!(
+            best_lag, tau,
+            "Best lag should be {}, got {} (G={})",
+            tau, best_lag, best_g
+        );
     }
 
     // --- SimilarPair detection ---
@@ -646,8 +677,11 @@ mod tests {
             .collect();
 
         let pairs = find_similar_pairs(&entities, 0.3);
-        assert!(pairs.is_empty(),
-            "Random 1024-D binary vectors should not be within 0.3: found {} pairs", pairs.len());
+        assert!(
+            pairs.is_empty(),
+            "Random 1024-D binary vectors should not be within 0.3: found {} pairs",
+            pairs.len()
+        );
     }
 }
 
@@ -656,9 +690,8 @@ mod tests {
 // ===========================================================================
 
 use rustynum_core::bf16_hamming::{
-    BF16Weights, BF16StructuralDiff, TRAINING_WEIGHTS,
-    bf16_hamming_scalar, structural_diff, select_bf16_hamming_fn,
-    fp32_to_bf16_bytes,
+    fp32_to_bf16_bytes, select_bf16_hamming_fn, structural_diff, BF16StructuralDiff, BF16Weights,
+    TRAINING_WEIGHTS,
 };
 
 // ---------------------------------------------------------------------------
@@ -684,7 +717,12 @@ impl BF16Entity {
     pub fn from_f32(id: u32, name: &str, embedding: &[f32]) -> Self {
         let bf16_bytes = fp32_to_bf16_bytes(embedding);
         let n_dims = embedding.len();
-        Self { id, name: name.to_string(), bf16_bytes, n_dims }
+        Self {
+            id,
+            name: name.to_string(),
+            bf16_bytes,
+            n_dims,
+        }
     }
 }
 
@@ -715,7 +753,9 @@ pub struct CausalFeatureMap {
 impl CausalFeatureMap {
     /// Fraction of timesteps where dimension `dim` had a sign flip.
     pub fn sign_flip_rate(&self, dim: usize) -> f64 {
-        if self.timesteps == 0 { return 0.0; }
+        if self.timesteps == 0 {
+            return 0.0;
+        }
         self.sign_flip_counts[dim] as f64 / self.timesteps as f64
     }
 
@@ -757,10 +797,7 @@ pub fn bf16_granger_causal_map(
 
     for t in 0..(n - tau) {
         // Cross-series structural diff: A_t vs B_{t+tau}
-        let cross_diff = structural_diff(
-            &series_a[t].bf16_bytes,
-            &series_b[t + tau].bf16_bytes,
-        );
+        let cross_diff = structural_diff(&series_a[t].bf16_bytes, &series_b[t + tau].bf16_bytes);
 
         // Accumulate per-dimension sign flips from cross-series
         for &dim in &cross_diff.sign_flip_dims {
@@ -787,12 +824,13 @@ pub fn bf16_granger_causal_map(
     }
 
     // Build top causal dims (sorted by sign-flip count, descending)
-    let mut top: Vec<(usize, u32)> = sign_flips.iter()
+    let mut top: Vec<(usize, u32)> = sign_flips
+        .iter()
         .enumerate()
         .filter(|(_, &c)| c > 0)
         .map(|(d, &c)| (d, c))
         .collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let granger = if count > 0 {
         (cross_sum - auto_sum) / count as f64
@@ -812,21 +850,112 @@ pub fn bf16_granger_causal_map(
 }
 
 /// Scan multiple lags and return the CausalFeatureMap at the best lag.
+///
+/// Single-pass algorithm: iterates timesteps once, accumulating per-lag
+/// counters simultaneously. O(n × max_lag) total, not O(n × max_lag²).
 pub fn bf16_granger_causal_scan(
     series_a: &[BF16Entity],
     series_b: &[BF16Entity],
     max_lag: usize,
 ) -> CausalFeatureMap {
-    let mut best_map = bf16_granger_causal_map(series_a, series_b, 1);
+    assert!(max_lag >= 1);
+    assert_eq!(series_a.len(), series_b.len());
+    let n = series_a.len();
+    assert!(max_lag < n);
+    let n_dims = series_a[0].n_dims;
 
-    for tau in 2..=max_lag {
-        let map = bf16_granger_causal_map(series_a, series_b, tau);
-        if map.granger_signal < best_map.granger_signal {
-            best_map = map;
+    let bf16_fn = select_bf16_hamming_fn();
+    let weights = &TRAINING_WEIGHTS;
+
+    // Per-lag accumulators
+    struct LagAcc {
+        sign_flips: Vec<u32>,
+        exp_shifts: Vec<u32>,
+        cross_sum: f64,
+        auto_sum: f64,
+        count: usize,
+    }
+
+    let mut lags: Vec<LagAcc> = (0..max_lag)
+        .map(|_| LagAcc {
+            sign_flips: vec![0u32; n_dims],
+            exp_shifts: vec![0u32; n_dims],
+            cross_sum: 0.0,
+            auto_sum: 0.0,
+            count: 0,
+        })
+        .collect();
+
+    // Single pass over all timesteps
+    for t in 0..n {
+        for (lag_idx, lag) in lags.iter_mut().enumerate() {
+            let tau = lag_idx + 1; // lag 1..=max_lag
+            if t + tau >= n {
+                continue;
+            }
+
+            let cross_diff =
+                structural_diff(&series_a[t].bf16_bytes, &series_b[t + tau].bf16_bytes);
+
+            for &dim in &cross_diff.sign_flip_dims {
+                lag.sign_flips[dim] += 1;
+            }
+            for &dim in &cross_diff.major_magnitude_shifts {
+                lag.exp_shifts[dim] += 1;
+            }
+
+            let d_ab = bf16_fn(
+                &series_a[t].bf16_bytes,
+                &series_b[t + tau].bf16_bytes,
+                weights,
+            ) as f64;
+            let d_bb = bf16_fn(
+                &series_b[t].bf16_bytes,
+                &series_b[t + tau].bf16_bytes,
+                weights,
+            ) as f64;
+            lag.cross_sum += d_ab;
+            lag.auto_sum += d_bb;
+            lag.count += 1;
         }
     }
 
-    best_map
+    // Find lag with most negative Granger signal
+    let mut best_idx = 0;
+    let mut best_granger = f64::INFINITY;
+    for (i, lag) in lags.iter().enumerate() {
+        let granger = if lag.count > 0 {
+            (lag.cross_sum - lag.auto_sum) / lag.count as f64
+        } else {
+            0.0
+        };
+        if granger < best_granger {
+            best_granger = granger;
+            best_idx = i;
+        }
+    }
+
+    let best = &lags[best_idx];
+    let tau = best_idx + 1;
+
+    let mut top: Vec<(usize, u32)> = best
+        .sign_flips
+        .iter()
+        .enumerate()
+        .filter(|(_, &c)| c > 0)
+        .map(|(d, &c)| (d, c))
+        .collect();
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
+
+    CausalFeatureMap {
+        n_dims,
+        sign_flip_counts: best.sign_flips.clone(),
+        exponent_shift_counts: best.exp_shifts.clone(),
+        top_causal_dims: top,
+        timesteps: best.count,
+        granger_signal: best_granger,
+        best_lag: tau,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -875,44 +1004,55 @@ pub fn bf16_reverse_trace(
         bound.iter().zip(role.iter()).map(|(a, b)| a ^ b).collect()
     };
 
-    let nearest_bf16 = |candidate: &[u8]| -> (u32, u64) {
+    // Returns (entity_index, entity_id, distance)
+    let nearest_bf16 = |candidate: &[u8]| -> (usize, u32, u64) {
+        let mut best_idx = 0usize;
         let mut best_id = 0u32;
         let mut best_dist = u64::MAX;
-        for e in entities {
+        for (i, e) in entities.iter().enumerate() {
             let d = bf16_fn(candidate, &e.bf16_bytes, weights);
             if d < best_dist {
                 best_dist = d;
                 best_id = e.id;
+                best_idx = i;
             }
         }
-        (best_id, best_dist)
+        (best_idx, best_id, best_dist)
     };
 
     // Max possible BF16 distance for normalization
-    let max_dist_per_dim = (weights.sign as u64) + 8 * (weights.exponent as u64)
-        + 7 * (weights.mantissa as u64);
+    let max_dist_per_dim =
+        (weights.sign as u64) + 8 * (weights.exponent as u64) + 7 * (weights.mantissa as u64);
     let max_total = max_dist_per_dim * (outcome.n_dims as u64);
 
     let mut steps = Vec::with_capacity(max_depth);
-    let mut current_bytes = outcome.bf16_bytes.clone();
+    // Track current source by index into entities slice (avoids cloning bf16_bytes)
+    let mut current_entity_idx: Option<usize> = None;
     let mut confident_depth = 0;
     let mut all_sign_flip_dims: Vec<Vec<usize>> = Vec::new();
 
-    for _ in 0..max_depth {
-        let candidate = xor_unbind(&current_bytes, role_bf16);
-        let (entity_id, distance) = nearest_bf16(&candidate);
-        let normalized = if max_total > 0 { distance as f64 / max_total as f64 } else { 1.0 };
+    for hop in 0..max_depth {
+        let current: &[u8] = if hop == 0 {
+            &outcome.bf16_bytes
+        } else if let Some(idx) = current_entity_idx {
+            &entities[idx].bf16_bytes
+        } else {
+            break;
+        };
+
+        let candidate = xor_unbind(current, role_bf16);
+        let (entity_idx, entity_id, distance) = nearest_bf16(&candidate);
+        let normalized = if max_total > 0 {
+            distance as f64 / max_total as f64
+        } else {
+            1.0
+        };
         let confident = normalized < confidence_threshold;
 
         // Structural diff between candidate and recovered entity
-        let recovered = entities.iter().find(|e| e.id == entity_id);
-        let diff = if let Some(r) = recovered {
-            structural_diff(&candidate, &r.bf16_bytes)
-        } else {
-            BF16StructuralDiff::default()
-        };
+        let diff = structural_diff(&candidate, &entities[entity_idx].bf16_bytes);
 
-        all_sign_flip_dims.push(diff.sign_flip_dims.clone());
+        all_sign_flip_dims.push(diff.sign_flip_dims.to_vec());
 
         steps.push(BF16TraceStep {
             entity_id,
@@ -924,12 +1064,7 @@ pub fn bf16_reverse_trace(
 
         if confident {
             confident_depth += 1;
-        } else {
-            break;
-        }
-
-        if let Some(e) = recovered {
-            current_bytes = e.bf16_bytes.clone();
+            current_entity_idx = Some(entity_idx);
         } else {
             break;
         }
@@ -938,8 +1073,8 @@ pub fn bf16_reverse_trace(
     // Causal backbone: dimensions that appear in sign_flip_dims
     // across most confident hops.
     let causal_backbone_dims = if confident_depth >= 2 {
-        let confident_dims: Vec<&Vec<usize>> = all_sign_flip_dims[..confident_depth]
-            .iter().collect();
+        let confident_dims: Vec<&Vec<usize>> =
+            all_sign_flip_dims[..confident_depth].iter().collect();
         let mut dim_counts = std::collections::HashMap::new();
         for dims in &confident_dims {
             for &d in dims.iter() {
@@ -947,7 +1082,8 @@ pub fn bf16_reverse_trace(
             }
         }
         let threshold = (confident_depth as u32).saturating_sub(1).max(1);
-        let mut backbone: Vec<usize> = dim_counts.iter()
+        let mut backbone: Vec<usize> = dim_counts
+            .iter()
             .filter(|(_, &count)| count >= threshold)
             .map(|(&dim, _)| dim)
             .collect();
@@ -994,7 +1130,10 @@ pub enum LearningInterpretation {
     /// Semantic reversal: sign flipped on key dimensions.
     SemanticReversal { dims: Vec<usize> },
     /// Both: sign flips AND magnitude shifts.
-    MajorUpdate { sign_dims: Vec<usize>, magnitude_dims: Vec<usize> },
+    MajorUpdate {
+        sign_dims: Vec<usize>,
+        magnitude_dims: Vec<usize>,
+    },
 }
 
 /// Classify a learning step from BF16 structural diff.
@@ -1012,14 +1151,14 @@ pub fn classify_learning_event(
     let interpretation = match (diff.sign_flips, diff.major_magnitude_shifts.len()) {
         (0, 0) => LearningInterpretation::Noise,
         (0, _) => LearningInterpretation::AttentionShift {
-            dims: diff.major_magnitude_shifts.clone(),
+            dims: diff.major_magnitude_shifts.to_vec(),
         },
         (_, 0) => LearningInterpretation::SemanticReversal {
-            dims: diff.sign_flip_dims.clone(),
+            dims: diff.sign_flip_dims.to_vec(),
         },
         (_, _) => LearningInterpretation::MajorUpdate {
-            sign_dims: diff.sign_flip_dims.clone(),
-            magnitude_dims: diff.major_magnitude_shifts.clone(),
+            sign_dims: diff.sign_flip_dims.to_vec(),
+            magnitude_dims: diff.major_magnitude_shifts.to_vec(),
         },
     };
 
@@ -1042,9 +1181,9 @@ mod bf16_causal_tests {
 
     fn make_jina_like_embedding(seed: u64, n_dims: usize) -> Vec<f32> {
         let mut rng = rustynum_core::SplitMix64::new(seed);
-        (0..n_dims).map(|_| {
-            (rng.next_u64() as f64 / u64::MAX as f64 * 2.0 - 1.0) as f32 * 0.1
-        }).collect()
+        (0..n_dims)
+            .map(|_| (rng.next_u64() as f64 / u64::MAX as f64 * 2.0 - 1.0) as f32 * 0.1)
+            .collect()
     }
 
     #[test]
@@ -1053,31 +1192,49 @@ mod bf16_causal_tests {
         let n_steps = 20;
         let tau = 2;
 
-        let series_a: Vec<BF16Entity> = (0..n_steps).map(|t| {
-            BF16Entity::from_f32(t as u32, &format!("A_{}", t),
-                &make_jina_like_embedding(t as u64, n_dims))
-        }).collect();
+        let series_a: Vec<BF16Entity> = (0..n_steps)
+            .map(|t| {
+                BF16Entity::from_f32(
+                    t as u32,
+                    &format!("A_{}", t),
+                    &make_jina_like_embedding(t as u64, n_dims),
+                )
+            })
+            .collect();
 
         // B[t] at lag tau is similar to A[t-tau] with some dims flipped
-        let series_b: Vec<BF16Entity> = (0..n_steps).map(|t| {
-            if t >= tau {
-                let mut emb = make_jina_like_embedding((t - tau) as u64, n_dims);
-                for &d in &[5, 10, 15] {
-                    if d < n_dims { emb[d] = -emb[d]; }
+        let series_b: Vec<BF16Entity> = (0..n_steps)
+            .map(|t| {
+                if t >= tau {
+                    let mut emb = make_jina_like_embedding((t - tau) as u64, n_dims);
+                    for &d in &[5, 10, 15] {
+                        if d < n_dims {
+                            emb[d] = -emb[d];
+                        }
+                    }
+                    BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
+                } else {
+                    BF16Entity::from_f32(
+                        t as u32,
+                        &format!("B_{}", t),
+                        &make_jina_like_embedding(100 + t as u64, n_dims),
+                    )
                 }
-                BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
-            } else {
-                BF16Entity::from_f32(t as u32, &format!("B_{}", t),
-                    &make_jina_like_embedding(100 + t as u64, n_dims))
-            }
-        }).collect();
+            })
+            .collect();
 
         let map = bf16_granger_causal_map(&series_a, &series_b, tau);
 
         // Dims 5, 10, 15 should have high sign-flip counts
         assert!(map.sign_flip_counts[5] > 0, "Dim 5 should have sign flips");
-        assert!(map.sign_flip_counts[10] > 0, "Dim 10 should have sign flips");
-        assert!(map.sign_flip_counts[15] > 0, "Dim 15 should have sign flips");
+        assert!(
+            map.sign_flip_counts[10] > 0,
+            "Dim 10 should have sign flips"
+        );
+        assert!(
+            map.sign_flip_counts[15] > 0,
+            "Dim 15 should have sign flips"
+        );
         assert!(!map.top_causal_dims.is_empty(), "Should have causal dims");
     }
 
@@ -1087,22 +1244,34 @@ mod bf16_causal_tests {
         let n_steps = 30;
         let true_lag = 3;
 
-        let series_a: Vec<BF16Entity> = (0..n_steps).map(|t| {
-            BF16Entity::from_f32(t as u32, &format!("A_{}", t),
-                &make_jina_like_embedding(t as u64, n_dims))
-        }).collect();
+        let series_a: Vec<BF16Entity> = (0..n_steps)
+            .map(|t| {
+                BF16Entity::from_f32(
+                    t as u32,
+                    &format!("A_{}", t),
+                    &make_jina_like_embedding(t as u64, n_dims),
+                )
+            })
+            .collect();
 
-        let series_b: Vec<BF16Entity> = (0..n_steps).map(|t| {
-            if t >= true_lag {
-                let mut emb = make_jina_like_embedding((t - true_lag) as u64, n_dims);
-                // Small perturbation
-                for d in 0..3 { emb[d] = -emb[d]; }
-                BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
-            } else {
-                BF16Entity::from_f32(t as u32, &format!("B_{}", t),
-                    &make_jina_like_embedding(200 + t as u64, n_dims))
-            }
-        }).collect();
+        let series_b: Vec<BF16Entity> = (0..n_steps)
+            .map(|t| {
+                if t >= true_lag {
+                    let mut emb = make_jina_like_embedding((t - true_lag) as u64, n_dims);
+                    // Small perturbation
+                    for d in 0..3 {
+                        emb[d] = -emb[d];
+                    }
+                    BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
+                } else {
+                    BF16Entity::from_f32(
+                        t as u32,
+                        &format!("B_{}", t),
+                        &make_jina_like_embedding(200 + t as u64, n_dims),
+                    )
+                }
+            })
+            .collect();
 
         let map = bf16_granger_causal_scan(&series_a, &series_b, 5);
         // Best lag should be around the true lag
@@ -1122,8 +1291,10 @@ mod bf16_causal_tests {
         let event = classify_learning_event(1, 0, &before, &after, &TRAINING_WEIGHTS);
 
         match &event.interpretation {
-            LearningInterpretation::SemanticReversal { dims } |
-            LearningInterpretation::MajorUpdate { sign_dims: dims, .. } => {
+            LearningInterpretation::SemanticReversal { dims }
+            | LearningInterpretation::MajorUpdate {
+                sign_dims: dims, ..
+            } => {
                 assert!(dims.contains(&7), "Should detect sign flip on dim 7");
             }
             other => panic!("Expected SemanticReversal or MajorUpdate, got {:?}", other),
@@ -1138,33 +1309,50 @@ mod bf16_causal_tests {
         let after = before.clone();
 
         let event = classify_learning_event(1, 0, &before, &after, &TRAINING_WEIGHTS);
-        assert!(matches!(event.interpretation, LearningInterpretation::Noise));
+        assert!(matches!(
+            event.interpretation,
+            LearningInterpretation::Noise
+        ));
     }
 
     #[test]
     fn test_bf16_reverse_trace_single_hop() {
         let n_dims = 64;
-        let cause = BF16Entity::from_f32(1, "cause",
-            &make_jina_like_embedding(1, n_dims));
+        let cause = BF16Entity::from_f32(1, "cause", &make_jina_like_embedding(1, n_dims));
 
         let role_f32 = make_jina_like_embedding(99, n_dims);
         let role_bf16 = fp32_to_bf16_bytes(&role_f32);
 
         // Effect = XOR(cause, role) in BF16 byte space
-        let effect_bytes: Vec<u8> = cause.bf16_bytes.iter()
+        let effect_bytes: Vec<u8> = cause
+            .bf16_bytes
+            .iter()
             .zip(role_bf16.iter())
             .map(|(a, b)| a ^ b)
             .collect();
-        let effect = BF16Entity { id: 2, name: "effect".into(), bf16_bytes: effect_bytes, n_dims };
+        let effect = BF16Entity {
+            id: 2,
+            name: "effect".into(),
+            bf16_bytes: effect_bytes,
+            n_dims,
+        };
 
         let entities = vec![cause.clone(), effect.clone()];
         let trace = bf16_reverse_trace(
-            &effect, &role_bf16, &entities, 3, 0.3, &BF16Weights::default(),
+            &effect,
+            &role_bf16,
+            &entities,
+            3,
+            0.3,
+            &BF16Weights::default(),
         );
 
         assert!(!trace.steps.is_empty());
         assert_eq!(trace.steps[0].entity_id, 1, "Should recover cause");
-        assert_eq!(trace.steps[0].weighted_distance, 0, "XOR unbind should be exact");
+        assert_eq!(
+            trace.steps[0].weighted_distance, 0,
+            "XOR unbind should be exact"
+        );
         assert!(trace.steps[0].confident);
     }
 
@@ -1193,7 +1381,7 @@ mod bf16_causal_tests {
     #[test]
     fn test_classify_learning_event_attention_shift() {
         // Create two BF16 vectors where only exponent bits differ significantly
-        let n_dims = 4;
+        let _n_dims = 4;
         let before_f32 = vec![0.1f32, 0.2, 0.3, 0.4];
         let after_f32 = vec![0.1, 0.2, 30.0, 40.0]; // dims 2,3: huge magnitude change
 

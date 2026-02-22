@@ -36,7 +36,9 @@ impl<const N: usize> DeltaLayer<N> {
     /// Create a clean (zero-delta) layer.
     #[inline]
     pub fn new() -> Self {
-        Self { delta: Fingerprint::zero() }
+        Self {
+            delta: Fingerprint::zero(),
+        }
     }
 
     /// Read the effective value: `ground ^ delta`.
@@ -115,7 +117,10 @@ pub struct LayerStack<const N: usize> {
 impl<const N: usize> LayerStack<N> {
     /// Create a new stack with the given ground truth and no layers.
     pub fn new(ground: Fingerprint<N>) -> Self {
-        Self { ground, layers: Vec::new() }
+        Self {
+            ground,
+            layers: Vec::new(),
+        }
     }
 
     /// Borrow the ground truth (always immutable).
@@ -201,11 +206,25 @@ mod tests {
     use super::*;
 
     fn sample_fp() -> Fingerprint<4> {
-        Fingerprint { words: [0xDEAD_BEEF_CAFE_BABE, 0x1234_5678_9ABC_DEF0, 0xFEDC_BA98_7654_3210, 0x0123_4567_89AB_CDEF] }
+        Fingerprint {
+            words: [
+                0xDEAD_BEEF_CAFE_BABE,
+                0x1234_5678_9ABC_DEF0,
+                0xFEDC_BA98_7654_3210,
+                0x0123_4567_89AB_CDEF,
+            ],
+        }
     }
 
     fn other_fp() -> Fingerprint<4> {
-        Fingerprint { words: [0x1111_1111_1111_1111, 0x2222_2222_2222_2222, 0x3333_3333_3333_3333, 0x4444_4444_4444_4444] }
+        Fingerprint {
+            words: [
+                0x1111_1111_1111_1111,
+                0x2222_2222_2222_2222,
+                0x3333_3333_3333_3333,
+                0x4444_4444_4444_4444,
+            ],
+        }
     }
 
     // --- DeltaLayer tests ---
@@ -240,7 +259,9 @@ mod tests {
     fn test_double_write() {
         let ground = sample_fp();
         let val1 = other_fp();
-        let val2 = Fingerprint { words: [0xAAAA, 0xBBBB, 0xCCCC, 0xDDDD] };
+        let val2 = Fingerprint {
+            words: [0xAAAA, 0xBBBB, 0xCCCC, 0xDDDD],
+        };
         let mut layer = DeltaLayer::<4>::new();
         layer.write(&ground, &val1);
         assert_eq!(layer.read(&ground), val1);
@@ -253,7 +274,9 @@ mod tests {
         let ground = Fingerprint::<4>::zero();
         let mut layer = DeltaLayer::<4>::new();
         // Start clean: effective = 0
-        let patch = Fingerprint { words: [0xFF, 0, 0, 0] };
+        let patch = Fingerprint {
+            words: [0xFF, 0, 0, 0],
+        };
         layer.xor_patch(&patch);
         // effective = 0 ^ 0xFF = 0xFF in word[0]
         let result = layer.read(&ground);
@@ -275,9 +298,13 @@ mod tests {
 
     #[test]
     fn test_changed_bits() {
-        let ground = Fingerprint::<2> { words: [0x00, 0x00] };
+        let ground = Fingerprint::<2> {
+            words: [0x00, 0x00],
+        };
         let mut layer = DeltaLayer::<2>::new();
-        let new_val = Fingerprint::<2> { words: [0xFF, 0x00] }; // 8 bits changed
+        let new_val = Fingerprint::<2> {
+            words: [0xFF, 0x00],
+        }; // 8 bits changed
         layer.write(&ground, &new_val);
         assert_eq!(layer.changed_bits(), 8);
     }
@@ -309,11 +336,15 @@ mod tests {
         let mut stack = LayerStack::new(ground.clone());
 
         let l0 = stack.push_layer();
-        let patch0 = Fingerprint::<2> { words: [0xFF00, 0x0000] };
+        let patch0 = Fingerprint::<2> {
+            words: [0xFF00, 0x0000],
+        };
         stack.layer_mut(l0).xor_patch(&patch0);
 
         let l1 = stack.push_layer();
-        let patch1 = Fingerprint::<2> { words: [0x00FF, 0x0000] };
+        let patch1 = Fingerprint::<2> {
+            words: [0x00FF, 0x0000],
+        };
         stack.layer_mut(l1).xor_patch(&patch1);
 
         // effective = 0 ^ 0xFF00 ^ 0x00FF = 0xFFFF
@@ -328,10 +359,14 @@ mod tests {
         let mut stack = LayerStack::new(ground.clone());
 
         let l0 = stack.push_layer();
-        stack.layer_mut(l0).xor_patch(&Fingerprint { words: [0xFF, 0] });
+        stack
+            .layer_mut(l0)
+            .xor_patch(&Fingerprint { words: [0xFF, 0] });
 
         let l1 = stack.push_layer();
-        stack.layer_mut(l1).xor_patch(&Fingerprint { words: [0xFF00, 0] });
+        stack
+            .layer_mut(l1)
+            .xor_patch(&Fingerprint { words: [0xFF00, 0] });
 
         // Through layer 0 only: 0 ^ 0xFF = 0xFF
         assert_eq!(stack.read_through(0).words[0], 0xFF);
@@ -345,10 +380,14 @@ mod tests {
         let mut stack = LayerStack::new(ground);
 
         let l0 = stack.push_layer();
-        stack.layer_mut(l0).xor_patch(&Fingerprint { words: [0xAA, 0xBB] });
+        stack.layer_mut(l0).xor_patch(&Fingerprint {
+            words: [0xAA, 0xBB],
+        });
 
         let l1 = stack.push_layer();
-        stack.layer_mut(l1).xor_patch(&Fingerprint { words: [0x55, 0x44] });
+        stack.layer_mut(l1).xor_patch(&Fingerprint {
+            words: [0x55, 0x44],
+        });
 
         let expected = stack.read_all();
         let _old = stack.collapse_all();
@@ -363,10 +402,14 @@ mod tests {
         let mut stack = LayerStack::new(ground);
 
         let l0 = stack.push_layer();
-        stack.layer_mut(l0).xor_patch(&Fingerprint { words: [0xAA, 0] });
+        stack
+            .layer_mut(l0)
+            .xor_patch(&Fingerprint { words: [0xAA, 0] });
 
         let l1 = stack.push_layer();
-        stack.layer_mut(l1).xor_patch(&Fingerprint { words: [0x55, 0] });
+        stack
+            .layer_mut(l1)
+            .xor_patch(&Fingerprint { words: [0x55, 0] });
 
         // Collapse layer 0 into ground
         stack.collapse_layer(0);
@@ -383,11 +426,15 @@ mod tests {
 
         let l0 = stack.push_layer();
         // Set 8 bits in word 0
-        stack.layer_mut(l0).xor_patch(&Fingerprint { words: [0xFF, 0] });
+        stack
+            .layer_mut(l0)
+            .xor_patch(&Fingerprint { words: [0xFF, 0] });
 
         let l1 = stack.push_layer();
         // Set 4 bits in word 1
-        stack.layer_mut(l1).xor_patch(&Fingerprint { words: [0, 0x0F] });
+        stack
+            .layer_mut(l1)
+            .xor_patch(&Fingerprint { words: [0, 0x0F] });
 
         assert_eq!(stack.total_changed_bits(), 12);
     }

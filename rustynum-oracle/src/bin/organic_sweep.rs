@@ -45,8 +45,13 @@ fn main() {
         let r = measure_recovery_organic(2048, Base::Signed(5), 16, k, false, &mut rng);
         println!(
             "{:<6} {:<12.6} {:<12.4} {:<12.4} {:<12.4} {:<10?} {:<10.1}",
-            k, r.mean_error, r.mean_absorption, r.min_absorption, r.mean_similarity,
-            r.flush_action, r.bits_per_concept
+            k,
+            r.mean_error,
+            r.mean_absorption,
+            r.min_absorption,
+            r.mean_similarity,
+            r.flush_action,
+            r.bits_per_concept
         );
     }
 
@@ -60,8 +65,12 @@ fn main() {
         let r = measure_recovery_organic(2048, Base::Signed(5), ch, 8, false, &mut rng);
         println!(
             "{:<10} {:<12.6} {:<12.4} {:<12.4} {:<10.4} {:<10}",
-            ch, r.mean_error, r.mean_absorption, r.min_absorption,
-            r.mean_similarity, r.pattern_quality
+            ch,
+            r.mean_error,
+            r.mean_absorption,
+            r.min_absorption,
+            r.mean_similarity,
+            r.pattern_quality
         );
     }
 
@@ -73,8 +82,7 @@ fn main() {
     );
     for &base in &[Base::Signed(5), Base::Signed(9)] {
         for &plast in &[false, true] {
-            let r =
-                measure_recovery_organic(2048, base, 16, 8, plast, &mut rng);
+            let r = measure_recovery_organic(2048, base, 16, 8, plast, &mut rng);
             println!(
                 "{:<12} {:<12} {:<12.6} {:<12.4} {:<12.4}",
                 plast,
@@ -97,7 +105,10 @@ fn main() {
             let pat = XTransPattern::new(d, ch);
             println!(
                 "{:<8} {:<10} {:<10} {:<12.4} {:<12}",
-                d, ch, pat.min_same_channel_distance(), pat.size_uniformity(),
+                d,
+                ch,
+                pat.min_same_channel_distance(),
+                pat.size_uniformity(),
                 pat.positions_per_channel
             );
         }
@@ -149,9 +160,7 @@ fn main() {
     let mut container = vec![0i8; d];
     let plasticity_tracker = PlasticityTracker::new(k, 50);
 
-    let templates = rustynum_oracle::sweep::generate_templates(
-        k, d, Base::Signed(5), &mut rng,
-    );
+    let templates = rustynum_oracle::sweep::generate_templates(k, d, Base::Signed(5), &mut rng);
     for (i, t) in templates.iter().enumerate() {
         wal.register_concept(i as u32, t.clone());
     }
@@ -159,27 +168,51 @@ fn main() {
     // Write all concepts
     for i in 0..k {
         let r = wal.write(&mut container, i, 0.7, 0.1);
-        println!("  Write concept {}: absorption={:.4}, channel={}", i, r.absorption, r.channel);
+        println!(
+            "  Write concept {}: absorption={:.4}, channel={}",
+            i, r.absorption, r.channel
+        );
     }
 
     let coeffs_before: Vec<f32> = wal.coefficients.clone();
-    println!("  Coefficients before flush: {:?}",
-        coeffs_before.iter().map(|c| format!("{:.4}", c)).collect::<Vec<_>>());
+    println!(
+        "  Coefficients before flush: {:?}",
+        coeffs_before
+            .iter()
+            .map(|c| format!("{:.4}", c))
+            .collect::<Vec<_>>()
+    );
 
     // Flush
     let flush_result = organic_flush(&mut wal, &mut container, &plasticity_tracker, None);
-    println!("  Flush: {} concepts rewritten, avg absorption={:.4}",
-        flush_result.concepts_rewritten, flush_result.average_absorption);
-    println!("  Extracted coefficients: {:?}",
-        flush_result.coefficients_extracted.iter().map(|c| format!("{:.4}", c)).collect::<Vec<_>>());
-    println!("  Coefficients after flush: {:?}",
-        wal.coefficients.iter().map(|c| format!("{:.4}", c)).collect::<Vec<_>>());
+    println!(
+        "  Flush: {} concepts rewritten, avg absorption={:.4}",
+        flush_result.concepts_rewritten, flush_result.average_absorption
+    );
+    println!(
+        "  Extracted coefficients: {:?}",
+        flush_result
+            .coefficients_extracted
+            .iter()
+            .map(|c| format!("{:.4}", c))
+            .collect::<Vec<_>>()
+    );
+    println!(
+        "  Coefficients after flush: {:?}",
+        wal.coefficients
+            .iter()
+            .map(|c| format!("{:.4}", c))
+            .collect::<Vec<_>>()
+    );
 
     // Read back after flush
     let readbacks = wal.read_all(&container);
     println!("  Readback after flush:");
     for (id, sim, amp) in &readbacks {
-        println!("    concept {}: similarity={:.4}, amplitude={:.4}", id, sim, amp);
+        println!(
+            "    concept {}: similarity={:.4}, amplitude={:.4}",
+            id, sim, amp
+        );
     }
 
     // Flush with pruning
@@ -193,8 +226,13 @@ fn main() {
     let prune_result = organic_flush(&mut wal, &mut container, &plasticity_tracker, Some(4));
     println!("  Pruned concepts: {:?}", prune_result.concepts_pruned);
     println!("  Concepts rewritten: {}", prune_result.concepts_rewritten);
-    println!("  Final coefficients: {:?}",
-        wal.coefficients.iter().map(|c| format!("{:.4}", c)).collect::<Vec<_>>());
+    println!(
+        "  Final coefficients: {:?}",
+        wal.coefficients
+            .iter()
+            .map(|c| format!("{:.4}", c))
+            .collect::<Vec<_>>()
+    );
 }
 
 fn base_name(base: Base) -> &'static str {

@@ -26,7 +26,7 @@ fn create_matrix(rows: usize, cols: usize) -> Vec<f32> {
 fn calculate_median(values: &mut [f32]) -> f32 {
     values.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let len = values.len();
-    if len % 2 == 0 {
+    if len.is_multiple_of(2) {
         (values[len / 2 - 1] + values[len / 2]) / 2.0
     } else {
         values[len / 2]
@@ -133,7 +133,7 @@ fn benchmark_vector_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
                     BenchmarkId::new("rustynum_rs", size),
                     &size,
                     |bencher, &_| {
-                        bencher.iter(|| black_box(a_rustynum.dot(&b_rustynum.as_ref().unwrap())))
+                        bencher.iter(|| black_box(a_rustynum.dot(b_rustynum.as_ref().unwrap())))
                     },
                 );
 
@@ -142,7 +142,7 @@ fn benchmark_vector_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
                 });
 
                 group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
-                    bencher.iter(|| black_box(a_nalgebra.dot(&b_nalgebra.as_ref().unwrap())))
+                    bencher.iter(|| black_box(a_nalgebra.dot(b_nalgebra.as_ref().unwrap())))
                 });
             }
             _ => {}
@@ -174,11 +174,9 @@ fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
         let vector = create_vector(cols);
 
         let num_array_matrix1 = NumArrayF32::new_with_shape(matrix1.clone(), vec![rows, cols]);
-        let num_array_matrix2 = if let Some(ref m2) = matrix2 {
-            Some(NumArrayF32::new_with_shape(m2.clone(), vec![cols, rows]))
-        } else {
-            None
-        };
+        let num_array_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| NumArrayF32::new_with_shape(m2.clone(), vec![cols, rows]));
         let num_array_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
             Some(NumArrayF32::new_with_shape(vector.clone(), vec![cols]))
         } else {
@@ -186,11 +184,9 @@ fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
         };
 
         let ndarray_matrix1 = Array2::from_shape_vec((rows, cols), matrix1.clone()).unwrap();
-        let ndarray_matrix2 = if let Some(ref m2) = matrix2 {
-            Some(Array2::from_shape_vec((cols, rows), m2.clone()).unwrap())
-        } else {
-            None
-        };
+        let ndarray_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| Array2::from_shape_vec((cols, rows), m2.clone()).unwrap());
         let ndarray_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
             Some(Array1::from_vec(vector.clone()))
         } else {
@@ -198,11 +194,9 @@ fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
         };
 
         let nalgebra_matrix1 = DMatrix::from_vec(rows, cols, matrix1.clone());
-        let nalgebra_matrix2 = if let Some(ref m2) = matrix2 {
-            Some(DMatrix::from_vec(cols, rows, m2.clone()))
-        } else {
-            None
-        };
+        let nalgebra_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| DMatrix::from_vec(cols, rows, m2.clone()));
         let nalgebra_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
             Some(DVector::from_vec(vector.clone()))
         } else {
@@ -223,7 +217,7 @@ fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
                     &size,
                     |bencher, &_| {
                         bencher.iter(|| {
-                            matrix_multiply(&num_array_matrix1, &num_array_vector.as_ref().unwrap())
+                            matrix_multiply(&num_array_matrix1, num_array_vector.as_ref().unwrap())
                         })
                     },
                 );
@@ -244,10 +238,7 @@ fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
                     &size,
                     |bencher, &_| {
                         bencher.iter(|| {
-                            matrix_multiply(
-                                &num_array_matrix1,
-                                &num_array_matrix2.as_ref().unwrap(),
-                            )
+                            matrix_multiply(&num_array_matrix1, num_array_matrix2.as_ref().unwrap())
                         })
                     },
                 );
