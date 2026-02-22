@@ -43,19 +43,14 @@ use std::marker::PhantomData;
 const ALIGNMENT: usize = 64;
 
 /// Type tag for buffer element types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DType {
+    #[default]
     F32,
     F64,
     I32,
     I64,
     U8,
-}
-
-impl Default for DType {
-    fn default() -> Self {
-        Self::F32
-    }
 }
 
 impl DType {
@@ -248,7 +243,7 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&mut []);
         }
-        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut u8, meta.len_elements) })
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr, meta.len_elements) })
     }
 
     /// Split-borrow: get 2 non-overlapping mutable f32 slices simultaneously.
