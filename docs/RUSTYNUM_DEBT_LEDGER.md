@@ -47,7 +47,7 @@ PR #23 (`claude/unsigned-holograph-ghosts-NasOb`, merged 2026-02-22T12:54, +3,07
 
 | # | Issue | Location | Severity | Description |
 |---|---|---|---|---|
-| N1 | **3 separate PRNG impls** | search.rs, compress.rs, tree.rs (splitmix64) + recognize.rs (xorshift) | 🟡 Maintenance | Four independent PRNG copies. The xorshift in recognize.rs is statistically weaker. |
+| N1 | **5 separate PRNG impls** | search.rs, compress.rs, tree.rs (splitmix64) + recognize.rs, ghost_discovery.rs (SimpleRng/xorshift) | 🟡 Maintenance | Five independent PRNG copies. The xorshift in recognize.rs and ghost_discovery.rs is statistically weaker than splitmix64. |
 | N2 | **recognize.rs ≠ Fingerprint\<1024\>** | `rustynum-oracle/src/recognize.rs` | 🟡 Architecture | 64K-bit LSH projection uses `Vec<u64>` of 1024 words instead of the new `Fingerprint<1024>` added in the same PR. Manual popcount loops that won't benefit from future Fingerprint SIMD. |
 | N3 | **pub(crate) field escalation** | `rustynum-oracle/src/organic.rs` | 🟢 Encapsulation | `known_templates` and `template_norms` promoted from private to `pub(crate)` so recognize.rs can read them. Should be accessor methods. |
 | N4 | **Concept ontology rename** | `rustynum-oracle/src/ghost_discovery.rs` | 🟢 API break | 52 concepts changed from Ada-specific (ada.hybrid, rel.devotion) to signal-processing (motor.servo, ctrl.pid). Intentional, but breaks reproducibility of prior ghost discovery runs. |
@@ -85,9 +85,9 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 
 | # | Item | Severity | Fix Estimate | Recommendation |
 |---|---|---|---|---|
-| **N1** | 4× PRNG copies | 🟡 | 1 hour | Extract `rustynum_core::rng::SplitMix64` with `next_u64()`, `next_f64()`, `next_gaussian()`. Replace all 4 sites. |
+| **N1** | 5× PRNG copies | 🟡 | 1 hour | Extract `rustynum_core::rng::SplitMix64` with `next_u64()`, `next_f64()`, `next_gaussian()`. Replace all 5 sites: search.rs, compress.rs, tree.rs (splitmix64) + recognize.rs, ghost_discovery.rs (SimpleRng/xorshift). |
 | **N2** | recognize.rs ≠ Fingerprint\<1024\> | 🟡 | 2 hours | Refactor `Projector64K.project()` → `Fingerprint<1024>`, use `Fingerprint::hamming_distance()` |
-| **N3** | pub(crate) fields | 🟢 | 30 min | Add `OrganicWAL::template_for(idx)` and `template_norm(idx)` accessors |
+| **N3** | pub(crate) field escalation | 🟢 | 30 min | `known_templates` and `template_norms` promoted to `pub(crate)` so recognize.rs can read them. Add `OrganicWAL::template_for(idx)` and `template_norm(idx)` accessors instead. |
 | **N5** | `debug_assert_eq!` in HammingSIMD | 🟡 Safety | 5 min | `HammingSIMD::distance()` uses `debug_assert_eq!` for length check — elided in release builds. The AVX-512 path loads 64-byte chunks via `_mm512_loadu_si512`; mismatched buffer lengths could read past allocation. **Upgrade to `assert_eq!`** (one comparison per call, negligible cost). |
 | **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. Same logical operation, three incompatible paths. When `Fingerprint<N>` gets a SIMD-accelerated path, it should delegate to rustynum-core (like PR #24 did for rustynum-clam), not reimplement. |
 
@@ -108,9 +108,11 @@ The 4 CLAM papers (CHESS, CHAODA, CAKES, panCAKES) were reviewed, converted to c
 | **DFS Sieve k-NN** (CAKES Alg 6) | `knn_dfs_sieve()` with min-heap Q + max-heap H | 100+ | ✅ Exact match |
 | **δ⁺/δ⁻ pruning** (CAKES Fig 1) | `Cluster::delta_plus()`, `delta_minus()` | 20 | ✅ Triangle inequality bounds |
 | **Depth-first reordering** (CAKES §2.1.3) | `ClamTree.order` permutation array | integrated | ✅ O(n) memory |
-| **XOR-diff encoding** (panCAKES unitary) | `XorDiffEncoding::encode()/decode()` | 100+ | ✅ **Unique to rustynum** — not in upstream Rust |
-| **Compressed Hamming distance** (panCAKES §II-C) | `hamming_from_query()` | 50+ | ✅ **Unique to rustynum** — avoids full decompression |
-| **Compressive ρ-NN** (panCAKES) | `hamming_to_compressed()` | 30+ | ✅ **Unique to rustynum** |
+| **XOR-diff encoding** (panCAKES unitary) | `XorDiffEncoding::encode()/decode()` | 100+ | ✅ Matches paper unitary mode |
+| **Recursive compression** (panCAKES Alg 2) | `CompressionMode::Recursive`, bottom-up cost comparison in `compress()`, recursive `assign_encodings()` | 200+ | ✅ Full framework — chooses min(unitary, recursive) per cluster |
+| **Mixed-mode compressed tree** (panCAKES) | `CompressedTree` with `cluster_modes: Vec<CompressionMode>` | integrated | ✅ Tracks which clusters use unitary vs recursive |
+| **Compressed Hamming distance** (panCAKES §II-C) | `hamming_from_query()` on `XorDiffEncoding` | 50+ | ✅ Avoids full decompression for distance computation |
+| **Compressive distance primitive** (panCAKES) | `hamming_to_compressed()` on `CompressedTree` | 30+ | 🟡 Distance primitive only — used in test, but no search function (rho_nn, knn_dfs_sieve) actually calls it yet |
 | **VPOPCNTDQ-accelerated Hamming** (PR #24) | `HammingSIMD` + batch + top-k | 130+ | ✅ Links rustynum-core SIMD to CLAM search |
 
 ### 6.2 Paper Knowledge Documented But Not Yet Coded
@@ -121,8 +123,8 @@ The 4 CLAM papers (CHESS, CHAODA, CAKES, panCAKES) were reviewed, converted to c
 | **Improved child pruning** (CAKES Supp §1.1) | CAKES | Law-of-cosines projection saves ~20% distance computations | Phase 1b |
 | **Auto-tuning** (CAKES §2.3) | CAKES | Sample-then-select across 3 algorithms | Phase 1c |
 | **Approximate k-NN** | CAKES | Early termination when recall tolerance allows | Phase 1d |
-| **Recursive compression** (panCAKES Alg 2) | panCAKES | Bottom-up unitary-vs-recursive cost comparison. Mixed-mode tree. | Phase 2a |
-| **Mixed-mode decompression** | panCAKES | Ancestor chain walk for recursive nodes | Phase 2b |
+| **Recursive decompression chain walk** | panCAKES | `decompress_point()` does single-hop (center + XOR diff). For recursively-encoded points, need to walk ancestor chain: leaf → parent center → grandparent center → ... → root. Currently ~50% done. | Phase 2b (reduced scope) |
+| **Search-on-compressed wrapper** | panCAKES | `hamming_to_compressed()` exists as distance primitive but no search function (rho_nn, knn_dfs_sieve) plugs it in as the distance oracle. Need a CompressedSearch adapter. | Phase 2c (new) |
 | **Graph induction** | CHAODA | Overlapping cluster detection → edge graph | Phase 5 (not prioritized) |
 | **6 anomaly scorers** | CHAODA | Cluster cardinality, component cardinality, graph neighborhood, etc. | Phase 5 |
 | **Transition/subsumed edges** (PR #21) | CHAODA | Python-only, never ported to Rust anywhere | Phase 5 |
@@ -149,7 +151,7 @@ The ladybug-rs `CLAM_HARDENING.md` proposes 8 integrations. Here's what rustynum
 | §1: Replace scent hierarchy with CLAM tree | `Tree::par_new_minimal()` + `KnnBranch` | `ClamTree::build()` + `knn_dfs_sieve()` | ✅ Ready. rustynum-clam's tree IS the CLAM tree. Ladybug just needs to call it on `Fingerprint` data. |
 | §2: LFD estimation | `cluster.lfd()` | `Lfd::compute()` + `lfd_percentiles()` + `lfd_by_depth()` | ✅ Ready. rustynum-clam even exceeds — has per-depth LFD stats. |
 | §3: d_min/d_max triangle inequality | `d_min = d - r`, `d_max = d + r` | `delta_plus()`, `delta_minus()` on `Cluster` | ✅ Ready. Exact same formulas. |
-| §4: panCAKES compression | `CompressedFingerprint` | `XorDiffEncoding` + `CompressedTree` + `hamming_from_query()` | 🟡 Partial. Has unitary compression. Missing recursive compression (panCAKES Alg 2). |
+| §4: panCAKES compression | `CompressedFingerprint` | `XorDiffEncoding` + `CompressedTree` + `CompressionMode::{Unitary,Recursive}` + `hamming_to_compressed()` | 🟡 Framework complete (unitary + recursive + mixed-mode tree). Gaps: recursive decompression walks single-hop only (no ancestor chain), `hamming_to_compressed()` is a distance primitive not yet wired into search functions. |
 | §5: CHAODA anomaly | Anomaly scoring on CLAM tree | ❌ Not implemented | 🔴 Missing. Not in upstream Rust either. |
 | §6: HDR-stacked CRP distributions | `ClusterDistribution` with μ, σ, percentiles, INT4 histogram | ❌ Not in rustynum-clam | 🟡 **This is ladybug-unique** — CLAM doesn't have it. rustynum-clam provides the tree; ladybug adds the distribution statistics per cluster. |
 | §7: DistanceValue trait | Generic distance metric | `Distance` trait in tree.rs | ✅ Ready. Same concept, different name. |
@@ -219,7 +221,7 @@ Based on compute intensity × frequency of use:
 
 | Priority | Tactic | Operation | rustynum-clam Enabler | Est. Impact |
 |---|---|---|---|---|
-| 🔴 P0 | #4 Reverse Causality | Chain of k-NN queries | CAKES DFS Sieve | 100× (brute→tree) |
+| 🔴 P0 | #4 Reverse Causality | Chain of k-NN queries | CAKES DFS Sieve | ~100× theoretical (brute→tree), unbenchmarked on binary vectors |
 | 🔴 P0 | #15 CRP Construction | Batch Hamming per cluster | `hamming_batch_simd` | 8× (scalar→AVX-512) |
 | 🔴 P0 | #25 Pattern Matching | Core SIMD Hamming | `HammingSIMD` (PR #24) | Already done |
 | 🟡 P1 | #11 Contradiction Detection | Pairwise similarity | CAKES ρ-NN | O(n²)→O(n·log n) |
@@ -237,7 +239,7 @@ Based on compute intensity × frequency of use:
 ### Immediate (debt cleanup, <1 day)
 
 1. **Upgrade `debug_assert_eq!` → `assert_eq!` in `HammingSIMD::distance()`** — AVX-512 safety. One comparison per call, negligible cost. Also check upstream `rustynum_core::simd::hamming_distance` (N5).
-2. **Extract `rustynum_core::rng::SplitMix64`** — consolidate 4 PRNG copies (N1). Single commit, cherry-pickable.
+2. **Extract `rustynum_core::rng::SplitMix64`** — consolidate 5 PRNG copies (N1): search.rs, compress.rs, tree.rs, recognize.rs, ghost_discovery.rs. Single commit, cherry-pickable.
 3. **Refactor recognize.rs → Fingerprint\<1024\>** — connect LSH projection to the type system (N2).
 4. **Add OrganicWAL accessor methods** — replace pub(crate) fields (N3).
 
@@ -247,11 +249,11 @@ Based on compute intensity × frequency of use:
 5. **Improved child pruning** — law-of-cosines projection in rho_nn(), ~30 lines
 6. **Auto-tuning** — sample-then-select, ~50 lines
 
-### Following sprint (panCAKES completeness, 3-4 days)
+### Following sprint (panCAKES completion, 2-3 days)
 
-7. **Recursive compression** (panCAKES Alg 2) — CompressionMode::Recursive, bottom-up cost comparison, ~200 lines
-8. **Mixed-mode decompression** — ancestor chain walk, ~100 lines
-9. **Compressive k-NN wrapper** — swap distance oracle in DFS sieve, ~50 lines
+7. **Recursive decompression chain walk** — extend `decompress_point()` to follow ancestor chain for recursively-encoded points, ~80 lines
+8. **CompressedSearch adapter** — wire `hamming_to_compressed()` into DFS sieve as swappable distance oracle, ~100 lines
+9. **Compression benchmarks** — measure ratio + query speed for unitary vs recursive vs uncompressed on Ada's actual 10K-bit vectors, ~50 lines
 
 ### Ladybug integration (after rustynum-clam is complete)
 
