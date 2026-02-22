@@ -9,8 +9,7 @@
 //! - `avx2`:   f32x8  (6x8  microkernel), f64x4 (4x4 microkernel)
 
 use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
-use rustynum_core::parallel::parallel_for_chunks;
-use rustynum_core::simd::{self, F32_LANES, F64_LANES, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC, SGEMM_NR, DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR};
+use rustynum_core::simd::{SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC, SGEMM_NR, DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR};
 use std::simd::StdFloat;
 
 // SIMD vector types selected by feature flag — no runtime branching
