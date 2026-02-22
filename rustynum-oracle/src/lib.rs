@@ -17,6 +17,7 @@ pub mod linalg;
 pub mod sweep;
 pub mod oracle;
 pub mod organic;
+pub mod aiwar_ghost;
 
 pub use linalg::{
     cholesky_solve, condition_number,
