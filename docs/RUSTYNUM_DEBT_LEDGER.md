@@ -1,8 +1,9 @@
 # rustynum Technical Debt & Knowledge Transfer Ledger
 
-> **Scope**: PR #23 + PR #24 merged analysis, CLAM paper knowledge transfer, ladybug-rs acceleration needs  
-> **Date**: 2026-02-22  
-> **Repos**: AdaWorldAPI/rustynum, AdaWorldAPI/ladybug-rs, AdaWorldAPI/clam (fork)
+> **Scope**: PRs #23–#27 merged, full debt lifecycle from discovery through closure  
+> **Date**: 2026-02-22 (updated post-PR #27)  
+> **Repos**: AdaWorldAPI/rustynum, AdaWorldAPI/ladybug-rs, AdaWorldAPI/clam (fork)  
+> **Status**: 0 open issues, 0 open PRs. 30/30 tracked items (D1–D9, N1–N30) closed. 4 unfiled findings (U1–U4) pending triage.
 
 ---
 
@@ -81,21 +82,32 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 
 ---
 
-## 5. Open Debt (Current State)
+## 5. Debt Status (Current State — Post PR #27)
 
-| # | Item | Severity | Fix Estimate | Recommendation |
-|---|---|---|---|---|
-| **N1** | ~~5× PRNG copies~~ | ✅ CLOSED | — | Consolidated into `rustynum_core::rng::SplitMix64` by PR #25. All 5 sites replaced. |
-| **N2** | recognize.rs ≠ Fingerprint\<1024\> | 🟡 | 2 hours | Refactor `Projector64K.project()` → `Fingerprint<1024>`, use `Fingerprint::hamming_distance()` |
-| **N3** | ~~pub(crate) field escalation~~ | ✅ CLOSED | — | Fields now private with `template()`, `template_norm()`, `update_template()` accessors. PR #25. |
-| **N5** | `debug_assert_eq!` in HammingSIMD | 🟡 Safety | 5 min | `HammingSIMD::distance()` uses `debug_assert_eq!` for length check — elided in release builds. The AVX-512 path loads 64-byte chunks via `_mm512_loadu_si512`; mismatched buffer lengths could read past allocation. **Upgrade to `assert_eq!`** (one comparison per call, negligible cost). |
-| **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. PR #25 partially addressed — `hamming_64k` delegates to `Fingerprint64K` for 1024-word case. SIMD acceleration of Fingerprint deferred. |
-| **N7** | ~~Granger sign convention contradiction~~ | ✅ CLOSED | — | Fixed in PR #26. All three doc locations now say G < 0 = A predicts B. Debug thinking removed. |
-| **N8** | ~~`Contradiction` struct overpromises~~ | ✅ CLOSED | — | Renamed to `SimilarPair` in PR #26. |
-| **N9** | Flat confidence threshold in reverse_trace | 🟢 Improvement | 30 min | Uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. (PR #25) |
-| **N10** | ~~`hamming_i8` misleading name~~ | ✅ CLOSED | — | Renamed to `symbol_distance` in PR #26. |
-| **N11** | Clone-per-hop in `reverse_trace()` | 🟢 Latent perf | 30 min | 16KB clone per hop × depth. Fine for research. Rewrite to two pre-allocated buffers + `copy_from_slice` if it enters a batch hot loop. (PR #25) |
-| **N12** | ~~`hamming_64k` 16KB stack copy regression~~ | ✅ CLOSED | — | Reverted to inline loop on borrowed slices in PR #26. Zero copies. |
+**0 open issues, 0 open PRs.** All 30 tracked items (D1–D9, N1–N30) resolved across PRs #23–#27.
+
+### 5.1 Closure Summary
+
+| PR | Items Closed | Method |
+|---|---|---|
+| #23 | D1–D8 | Code fixes (parallel writes, blackboard, GEMM, FMA, dead imports, Fingerprint, DeltaLayer) |
+| #24 | D9 | HammingSIMD wiring |
+| #25 | N1, N3 | PRNG consolidation, WAL encapsulation |
+| #26 | N7, N8, N10, N12 | Granger docs, SimilarPair rename, symbol_distance, hamming_64k revert |
+| #27 | N2, N4–N6, N9, N11, N13–N30 | Full workspace sweep — Blackboard Send fix, f32 mean_axis, debug_assert upgrade, PyO3 panics, bounds checks, naming, dead code cleanup |
+
+### 5.2 Unfiled Findings (From Deep Review, Not Yet Tracked)
+
+These were identified during cross-session review but not filed as issues:
+
+| # | Severity | Location | Issue |
+|---|---|---|---|
+| **U1** | 🟡 High | `nars.rs:46-50` | **Signed `unbind` is not a true inverse when saturation occurs.** `saturating_neg()` then `saturating_add()` clips at ±127. For values where `bind()` saturated, `unbind(bind(a,b), b) ≠ a`. The existing test only covers non-saturating ranges. This is a mathematical limitation, not a bug per se, but callers have no way to know the inversion was lossy. |
+| **U2** | 🟡 Medium | `recognize.rs:469,792` + `organic.rs:859` | **`partial_cmp().unwrap()` panics on NaN.** Three sort/max_by sites will crash if f32 scores contain NaN (possible via inf×0 in projections or corrupted input). Fix: `.unwrap_or(Ordering::Equal)` |
+| **U3** | 🟢 Medium | `recognize.rs:108` | **64K projector materializes 130MB–1GB in memory.** `Projector64K::new(d, seed)` creates 65,536 × d × 4-byte hyperplanes. At d=1024: 256MB. At d=2048: 512MB. By design — `with_planes()` exists for smaller projectors — but worth documenting. |
+| **U4** | 🟢 Low | `recognize.rs:1113` | **`learn_improves` test asserts `post_correct >= 0` on a `usize`.** Tautology — always true. Should assert meaningful improvement (e.g., `>= 2` of 4 classes). |
+
+**Recommendation**: File U1 and U2 as GitHub issues. U3 and U4 are doc/test quality, not bugs.
 
 ---
 
@@ -242,13 +254,10 @@ Based on compute intensity × frequency of use:
 
 ## 9. Consolidated Action Items
 
-### Immediate (debt cleanup, <1 day)
+### Immediate (unfiled findings)
 
-1. **Upgrade `debug_assert_eq!` → `assert_eq!` in `HammingSIMD::distance()`** — AVX-512 safety. One comparison per call, negligible cost. Also check upstream `rustynum_core::simd::hamming_distance` (N5).
-2. **Fix Granger sign convention** — swap G>0/G<0 in `granger_signal()` doc, remove "Wait — let me clarify" from `granger_scan()` doc (N7). 5-minute fix.
-3. ~~Extract `rustynum_core::rng::SplitMix64`~~ — ✅ Done in PR #25 (N1 closed).
-4. ~~Refactor recognize.rs → Fingerprint\<1024\>~~ — ✅ Partially done in PR #25 (`hamming_64k` delegates for 1024-word case).
-5. ~~Add OrganicWAL accessor methods~~ — ✅ Done in PR #25 (N3 closed).
+1. **File U1** — Document signed unbind saturation limitation in nars.rs. Add test covering saturating range.
+2. **File U2** — Fix 3 `partial_cmp().unwrap()` NaN panic paths in recognize.rs and organic.rs.
 
 ### Next sprint (CLAM completeness, 2-3 days)
 
