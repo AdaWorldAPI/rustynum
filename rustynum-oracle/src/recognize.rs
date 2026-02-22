@@ -16,6 +16,7 @@ use crate::organic::{
     XTransPattern, OrganicWAL, PlasticityTracker,
 };
 use crate::sweep::Base;
+use rustynum_core::Blackboard;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,9 +81,12 @@ fn template_to_f32(template: &[i8]) -> Vec<f32> {
 /// is the fingerprint.
 ///
 /// SNR scales as sqrt(num_hyperplanes): 64K gives ~2.5x the SNR of 8K.
+///
+/// Performance: hyperplanes stored in a single contiguous buffer
+/// `[num_planes * d]` for cache-friendly sequential access during projection.
 pub struct Projector64K {
-    /// Random hyperplanes: [num_planes][d] stored as f32.
-    hyperplanes: Vec<Vec<f32>>,
+    /// Flat hyperplane buffer: hyperplanes[plane * d .. (plane+1) * d].
+    hyperplanes_flat: Vec<f32>,
     /// Dimensionality of input vectors.
     d: usize,
     /// Number of hyperplanes (bits in fingerprint). Must be multiple of 64.
@@ -105,37 +109,87 @@ impl Projector64K {
     pub fn with_planes(d: usize, num_planes: usize, seed: u64) -> Self {
         assert!(num_planes > 0 && num_planes % BITS_PER_WORD == 0);
         let mut rng = SplitMix64::new(seed);
-        let hyperplanes: Vec<Vec<f32>> = (0..num_planes)
-            .map(|_| random_unit_vector(d, &mut rng))
-            .collect();
         let num_words = num_planes / BITS_PER_WORD;
 
-        Self { hyperplanes, d, num_planes, num_words }
+        // Single contiguous allocation for cache-friendly access.
+        // Layout: hyperplanes_flat[plane * d + dim]
+        let mut hyperplanes_flat = vec![0.0f32; num_planes * d];
+        for plane in 0..num_planes {
+            let offset = plane * d;
+            let mut norm_sq = 0.0f32;
+            for dim in 0..d {
+                let v = rng.next_gaussian() as f32;
+                hyperplanes_flat[offset + dim] = v;
+                norm_sq += v * v;
+            }
+            let inv_norm = 1.0 / norm_sq.sqrt().max(1e-10);
+            for dim in 0..d {
+                hyperplanes_flat[offset + dim] *= inv_norm;
+            }
+        }
+
+        Self { hyperplanes_flat, d, num_planes, num_words }
     }
 
     /// Project a float vector to a binary fingerprint.
     ///
     /// Each bit = sign(dot(vector, hyperplane_i)).
+    /// Hot path: processes 64 hyperplanes per iteration to build one u64 word.
     pub fn project(&self, vector: &[f32]) -> Vec<u64> {
         assert_eq!(vector.len(), self.d);
         let mut bits = vec![0u64; self.num_words];
+        let d = self.d;
 
-        for (i, hp) in self.hyperplanes.iter().enumerate() {
-            let dot: f32 = vector.iter().zip(hp.iter()).map(|(a, b)| a * b).sum();
-            if dot >= 0.0 {
-                let word = i / BITS_PER_WORD;
-                let bit = i % BITS_PER_WORD;
-                bits[word] |= 1u64 << bit;
+        for word_idx in 0..self.num_words {
+            let mut word = 0u64;
+            let base_plane = word_idx * BITS_PER_WORD;
+
+            for bit in 0..BITS_PER_WORD {
+                let plane = base_plane + bit;
+                let hp = &self.hyperplanes_flat[plane * d..(plane + 1) * d];
+                let mut dot = 0.0f32;
+                // Inner dot product — sequential memory access on hp.
+                for j in 0..d {
+                    dot += vector[j] * hp[j];
+                }
+                if dot >= 0.0 {
+                    word |= 1u64 << bit;
+                }
             }
+            bits[word_idx] = word;
         }
 
         bits
     }
 
     /// Project an i8 template to a binary fingerprint.
+    ///
+    /// Avoids f32 conversion allocation: accumulates dot product directly
+    /// with i8→f32 conversion per element.
     pub fn project_signed(&self, template: &[i8]) -> Vec<u64> {
-        let fv: Vec<f32> = template.iter().map(|&v| v as f32).collect();
-        self.project(&fv)
+        assert_eq!(template.len(), self.d);
+        let mut bits = vec![0u64; self.num_words];
+        let d = self.d;
+
+        for word_idx in 0..self.num_words {
+            let mut word = 0u64;
+            let base_plane = word_idx * BITS_PER_WORD;
+
+            for bit in 0..BITS_PER_WORD {
+                let plane = base_plane + bit;
+                let hp = &self.hyperplanes_flat[plane * d..(plane + 1) * d];
+                let mut dot = 0.0f32;
+                for j in 0..d {
+                    dot += template[j] as f32 * hp[j];
+                }
+                if dot >= 0.0 {
+                    word |= 1u64 << bit;
+                }
+            }
+            bits[word_idx] = word;
+        }
+
+        bits
     }
 
     /// Project a batch of i8 templates, returning their fingerprints.
@@ -156,6 +210,36 @@ impl Projector64K {
     /// Number of u64 words in fingerprint.
     pub fn num_words(&self) -> usize {
         self.num_words
+    }
+
+    /// Populate a Blackboard buffer with this projector's hyperplane data.
+    ///
+    /// Writes the flat hyperplane matrix into buffer `name` on the blackboard.
+    /// The buffer is allocated (or reallocated) to the correct size.
+    /// After this call, `from_blackboard()` can reconstruct the projector
+    /// without regenerating random numbers — zero-copy from the arena.
+    pub fn write_to_blackboard(&self, bb: &mut Blackboard, name: &str) {
+        bb.alloc_f32(name, self.hyperplanes_flat.len());
+        let buf = bb.get_f32_mut(name);
+        buf.copy_from_slice(&self.hyperplanes_flat);
+    }
+
+    /// Reconstruct a projector from a Blackboard buffer (zero-copy read).
+    ///
+    /// The hyperplane data is copied from the blackboard into the projector's
+    /// owned buffer. Use this when the same hyperplanes need to be reused
+    /// across multiple experiments at the same dimensionality.
+    pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Self {
+        assert!(num_planes > 0 && num_planes % BITS_PER_WORD == 0);
+        let buf = bb.get_f32(name);
+        assert_eq!(buf.len(), num_planes * d);
+        let num_words = num_planes / BITS_PER_WORD;
+        Self {
+            hyperplanes_flat: buf.to_vec(),
+            d,
+            num_planes,
+            num_words,
+        }
     }
 }
 
@@ -257,11 +341,20 @@ impl Recognizer {
     ///
     /// Use fewer planes for testing (e.g., 1024) to reduce memory.
     pub fn with_planes(d: usize, channels: usize, num_planes: usize, projector_seed: u64) -> Self {
+        let projector = Projector64K::with_planes(d, num_planes, projector_seed);
+        Self::with_projector(d, channels, projector)
+    }
+
+    /// Create a recognizer sharing a pre-built projector.
+    ///
+    /// Use this when running multiple experiments at the same dimensionality
+    /// to avoid regenerating 64K hyperplanes per experiment.
+    pub fn with_projector(d: usize, channels: usize, projector: Projector64K) -> Self {
+        assert_eq!(projector.d(), d);
         let pattern = XTransPattern::new(d, channels);
         let wal = OrganicWAL::new(pattern);
         let plasticity = PlasticityTracker::new(0, 50);
         let container = vec![0i8; d];
-        let projector = Projector64K::with_planes(d, num_planes, projector_seed);
 
         Self {
             wal,
@@ -272,6 +365,11 @@ impl Recognizer {
             class_averages: Vec::new(),
             class_counts: Vec::new(),
         }
+    }
+
+    /// Take the projector out for reuse in another Recognizer.
+    pub fn take_projector(self) -> Projector64K {
+        self.projector
     }
 
     /// Number of registered classes.
@@ -608,6 +706,24 @@ fn run_recognition_experiment_inner(
     seed: u64,
     num_planes: usize,
 ) -> ExperimentResult {
+    let projector = Projector64K::with_planes(d, num_planes, seed ^ 0xCAFE);
+    let (result, _projector) = run_recognition_experiment_with_projector(d, base, channels, num_classes, examples_per_class, noise_level, seed, projector);
+    result
+}
+
+/// Experiment with a pre-built projector (avoids regenerating hyperplanes).
+///
+/// Returns the projector alongside the result for reuse (blackboard pattern).
+fn run_recognition_experiment_with_projector(
+    d: usize,
+    base: Base,
+    channels: usize,
+    num_classes: usize,
+    examples_per_class: usize,
+    noise_level: f32,
+    seed: u64,
+    projector: Projector64K,
+) -> (ExperimentResult, Projector64K) {
     let mut rng = SplitMix64::new(seed);
 
     // Generate class templates
@@ -628,8 +744,8 @@ fn run_recognition_experiment_inner(
         })
         .collect();
 
-    // Create recognizer
-    let mut recognizer = Recognizer::with_planes(d, channels, num_planes, seed ^ 0xCAFE);
+    // Create recognizer with shared projector
+    let mut recognizer = Recognizer::with_projector(d, channels, projector);
 
     // Register classes
     for (i, t) in templates.iter().enumerate() {
@@ -690,7 +806,7 @@ fn run_recognition_experiment_inner(
         }
     }
 
-    ExperimentResult {
+    let result = ExperimentResult {
         d,
         base,
         channels,
@@ -704,11 +820,33 @@ fn run_recognition_experiment_inner(
         projection_mean_score: projection_score_sum / total_tests as f32,
         novelty_detection_rate: novelty_detected as f32 / novelty_tests as f32,
         mean_residual_energy: residual_sum / total_tests as f32,
-    }
+    };
+
+    // Return projector for reuse (blackboard pattern)
+    let projector = recognizer.take_projector();
+    (result, projector)
 }
 
-/// Run a sweep across parameter space.
+/// Run a sweep across parameter space (full 64K planes — slow but precise).
 pub fn run_recognition_sweep() -> Vec<ExperimentResult> {
+    run_recognition_sweep_with_planes(NUM_HYPERPLANES)
+}
+
+/// Run a fast sweep with reduced plane count (4096 — ~16× faster).
+///
+/// Quality numbers will be slightly lower than 64K but the relative
+/// ranking between methods is preserved. Use for development iteration.
+pub fn run_recognition_sweep_fast() -> Vec<ExperimentResult> {
+    run_recognition_sweep_with_planes(4096)
+}
+
+/// Inner sweep with configurable plane count.
+///
+/// Uses the Blackboard pattern from rustynum-core: hyperplane matrices are
+/// generated once per dimensionality into a 64-byte-aligned arena buffer,
+/// then each experiment reconstructs its projector from that buffer.
+/// This avoids regenerating random hyperplanes per experiment (the dominant cost).
+fn run_recognition_sweep_with_planes(num_planes: usize) -> Vec<ExperimentResult> {
     let mut results = Vec::new();
 
     let dims = [512, 1024, 2048];
@@ -716,21 +854,35 @@ pub fn run_recognition_sweep() -> Vec<ExperimentResult> {
     let class_counts = [4, 8, 16, 32];
     let noise_levels = [0.3, 0.5, 1.0];
 
+    let mut bb = Blackboard::new();
+    let projector_seed = 42u64 ^ 0xCAFE;
+
     for &d in &dims {
+        // Build the projector ONCE per dimensionality, write to blackboard.
+        let buf_name = format!("hp_{}", d);
+        let master = Projector64K::with_planes(d, num_planes, projector_seed);
+        master.write_to_blackboard(&mut bb, &buf_name);
+
         for &base in &bases {
             for &nc in &class_counts {
                 let channels = (nc * 2).max(16).min(d / 4);
                 for &noise in &noise_levels {
-                    let result = run_recognition_experiment(
+                    // Reconstruct projector from blackboard (copy, no RNG)
+                    let projector = Projector64K::from_blackboard(&bb, &buf_name, d, num_planes);
+                    let (result, _) = run_recognition_experiment_with_projector(
                         d, base, channels, nc,
                         3,     // examples_per_class
                         noise, // noise_level
                         42 + d as u64 + nc as u64,
+                        projector,
                     );
                     results.push(result);
                 }
             }
         }
+
+        // Free the buffer for this dimensionality (next d will allocate its own)
+        bb.free(&buf_name);
     }
 
     results
@@ -809,9 +961,14 @@ pub fn run_recognition() {
     println!("  64K-bit LSH + Gram-Schmidt Readout");
     println!("{}\n", "=".repeat(120));
 
-    // Quick single experiment first
-    println!("--- Quick single experiment: D=1024, Signed(7), K=8, noise=0.5 ---\n");
-    let quick = run_recognition_experiment(
+    // --- Timing benchmarks ---
+    println!("--- Timing benchmarks ---\n");
+    run_timing_benchmarks();
+    println!();
+
+    // --- Quick single experiment (4K planes for speed) ---
+    println!("--- Quick single experiment: D=1024, Signed(7), K=8, noise=0.5 (4K planes) ---\n");
+    let quick = run_recognition_experiment_inner(
         1024,
         Base::Signed(7),
         32,  // channels
@@ -819,6 +976,7 @@ pub fn run_recognition() {
         3,   // examples
         0.5, // noise
         42,
+        4096,
     );
 
     println!("  Hamming accuracy:    {:.1}%", quick.hamming_accuracy * 100.0);
@@ -828,10 +986,118 @@ pub fn run_recognition() {
     println!("  Mean residual:       {:.3}", quick.mean_residual_energy);
     println!();
 
-    // Full sweep
-    println!("--- Full parameter sweep ---\n");
-    let results = run_recognition_sweep();
+    // --- Full sweep (4K planes for feasible runtime) ---
+    println!("--- Parameter sweep (4096 planes) ---\n");
+    let results = run_recognition_sweep_fast();
     print_recognition_results(&results);
+
+    // --- Plane count comparison: 1K vs 4K vs 16K vs 64K ---
+    println!("\n--- Plane count comparison: D=1024, Signed(7), K=8, noise=0.5 ---\n");
+    println!("{:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "Planes", "Hamming", "Proj", "2-Stage", "Novelty", "Residual");
+    println!("{}", "-".repeat(68));
+    for &planes in &[1024, 4096, 16384, 65536] {
+        let t0 = std::time::Instant::now();
+        let r = run_recognition_experiment_inner(
+            1024, Base::Signed(7), 32, 8, 3, 0.5, 42, planes,
+        );
+        let elapsed = t0.elapsed();
+        println!("{:>8} {:>9.1}% {:>9.1}% {:>9.1}% {:>9.1}% {:>9.3}  ({:.1}s)",
+            planes,
+            r.hamming_accuracy * 100.0,
+            r.projection_accuracy * 100.0,
+            r.two_stage_accuracy * 100.0,
+            r.novelty_detection_rate * 100.0,
+            r.mean_residual_energy,
+            elapsed.as_secs_f32());
+    }
+}
+
+/// Run timing benchmarks for individual operations.
+fn run_timing_benchmarks() {
+    use std::time::Instant;
+
+    let d = 1024;
+    let num_classes = 20;
+    let mut rng = SplitMix64::new(42);
+
+    // 1. Projector creation (64K)
+    let t0 = Instant::now();
+    let proj = Projector64K::new(d, 99);
+    let proj_create_ms = t0.elapsed().as_millis();
+    println!("  Projector64K::new(D={}, 64K planes):  {}ms", d, proj_create_ms);
+
+    // 2. Single projection (64K bits)
+    let template: Vec<i8> = (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect();
+    let fv: Vec<f32> = template.iter().map(|&v| v as f32).collect();
+    let t0 = Instant::now();
+    let iters = 100;
+    for _ in 0..iters {
+        std::hint::black_box(proj.project(std::hint::black_box(&fv)));
+    }
+    let proj_us = t0.elapsed().as_micros() as f64 / iters as f64;
+    println!("  Single project (64K bits):             {:.1}us ({:.2}ms)", proj_us, proj_us / 1000.0);
+
+    // 3. Batch projection (100 templates)
+    let templates: Vec<Vec<i8>> = (0..100)
+        .map(|_| (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect())
+        .collect();
+    let t0 = Instant::now();
+    let _fps = proj.project_batch(&templates);
+    let batch_ms = t0.elapsed().as_millis();
+    println!("  Batch project (100 × 64K):             {}ms", batch_ms);
+
+    // 4. Hamming distance (64K bits)
+    let fp1 = proj.project_signed(&templates[0]);
+    let fp2 = proj.project_signed(&templates[1]);
+    let t0 = Instant::now();
+    let ham_iters = 100_000;
+    for _ in 0..ham_iters {
+        std::hint::black_box(hamming_64k(
+            std::hint::black_box(&fp1),
+            std::hint::black_box(&fp2),
+        ));
+    }
+    let ham_ns = t0.elapsed().as_nanos() as f64 / ham_iters as f64;
+    println!("  Hamming 64K (1024 u64s):               {:.0}ns", ham_ns);
+
+    // 5. Recognizer creation + class registration
+    let t0 = Instant::now();
+    let mut recognizer = Recognizer::with_planes(d, num_classes * 2, 4096, 99);
+    let class_templates: Vec<Vec<i8>> = (0..num_classes)
+        .map(|_| (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect())
+        .collect();
+    for (i, t) in class_templates.iter().enumerate() {
+        recognizer.register_class(i as u32, t.clone());
+    }
+    let reg_ms = t0.elapsed().as_millis();
+    println!("  Recognizer setup ({} classes, 4K):     {}ms", num_classes, reg_ms);
+
+    // 6. Single recognize (projection readout, 20 classes)
+    let query = &class_templates[0];
+    let t0 = Instant::now();
+    let rec_iters = 1000;
+    for _ in 0..rec_iters {
+        std::hint::black_box(recognizer.recognize_orthogonal(std::hint::black_box(query)));
+    }
+    let rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
+    println!("  Single recognize ({} classes):         {:.1}us ({:.3}ms)", num_classes, rec_us, rec_us / 1000.0);
+
+    // 7. Single recognize_hamming (20 classes)
+    let t0 = Instant::now();
+    for _ in 0..rec_iters {
+        std::hint::black_box(recognizer.recognize_hamming(std::hint::black_box(query)));
+    }
+    let ham_rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
+    println!("  Single hamming recognize ({} cl):     {:.1}us ({:.3}ms)", num_classes, ham_rec_us, ham_rec_us / 1000.0);
+
+    // 8. Single two-stage recognize (20 classes)
+    let t0 = Instant::now();
+    for _ in 0..rec_iters {
+        std::hint::black_box(recognizer.recognize_two_stage(std::hint::black_box(query)));
+    }
+    let two_rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
+    println!("  Single two-stage ({} classes):        {:.1}us ({:.3}ms)", num_classes, two_rec_us, two_rec_us / 1000.0);
 }
 
 // ---------------------------------------------------------------------------

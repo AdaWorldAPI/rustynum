@@ -69,6 +69,6 @@ pub use recognize::{
     Projector64K, Recognizer, RecognitionResult, RecognitionMethod,
     ExperimentResult,
     hamming_64k, hamming_similarity_64k,
-    run_recognition_experiment, run_recognition_sweep,
+    run_recognition_experiment, run_recognition_sweep, run_recognition_sweep_fast,
     print_recognition_results, run_recognition,
 };
