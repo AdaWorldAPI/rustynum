@@ -3,6 +3,15 @@
 //! All operations support both row-major and column-major layouts
 //! via the CBLAS-style `Layout` parameter.
 
+// TODO(simd): REFACTOR — most Level 2 operations have scalar inner loops:
+// - sgemv/dgemv: only incx==1 RowMajor NoTrans/ColMajor Trans paths use SIMD dot;
+//   all strided, transpose, and ColMajor NoTrans paths are scalar.
+// - sger/dger: fully scalar rank-1 update loops.
+// - ssymv/dsymv: fully scalar symmetric MV (triangular iteration).
+// - strmv: fully scalar triangular MV.
+// - strsv: fully scalar triangular solve (sequential dependencies — partial SIMD only).
+// Fix: vectorize contiguous inner loops (j-loops) with SIMD; strided paths need gather/scatter.
+
 use rustynum_core::layout::{Layout, Transpose, Uplo};
 use rustynum_core::simd;
 

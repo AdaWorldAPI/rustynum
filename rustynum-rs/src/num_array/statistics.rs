@@ -474,6 +474,7 @@ where
     /// ```
     pub fn std_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         let var_arr = self.var_axis(axis);
+        // TODO(simd): REFACTOR — scalar sqrt via iter().map(). Route through VML vssqrt/vdsqrt.
         let std_data: Vec<T> = var_arr.get_data().iter().map(|&v| v.sqrt()).collect();
         if var_arr.shape().len() > 1 || (var_arr.shape().len() == 1 && var_arr.shape()[0] > 1) {
             NumArray::new_with_shape(std_data, var_arr.shape().to_vec())

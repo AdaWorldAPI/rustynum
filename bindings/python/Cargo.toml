@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.19.2", features = ["extension-module"] }
 rustynum-rs = { path = "../../rustynum-rs" }
 rustynum-core = { path = "../../rustynum-core", features = ["avx512"] }
-rustyblas = { path = "../../rustyblas" }
+rustyblas = { path = "../../rustyblas", features = ["avx512"] }
 
 [profile.release]
 lto = true

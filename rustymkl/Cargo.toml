@@ -10,8 +10,8 @@ avx512 = ["rustynum-core/avx512", "rustyblas/avx512"]
 avx2 = ["rustynum-core/avx2", "rustyblas/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core", default-features = false }
-rustyblas = { path = "../rustyblas", default-features = false }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
+rustyblas = { path = "../rustyblas", features = ["avx512"] }
 
 [dev-dependencies]
 criterion = "0.5"

@@ -1,3 +1,7 @@
+// TODO(simd): REFACTOR — matrix_stats uses scalar iter().map() for mean/var/min/max.
+// Also: matrix construction uses scalar popcount. Should use stacked HDR popcount
+// with early exit, 2x HDR popcount VNNI-accelerated, 1x AVX-512 with prefetch burst
+// matching u64 width exactly (no over/underrun).
 //! 3D XYZ Binding Popcount Spatial Matrix — spectral analysis of HDC binding space.
 //!
 //! For three 16384-bit containers (X, Y, Z), constructs a 3D scalar field where

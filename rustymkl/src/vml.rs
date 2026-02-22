@@ -81,6 +81,8 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
 }
 
 /// Vectorized double-precision natural log.
+// TODO(simd): REFACTOR — vdln is fully scalar, no SIMD path.
+// Needs SIMD range reduction + Padé approximation like simd_ln_f32 (which is also scalar).
 pub fn vdln(x: &[f64], out: &mut [f64]) {
     debug_assert_eq!(x.len(), out.len());
     let len = x.len();
@@ -239,17 +241,17 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
 // ============================================================================
 
 /// Vectorized single-precision sin: out[i] = sin(x[i])
-///
-/// Uses Chebyshev polynomial approximation for SIMD lanes.
+// TODO(simd): REFACTOR — vssin is fully scalar. Needs Chebyshev/minimax SIMD polynomial.
+// Range reduction to [-pi, pi] then degree-7 polynomial, all in f32x16.
 pub fn vssin(x: &[f32], out: &mut [f32]) {
     debug_assert_eq!(x.len(), out.len());
-    // Scalar fallback — SIMD polynomial sin can be added as optimization
     for i in 0..x.len() {
         out[i] = x[i].sin();
     }
 }
 
 /// Vectorized single-precision cos: out[i] = cos(x[i])
+// TODO(simd): REFACTOR — vscos is fully scalar. Same polynomial approach as vssin (phase shift).
 pub fn vscos(x: &[f32], out: &mut [f32]) {
     debug_assert_eq!(x.len(), out.len());
     for i in 0..x.len() {
@@ -258,6 +260,7 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
 }
 
 /// Vectorized single-precision pow: out[i] = a[i]^b[i]
+// TODO(simd): REFACTOR — vspow is fully scalar. Can be SIMD via exp(b * ln(a)).
 pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
     debug_assert_eq!(a.len(), b.len());
     debug_assert_eq!(a.len(), out.len());
@@ -314,6 +317,8 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
 }
 
 /// Fast SIMD exp(x) for F64Simd.
+// TODO(simd): REFACTOR — simd_exp_f64 is fully scalar (to_array → exp → from_array).
+// Needs same range-reduction + polynomial pipeline as simd_exp_f32 but f64 precision.
 #[inline(always)]
 fn simd_exp_f64(x: F64Simd) -> F64Simd {
     let mut arr = x.to_array();
@@ -324,8 +329,8 @@ fn simd_exp_f64(x: F64Simd) -> F64Simd {
 }
 
 /// Fast SIMD ln(x) for F32Simd.
-///
-/// Uses range reduction: extract exponent + Padé approximation on mantissa.
+// TODO(simd): REFACTOR — simd_ln_f32 is fully scalar (to_array → ln → from_array).
+// Needs SIMD range reduction: extract exponent bits, Padé approximation on mantissa.
 #[inline(always)]
 fn simd_ln_f32(x: F32Simd) -> F32Simd {
     let mut arr = x.to_array();

@@ -2,6 +2,11 @@
 //!
 //! All operations use AVX-512 SIMD via `rustynum_core::simd` primitives.
 
+// TODO(simd): REFACTOR — all strided (incx/incy > 1) fallback paths are scalar loops.
+// Affected: sdot, ddot, saxpy, daxpy, sscal, dscal, snrm2, dnrm2, sasum, dasum.
+// Also: isamax/idamax are fully scalar (argmax has no SIMD path yet).
+// Fix: SIMD gather/scatter for strided access, or gather into contiguous buffer → SIMD → scatter.
+
 use rustynum_core::simd;
 
 // ============================================================================

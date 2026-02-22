@@ -142,6 +142,8 @@ pub trait HammingSimdOps {
     ) -> Vec<u64>;
 }
 
+// TODO(simd): REFACTOR — dot_product_scalar is a scalar fallback for non-SIMD types.
+// Used by u8 transpose path. Should be replaced with SIMD dot for supported types.
 #[inline(always)]
 fn dot_product_scalar<T>(a: &[T], b: &[T]) -> T
 where
