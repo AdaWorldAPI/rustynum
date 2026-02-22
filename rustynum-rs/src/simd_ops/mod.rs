@@ -1,4 +1,3 @@
-use crate::helpers::parallel::parallel_for_chunks;
 use std::simd::cmp::SimdOrd;
 use std::simd::f32x16;
 use std::simd::f64x8;
@@ -8,8 +7,6 @@ use std::simd::num::SimdFloat;
 use std::simd::num::SimdInt;
 use std::simd::num::SimdUint;
 use std::simd::u8x64;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 const LANES_8: usize = 64;
 const LANES_32: usize = 16;
@@ -17,6 +14,55 @@ const LANES_64: usize = 8;
 
 /// Threshold (in elements) above which bitwise operations are parallelized across threads.
 const PARALLEL_THRESHOLD: usize = 65_536;
+
+/// Parallel write into disjoint output slices — zero synchronization.
+/// Each thread gets exclusive `&mut` ownership of its slice via `split_at_mut`.
+/// Replaces `Arc<Mutex<&mut [T]>>` pattern throughout simd_ops.
+#[inline]
+fn parallel_into_slices<T: Send>(
+    out: &mut [T],
+    chunk_size: usize,
+    f: impl Fn(usize, &mut [T]) + Send + Sync,
+) {
+    if chunk_size == 0 || out.is_empty() {
+        return;
+    }
+    let f = &f;
+    std::thread::scope(|s| {
+        let mut remaining = out;
+        let mut offset = 0;
+        while !remaining.is_empty() {
+            let take = chunk_size.min(remaining.len());
+            let (chunk, rest) = remaining.split_at_mut(take);
+            remaining = rest;
+            let off = offset;
+            s.spawn(move || f(off, chunk));
+            offset += take;
+        }
+    });
+}
+
+/// Parallel reduction — each thread computes a partial result, summed at the end.
+/// Zero synchronization during computation.
+#[inline]
+fn parallel_reduce_sum(
+    len: usize,
+    f: impl Fn(usize, usize) -> u64 + Send + Sync,
+) -> u64 {
+    let n_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let chunk_size = (len + n_threads - 1) / n_threads;
+    let f = &f;
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for start in (0..len).step_by(chunk_size) {
+            let end = (start + chunk_size).min(len);
+            handles.push(s.spawn(move || f(start, end)));
+        }
+        handles.into_iter().map(|h| h.join().unwrap()).sum()
+    })
+}
 
 
 pub trait SimdOps<T> {
@@ -106,24 +152,21 @@ impl SimdOps<u8> for u8x64 {
         let mut b_transposed = vec![0u8; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
 
-        // We need to use a Mutex to safely write to the shared result matrix
-        let c_shared = Arc::new(Mutex::new(c));
-
-        parallel_for_chunks(0, m, |row_start, row_end| {
-            // Clone the shared result matrix for each thread
-            let c_lock = Arc::clone(&c_shared);
-
-            for i in row_start..row_end {
-                let a_row = &a[i * k..(i + 1) * k];
+        let n_threads = std::thread::available_parallelism()
+            .map(|t| t.get()).unwrap_or(4);
+        let rows_per_thread = (m + n_threads - 1) / n_threads;
+        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
+            let row_start = offset / n;
+            let rows_this = chunk.len() / n;
+            for i in 0..rows_this {
+                let global_row = row_start + i;
+                let a_row = &a[global_row * k..(global_row + 1) * k];
                 let mut c_row = vec![0u8; n];
-
                 for j in 0..n {
                     let b_col = &b_transposed[j * k..(j + 1) * k];
                     c_row[j] = Self::dot_product(a_row, b_col);
                 }
-                //
-                let mut c_guard = c_lock.lock().unwrap();
-                c_guard[i * n..(i + 1) * n].copy_from_slice(&c_row);
+                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
             }
         });
     }
@@ -240,24 +283,21 @@ impl SimdOps<f32> for f32x16 {
         let mut b_transposed = vec![0.0f32; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
 
-        // We need to use a Mutex to safely write to the shared result matrix
-        let c_shared = Arc::new(Mutex::new(c));
-
-        parallel_for_chunks(0, m, |row_start, row_end| {
-            // Clone the shared result matrix for each thread
-            let c_lock = Arc::clone(&c_shared);
-
-            for i in row_start..row_end {
-                let a_row = &a[i * k..(i + 1) * k];
+        let n_threads = std::thread::available_parallelism()
+            .map(|t| t.get()).unwrap_or(4);
+        let rows_per_thread = (m + n_threads - 1) / n_threads;
+        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
+            let row_start = offset / n;
+            let rows_this = chunk.len() / n;
+            for i in 0..rows_this {
+                let global_row = row_start + i;
+                let a_row = &a[global_row * k..(global_row + 1) * k];
                 let mut c_row = vec![0.0; n];
-
                 for j in 0..n {
                     let b_col = &b_transposed[j * k..(j + 1) * k];
                     c_row[j] = Self::dot_product(a_row, b_col);
                 }
-                //
-                let mut c_guard = c_lock.lock().unwrap();
-                c_guard[i * n..(i + 1) * n].copy_from_slice(&c_row);
+                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
             }
         });
     }
@@ -404,24 +444,21 @@ impl SimdOps<f64> for f64x8 {
         let mut b_transposed = vec![0.0f64; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
 
-        // We need to use a Mutex to safely write to the shared result matrix
-        let c_shared = Arc::new(Mutex::new(c));
-
-        parallel_for_chunks(0, m, |row_start, row_end| {
-            // Clone the shared result matrix for each thread
-            let c_lock = Arc::clone(&c_shared);
-
-            for i in row_start..row_end {
-                let a_row = &a[i * k..(i + 1) * k];
+        let n_threads = std::thread::available_parallelism()
+            .map(|t| t.get()).unwrap_or(4);
+        let rows_per_thread = (m + n_threads - 1) / n_threads;
+        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
+            let row_start = offset / n;
+            let rows_this = chunk.len() / n;
+            for i in 0..rows_this {
+                let global_row = row_start + i;
+                let a_row = &a[global_row * k..(global_row + 1) * k];
                 let mut c_row = vec![0.0; n];
-
                 for j in 0..n {
                     let b_col = &b_transposed[j * k..(j + 1) * k];
                     c_row[j] = Self::dot_product(a_row, b_col);
                 }
-                //
-                let mut c_guard = c_lock.lock().unwrap();
-                c_guard[i * n..(i + 1) * n].copy_from_slice(&c_row);
+                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
             }
         });
     }
@@ -564,18 +601,21 @@ impl SimdOps<i32> for i32x16 {
         c.fill(0);
         let mut b_transposed = vec![0i32; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
-        let c_shared = Arc::new(Mutex::new(c));
-        parallel_for_chunks(0, m, |row_start, row_end| {
-            let c_lock = Arc::clone(&c_shared);
-            for i in row_start..row_end {
-                let a_row = &a[i * k..(i + 1) * k];
+        let n_threads = std::thread::available_parallelism()
+            .map(|t| t.get()).unwrap_or(4);
+        let rows_per_thread = (m + n_threads - 1) / n_threads;
+        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
+            let row_start = offset / n;
+            let rows_this = chunk.len() / n;
+            for i in 0..rows_this {
+                let global_row = row_start + i;
+                let a_row = &a[global_row * k..(global_row + 1) * k];
                 let mut c_row = vec![0i32; n];
                 for j in 0..n {
                     let b_col = &b_transposed[j * k..(j + 1) * k];
                     c_row[j] = Self::dot_product(a_row, b_col);
                 }
-                let mut c_guard = c_lock.lock().unwrap();
-                c_guard[i * n..(i + 1) * n].copy_from_slice(&c_row);
+                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
             }
         });
     }
@@ -695,18 +735,21 @@ impl SimdOps<i64> for i64x8 {
         c.fill(0);
         let mut b_transposed = vec![0i64; n * k];
         Self::transpose(b, &mut b_transposed, k, n);
-        let c_shared = Arc::new(Mutex::new(c));
-        parallel_for_chunks(0, m, |row_start, row_end| {
-            let c_lock = Arc::clone(&c_shared);
-            for i in row_start..row_end {
-                let a_row = &a[i * k..(i + 1) * k];
+        let n_threads = std::thread::available_parallelism()
+            .map(|t| t.get()).unwrap_or(4);
+        let rows_per_thread = (m + n_threads - 1) / n_threads;
+        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
+            let row_start = offset / n;
+            let rows_this = chunk.len() / n;
+            for i in 0..rows_this {
+                let global_row = row_start + i;
+                let a_row = &a[global_row * k..(global_row + 1) * k];
                 let mut c_row = vec![0i64; n];
                 for j in 0..n {
                     let b_col = &b_transposed[j * k..(j + 1) * k];
                     c_row[j] = Self::dot_product(a_row, b_col);
                 }
-                let mut c_guard = c_lock.lock().unwrap();
-                c_guard[i * n..(i + 1) * n].copy_from_slice(&c_row);
+                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
             }
         });
     }
@@ -830,13 +873,11 @@ impl BitwiseSimdOps<u8> for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0u8; end - start];
-                bitwise_and_chunk_u8(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_and_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -851,13 +892,11 @@ impl BitwiseSimdOps<u8> for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0u8; end - start];
-                bitwise_xor_chunk_u8(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_xor_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -872,13 +911,11 @@ impl BitwiseSimdOps<u8> for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0u8; end - start];
-                bitwise_or_chunk_u8(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_or_chunk_u8(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -892,13 +929,11 @@ impl BitwiseSimdOps<u8> for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0u8; end - start];
-                bitwise_not_chunk_u8(&a[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_not_chunk_u8(&a[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1124,13 +1159,11 @@ impl BitwiseSimdOps<i32> for i32x16 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i32; end - start];
-                bitwise_and_chunk_i32(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_and_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1143,13 +1176,11 @@ impl BitwiseSimdOps<i32> for i32x16 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i32; end - start];
-                bitwise_xor_chunk_i32(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_xor_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1162,13 +1193,11 @@ impl BitwiseSimdOps<i32> for i32x16 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i32; end - start];
-                bitwise_or_chunk_i32(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_or_chunk_i32(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1180,13 +1209,11 @@ impl BitwiseSimdOps<i32> for i32x16 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i32; end - start];
-                bitwise_not_chunk_i32(&a[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_not_chunk_i32(&a[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1406,13 +1433,11 @@ impl BitwiseSimdOps<i64> for i64x8 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i64; end - start];
-                bitwise_and_chunk_i64(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_and_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1425,13 +1450,11 @@ impl BitwiseSimdOps<i64> for i64x8 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i64; end - start];
-                bitwise_xor_chunk_i64(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_xor_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1444,13 +1467,11 @@ impl BitwiseSimdOps<i64> for i64x8 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i64; end - start];
-                bitwise_or_chunk_i64(&a[start..end], &b[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_or_chunk_i64(&a[offset..offset + chunk.len()], &b[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1462,13 +1483,11 @@ impl BitwiseSimdOps<i64> for i64x8 {
         debug_assert_eq!(a.len(), out.len());
         let len = a.len();
         if len >= PARALLEL_THRESHOLD {
-            let out_shared = Arc::new(Mutex::new(out));
-            parallel_for_chunks(0, len, |start, end| {
-                let mut local = vec![0i64; end - start];
-                bitwise_not_chunk_i64(&a[start..end], &mut local);
-                let arc = Arc::clone(&out_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (len + n_threads - 1) / n_threads;
+            parallel_into_slices(out, chunk_size, |offset, chunk| {
+                bitwise_not_chunk_i64(&a[offset..offset + chunk.len()], chunk);
             });
             return;
         }
@@ -1700,15 +1719,9 @@ impl HammingSimdOps for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            // Split across threads and sum partial results
-            let result = Arc::new(Mutex::new(0u64));
-            parallel_for_chunks(0, len, |start, end| {
-                let partial = hamming_chunk(&a[start..end], &b[start..end]);
-                let arc = Arc::clone(&result);
-                let mut guard = arc.lock().unwrap();
-                *guard += partial;
+            return parallel_reduce_sum(len, |start, end| {
+                hamming_chunk(&a[start..end], &b[start..end])
             });
-            return *result.lock().unwrap();
         }
 
         hamming_chunk(a, b)
@@ -1720,14 +1733,9 @@ impl HammingSimdOps for u8x64 {
         let len = a.len();
 
         if len >= PARALLEL_THRESHOLD {
-            let result = Arc::new(Mutex::new(0u64));
-            parallel_for_chunks(0, len, |start, end| {
-                let partial = popcount_chunk(&a[start..end]);
-                let arc = Arc::clone(&result);
-                let mut guard = arc.lock().unwrap();
-                *guard += partial;
+            return parallel_reduce_sum(len, |start, end| {
+                popcount_chunk(&a[start..end])
             });
-            return *result.lock().unwrap();
         }
 
         popcount_chunk(a)
@@ -1745,19 +1753,16 @@ impl HammingSimdOps for u8x64 {
         let mut results = vec![0u64; count];
 
         if count >= 16 {
-            // For many vectors, parallelize across vector pairs
-            let results_shared = Arc::new(Mutex::new(&mut results[..]));
-            parallel_for_chunks(0, count, |start, end| {
-                let mut local = vec![0u64; end - start];
-                for i in 0..(end - start) {
-                    let idx = start + i;
+            let n_threads = std::thread::available_parallelism()
+                .map(|t| t.get()).unwrap_or(4);
+            let chunk_size = (count + n_threads - 1) / n_threads;
+            parallel_into_slices(&mut results, chunk_size, |offset, chunk| {
+                for i in 0..chunk.len() {
+                    let idx = offset + i;
                     let a_slice = &a_vecs[idx * vec_len..(idx + 1) * vec_len];
                     let b_slice = &b_vecs[idx * vec_len..(idx + 1) * vec_len];
-                    local[i] = hamming_chunk(a_slice, b_slice);
+                    chunk[i] = hamming_chunk(a_slice, b_slice);
                 }
-                let arc = Arc::clone(&results_shared);
-                let mut guard = arc.lock().unwrap();
-                guard[start..end].copy_from_slice(&local);
             });
         } else {
             for i in 0..count {
