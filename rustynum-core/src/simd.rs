@@ -71,7 +71,7 @@ pub const DGEMM_NC: usize = 2048;
 /// 4x unrolled for maximum ILP.
 #[inline]
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -122,7 +122,7 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
 /// 4x unrolled.
 #[inline]
 pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     let len = a.len();
     let chunks = len / F64_LANES;
 
@@ -170,7 +170,7 @@ pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
 /// SIMD f32 axpy: y[i] += alpha * x[i]
 #[inline]
 pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
-    debug_assert_eq!(x.len(), y.len());
+    assert_eq!(x.len(), y.len());
     let len = x.len();
     let chunks = len / F32_LANES;
     let alpha_v = f32x16::splat(alpha);
@@ -191,7 +191,7 @@ pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
 /// SIMD f64 axpy: y[i] += alpha * x[i]
 #[inline]
 pub fn axpy_f64(alpha: f64, x: &[f64], y: &mut [f64]) {
-    debug_assert_eq!(x.len(), y.len());
+    assert_eq!(x.len(), y.len());
     let len = x.len();
     let chunks = len / F64_LANES;
     let alpha_v = f64x8::splat(alpha);
@@ -340,7 +340,7 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
 /// For a 2KB CogRecord container: 32 VPOPCNTDQ iterations vs 256 scalar POPCNTs.
 #[inline]
 pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -360,8 +360,8 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
 /// 4x unrolled for ILP — processes 4 database rows per outer iteration.
 #[inline]
 pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
-    debug_assert_eq!(query.len(), row_bytes);
-    debug_assert_eq!(database.len(), num_rows * row_bytes);
+    assert_eq!(query.len(), row_bytes);
+    assert_eq!(database.len(), num_rows * row_bytes);
 
     let mut distances = vec![0u64; num_rows];
 

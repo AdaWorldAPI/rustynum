@@ -466,7 +466,7 @@ impl Recognizer {
                 (i, sim)
             })
             .collect();
-        hamming_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        hamming_scores.sort_by(|a, b| b.1.total_cmp(&a.1));
 
         let shortlist: Vec<usize> = hamming_scores[..SHORTLIST_K]
             .iter()
@@ -789,7 +789,7 @@ pub fn print_recognition_results(results: &[ExperimentResult]) {
     // Find best config
     if let Some(best) = results
         .iter()
-        .max_by(|a, b| a.projection_accuracy.partial_cmp(&b.projection_accuracy).unwrap())
+        .max_by(|a, b| a.projection_accuracy.total_cmp(&b.projection_accuracy))
     {
         println!(
             "\n  Best projection config: D={}, {}, K={}, noise={:.2} → {:.1}%",
