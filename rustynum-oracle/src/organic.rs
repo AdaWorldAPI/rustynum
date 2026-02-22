@@ -531,6 +531,18 @@ impl OrganicWAL {
 ///
 /// Bathtub curve: high early (exploring), low middle (consolidating),
 /// medium late (allowing revision).
+///
+/// Base-aware: the initial caution phase scales inversely with base cardinality.
+/// Narrow bases (Signed(5), range [-2,2]) get HIGHER initial plasticity
+/// because their small values are destroyed by aggressive amplitude attenuation.
+/// Wide bases (Signed(9), range [-4,4]) can afford MORE caution.
+///
+/// Formula: base_scale = reference_cardinality / cardinality
+/// where reference = 8 (the midpoint of our base range).
+/// Signed(5): 8/5 = 1.6 → clamped to 1.5 → new=0.5*1.5=0.75 (less caution)
+/// Signed(7): 8/7 = 1.14 → new=0.5*1.14=0.57
+/// Signed(9): 8/9 = 0.89 → new=0.5*0.89=0.44 (more caution, can afford it)
+/// Binary:    8/2 = 4.0 → clamped to 1.5 (binary is hopeless anyway)
 pub struct PlasticityTracker {
     /// Write count per concept.
     pub write_counts: Vec<u32>,
@@ -540,6 +552,9 @@ pub struct PlasticityTracker {
     pub clock: u64,
     /// Decay window: concepts not written within this many ticks are "decaying".
     pub decay_window: u64,
+    /// Base-aware scaling factor for initial plasticity phases.
+    /// Computed as clamp(cardinality / 8.0, 0.25, 1.0).
+    base_scale: f32,
 }
 
 impl PlasticityTracker {
@@ -549,6 +564,23 @@ impl PlasticityTracker {
             last_write: vec![0; k],
             clock: 0,
             decay_window,
+            base_scale: 1.0, // default: no scaling (backwards compatible)
+        }
+    }
+
+    /// Create with base-aware plasticity scaling.
+    ///
+    /// The initial caution phases (new, young) are scaled by
+    /// 8 / cardinality, so narrow bases get LESS attenuation
+    /// (higher initial plasticity) and wide bases get MORE.
+    pub fn new_base_aware(k: usize, decay_window: u64, base: Base) -> Self {
+        let scale = (8.0 / base.cardinality() as f32).clamp(0.5, 1.5);
+        Self {
+            write_counts: vec![0; k],
+            last_write: vec![0; k],
+            clock: 0,
+            decay_window,
+            base_scale: scale,
         }
     }
 
@@ -561,6 +593,12 @@ impl PlasticityTracker {
     }
 
     /// Get current plasticity for concept i.
+    ///
+    /// The bathtub curve's early phases are scaled by base_scale (= 8/cardinality):
+    ///   New (0-2 writes):    0.5 * base_scale  → Signed(5): 0.75, Signed(9): 0.44
+    ///   Young (3-5 writes):  0.8 * base_scale  → Signed(5): 1.0+, Signed(9): 0.71
+    ///   Active (6-20):       1.0 (always full)
+    ///   Consolidating/Stable/Ancient: unchanged (rigidity doesn't need scaling)
     pub fn plasticity(&self, concept_idx: usize) -> f32 {
         let count = self.write_counts[concept_idx];
         let age = self.clock.saturating_sub(self.last_write[concept_idx]);
@@ -570,11 +608,11 @@ impl PlasticityTracker {
             return 0.3;
         }
 
-        // Bathtub curve based on write count
+        // Bathtub curve with base-aware initial scaling
         match count {
-            0..=2 => 0.5,   // New: cautious
-            3..=5 => 0.8,   // Young: absorbing
-            6..=20 => 1.0,  // Active: full plasticity
+            0..=2 => (0.5 * self.base_scale).clamp(0.15, 1.0),  // New: cautious (base-scaled)
+            3..=5 => (0.8 * self.base_scale).clamp(0.3, 1.0),  // Young: absorbing (base-scaled)
+            6..=20 => 1.0,  // Active: full plasticity (always)
             21..=50 => 0.5, // Consolidating: stabilizing
             51..=200 => 0.2, // Stable: rigid
             _ => 0.1,       // Ancient: very rigid
@@ -959,6 +997,218 @@ pub fn organic_results_to_csv(results: &[OrganicResult]) -> String {
         ));
     }
     csv
+}
+
+// ---------------------------------------------------------------------------
+// Part 8: Absorption Stress Test — Find the Breaking Point
+// ---------------------------------------------------------------------------
+
+/// Result of a single stress test at a given K.
+#[derive(Clone, Debug)]
+pub struct StressPoint {
+    pub k: usize,
+    pub mean_absorption: f32,
+    pub min_absorption: f32,
+    pub mean_error: f32,
+    pub mean_similarity: f32,
+    pub flush_action: FlushAction,
+}
+
+/// Ramp K from 1 up to max_k, measuring absorption at each step.
+///
+/// Returns results for each K value. The "breaking point" is where
+/// min_absorption drops below the threshold (typically 0.5).
+pub fn stress_test_absorption(
+    d: usize,
+    base: Base,
+    channels: usize,
+    max_k: usize,
+    use_plasticity: bool,
+    rng: &mut impl Rng,
+) -> Vec<StressPoint> {
+    let mut results = Vec::new();
+
+    // Test K values: 1, 2, 4, 8, 16, 32, 48, 64, 96, 128, 192, 256, ...
+    let mut k_values: Vec<usize> = Vec::new();
+    let mut k = 1;
+    while k <= max_k {
+        k_values.push(k);
+        if k < 8 { k *= 2; }
+        else if k < 64 { k += 8; }
+        else if k < 256 { k += 32; }
+        else { k += 64; }
+    }
+    if *k_values.last().unwrap_or(&0) != max_k {
+        k_values.push(max_k);
+    }
+
+    for &k in &k_values {
+        if k > channels * 8 {
+            // More than 8 concepts per channel — getting extreme
+            // but still test it
+        }
+        let r = measure_recovery_organic(d, base, channels, k, use_plasticity, rng);
+        results.push(StressPoint {
+            k,
+            mean_absorption: r.mean_absorption,
+            min_absorption: r.min_absorption,
+            mean_error: r.mean_error,
+            mean_similarity: r.mean_similarity,
+            flush_action: r.flush_action,
+        });
+    }
+
+    results
+}
+
+/// Run the full absorption stress test across key configurations.
+///
+/// Tests: D=2048 and D=4096, channels=16/32/64, Signed(5)/Signed(7)/Signed(9).
+/// For each config, ramps K until absorption degrades.
+pub fn run_absorption_stress_test() {
+    let mut rng = rand::thread_rng();
+
+    println!("{}", "=".repeat(80));
+    println!("  ABSORPTION STRESS TEST — Finding the Breaking Point");
+    println!("{}\n", "=".repeat(80));
+
+    let configs: Vec<(usize, Base, usize, usize)> = vec![
+        // (D, Base, Channels, MaxK)
+        (2048, Base::Signed(5), 16, 256),
+        (2048, Base::Signed(5), 32, 256),
+        (2048, Base::Signed(5), 64, 512),
+        (2048, Base::Signed(7), 16, 256),
+        (2048, Base::Signed(7), 32, 256),
+        (2048, Base::Signed(7), 64, 512),
+        (2048, Base::Signed(9), 16, 256),
+        (2048, Base::Signed(9), 32, 256),
+        (4096, Base::Signed(5), 32, 512),
+        (4096, Base::Signed(7), 32, 512),
+        (4096, Base::Signed(9), 32, 512),
+        (4096, Base::Signed(5), 64, 512),
+    ];
+
+    println!("{:>6} {:>12} {:>4} {:>4} {:>8} {:>8} {:>8} {:>8} {:>10}",
+        "D", "Base", "Ch", "K", "MeanAbs", "MinAbs", "Error", "Sim", "Flush");
+    println!("{}", "-".repeat(82));
+
+    for (d, base, channels, max_k) in &configs {
+        let points = stress_test_absorption(*d, *base, *channels, *max_k, false, &mut rng);
+
+        let mut breaking_k: Option<usize> = None;
+        for pt in &points {
+            let flush_str = match pt.flush_action {
+                FlushAction::None => ".",
+                FlushAction::SoftFlush => "SOFT",
+                FlushAction::HardFlush => "HARD",
+                FlushAction::Emergency => "EMERG",
+            };
+            let marker = if pt.min_absorption < 0.5 && breaking_k.is_none() {
+                breaking_k = Some(pt.k);
+                " <<<< BREAKING POINT"
+            } else {
+                ""
+            };
+            println!("{:>6} {:>12} {:>4} {:>4} {:>8.4} {:>8.4} {:>8.4} {:>8.4} {:>10}{}",
+                d, base.name(), channels, pt.k,
+                pt.mean_absorption, pt.min_absorption,
+                pt.mean_error, pt.mean_similarity,
+                flush_str, marker);
+        }
+
+        match breaking_k {
+            Some(bk) => println!("  >> D={}, {}, C={}: BREAKS at K={}\n",
+                d, base.name(), channels, bk),
+            None => println!("  >> D={}, {}, C={}: NO BREAK up to K={}\n",
+                d, base.name(), channels, max_k),
+        }
+    }
+}
+
+/// Run base-aware plasticity comparison.
+///
+/// For each base, compare old plasticity (fixed 0.5 initial) vs new (base-scaled).
+pub fn run_plasticity_comparison() {
+    let mut rng = rand::thread_rng();
+
+    println!("\n{}", "=".repeat(80));
+    println!("  PLASTICITY: Base-Aware vs Fixed");
+    println!("  Initial phase scaling: cardinality / 8");
+    println!("{}\n", "=".repeat(80));
+
+    let bases = [Base::Signed(5), Base::Signed(7), Base::Signed(9)];
+    let d = 2048;
+    let channels = 16;
+    let k_values = [1, 3, 5, 8, 13];
+
+    println!("{:>12} {:>4} {:>10} {:>8} {:>8}  {:>10} {:>8} {:>8}",
+        "Base", "K", "Mode", "Error", "Sim", "Mode", "Error", "Sim");
+    println!("{}", "-".repeat(82));
+
+    for &base in &bases {
+        for &k in &k_values {
+            // Fixed plasticity (old behavior)
+            let pattern_old = XTransPattern::new(d, channels);
+            let mut wal_old = OrganicWAL::new(pattern_old);
+            let mut container_old = vec![0i8; d];
+            let mut plasticity_old = PlasticityTracker::new(k, 50);
+
+            let templates = generate_templates(k, d, base, &mut rng);
+            for (i, t) in templates.iter().enumerate() {
+                wal_old.register_concept(i as u32, t.clone());
+                plasticity_old.add_concept();
+            }
+
+            let amplitudes: Vec<f32> = (0..k).map(|_| rng.gen_range(0.3f32..0.8f32)).collect();
+            for i in 0..k {
+                wal_old.write_plastic(
+                    &mut container_old, i, amplitudes[i], 0.1, &mut plasticity_old);
+            }
+
+            let extracted_old = wal_old.surgical_extract(&container_old);
+            let err_old: f32 = (0..k).map(|i|
+                (wal_old.coefficients[i] - extracted_old[i]).abs()
+            ).sum::<f32>() / k as f32;
+            let sim_old: f32 = wal_old.read_all(&container_old).iter()
+                .map(|(_, s, _)| *s).sum::<f32>() / k as f32;
+
+            // Base-aware plasticity (new behavior)
+            let pattern_new = XTransPattern::new(d, channels);
+            let mut wal_new = OrganicWAL::new(pattern_new);
+            let mut container_new = vec![0i8; d];
+            let mut plasticity_new = PlasticityTracker::new_base_aware(k, 50, base);
+
+            for (i, t) in templates.iter().enumerate() {
+                wal_new.register_concept(i as u32, t.clone());
+                plasticity_new.add_concept();
+            }
+
+            for i in 0..k {
+                wal_new.write_plastic(
+                    &mut container_new, i, amplitudes[i], 0.1, &mut plasticity_new);
+            }
+
+            let extracted_new = wal_new.surgical_extract(&container_new);
+            let err_new: f32 = (0..k).map(|i|
+                (wal_new.coefficients[i] - extracted_new[i]).abs()
+            ).sum::<f32>() / k as f32;
+            let sim_new: f32 = wal_new.read_all(&container_new).iter()
+                .map(|(_, s, _)| *s).sum::<f32>() / k as f32;
+
+            let improvement = if err_old > 0.001 {
+                (err_old - err_new) / err_old * 100.0
+            } else {
+                0.0
+            };
+
+            println!("{:>12} {:>4} {:>10} {:>8.4} {:>8.4}  {:>10} {:>8.4} {:>8.4}  {:>+5.1}%",
+                base.name(), k,
+                "fixed", err_old, sim_old,
+                "base-aware", err_new, sim_new,
+                improvement);
+        }
+        println!();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1348,6 +1598,7 @@ mod tests {
 
     #[test]
     fn test_plasticity_new_concept() {
+        // Default (no base scaling): base_scale = 1.0, so 0.5 * 1.0 = 0.5
         let tracker = PlasticityTracker::new(3, 50);
         assert!(
             (tracker.plasticity(0) - 0.5).abs() < 1e-6,
@@ -1395,6 +1646,61 @@ mod tests {
             "Decaying concept plasticity = {}, expected 0.3",
             tracker.plasticity(0)
         );
+    }
+
+    #[test]
+    fn test_plasticity_base_aware_signed5() {
+        // Signed(5): cardinality=5, scale=8/5=1.6 clamped to 1.5
+        let tracker = PlasticityTracker::new_base_aware(3, 50, Base::Signed(5));
+        let p = tracker.plasticity(0);
+        let expected = 0.5 * 1.5; // = 0.75
+        assert!(
+            (p - expected).abs() < 1e-4,
+            "Signed(5) new plasticity = {}, expected {}",
+            p, expected
+        );
+    }
+
+    #[test]
+    fn test_plasticity_base_aware_signed9() {
+        // Signed(9): cardinality=9, scale=8/9=0.889
+        let tracker = PlasticityTracker::new_base_aware(3, 50, Base::Signed(9));
+        let p = tracker.plasticity(0);
+        let expected = 0.5 * (8.0 / 9.0); // ≈ 0.444
+        assert!(
+            (p - expected).abs() < 1e-3,
+            "Signed(9) new plasticity = {:.4}, expected {:.4}",
+            p, expected
+        );
+    }
+
+    #[test]
+    fn test_plasticity_base_aware_active_unaffected() {
+        // Active phase (6-20 writes) should always be 1.0 regardless of base
+        let mut tracker = PlasticityTracker::new_base_aware(3, 50, Base::Signed(5));
+        for _ in 0..10 {
+            tracker.record_write(0);
+        }
+        assert!(
+            (tracker.plasticity(0) - 1.0).abs() < 1e-6,
+            "Active phase should be 1.0 regardless of base, got {}",
+            tracker.plasticity(0)
+        );
+    }
+
+    #[test]
+    fn test_plasticity_base_aware_narrow_less_cautious() {
+        // Narrow base should have HIGHER initial plasticity than wide base
+        // Signed(5): 8/5 = 1.6 → clamped 1.5 → 0.5 * 1.5 = 0.75
+        // Signed(9): 8/9 = 0.889 → 0.5 * 0.889 = 0.444
+        let narrow = PlasticityTracker::new_base_aware(3, 50, Base::Signed(5));
+        let wide = PlasticityTracker::new_base_aware(3, 50, Base::Signed(9));
+
+        let p_narrow = narrow.plasticity(0); // 0.75
+        let p_wide = wide.plasticity(0);     // 0.444
+        assert!(p_narrow > p_wide,
+            "Narrow base ({:.4}) should be LESS cautious than wide ({:.4})",
+            p_narrow, p_wide);
     }
 
     #[test]
