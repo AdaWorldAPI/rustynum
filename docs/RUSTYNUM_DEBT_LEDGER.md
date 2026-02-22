@@ -93,6 +93,8 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 | **N7** | Granger sign convention contradiction | 🔴 Correctness | 5 min | `granger_signal()` doc says G > 0 = A predicts B. Code + test prove G < 0 = A predicts B. `granger_scan()` has correct convention but prefaced with "Wait — let me clarify" debug thinking. Fix: swap G>0/G<0 descriptions in `granger_signal()`, remove debug text from `granger_scan()`. (PR #25) |
 | **N8** | `Contradiction` struct overpromises | 🟢 Naming | 10 min | Checks structural similarity only, not truth-value conflict. Should be `SimilarPair` until NARS truth values are integrated. (PR #25) |
 | **N9** | Flat confidence threshold in reverse_trace | 🟢 Improvement | 30 min | Uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. (PR #25) |
+| **N10** | `hamming_i8` misleading name | 🟡 Naming | 10 min | Symbol-level distance (`a[i] != b[i]` on i8), not bit-level Hamming (XOR+popcount). Every other `hamming_*` in the codebase is bit-level. Rename to `symbol_distance_i8` or `disagreement_count`. (PR #25) |
+| **N11** | Clone-per-hop in `reverse_trace()` | 🟢 Latent perf | 30 min | 16KB clone per hop × depth. Fine for research. Rewrite to two pre-allocated buffers + `copy_from_slice` if it enters a batch hot loop. (PR #25) |
 
 ---
 
