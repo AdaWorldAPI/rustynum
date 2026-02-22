@@ -254,7 +254,7 @@ impl Blackboard {
     /// # Panics
     ///
     /// Panics if names are the same or buffers don't exist.
-    pub fn borrow_2_mut_f32<'a>(&'a self, a: &str, b: &str) -> (&'a mut [f32], &'a mut [f32]) {
+    pub fn borrow_2_mut_f32<'a>(&'a mut self, a: &str, b: &str) -> (&'a mut [f32], &'a mut [f32]) {
         assert_ne!(a, b, "Cannot borrow the same buffer twice mutably");
         let ca = self.buffers.get(a).expect("Buffer A not found");
         let cb = self.buffers.get(b).expect("Buffer B not found");
@@ -284,7 +284,7 @@ impl Blackboard {
     ///
     /// Panics if any names are the same or buffers don't exist.
     pub fn borrow_3_mut_f32<'a>(
-        &'a self,
+        &'a mut self,
         a: &str,
         b: &str,
         c: &str,
@@ -314,7 +314,7 @@ impl Blackboard {
     ///
     /// Panics if any names are the same or buffers don't exist.
     pub fn borrow_3_mut_f64<'a>(
-        &'a self,
+        &'a mut self,
         a: &str,
         b: &str,
         c: &str,
@@ -375,11 +375,9 @@ impl Default for Blackboard {
     }
 }
 
-// Safety: The blackboard owns all memory. Each named buffer is a separate heap
-// allocation. UnsafeCell provides sound interior mutability. The split-borrow
-// API's runtime assertions prevent aliasing the same buffer. Different buffers
-// are at disjoint addresses and cannot alias.
-unsafe impl Send for Blackboard {}
+// Note: Blackboard is intentionally !Send and !Sync due to UnsafeCell.
+// The split-borrow API (&mut self → multiple &mut slices) is sound for
+// single-threaded use. For multi-threaded access, wrap in Mutex<Blackboard>.
 
 #[cfg(test)]
 mod tests {

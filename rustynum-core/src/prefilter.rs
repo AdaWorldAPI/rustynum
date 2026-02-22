@@ -187,14 +187,14 @@ pub fn pruned_gemm_rows(
     m: usize,
     n: usize,
     k: usize,
-    threshold_percentile: f32, // 0.0-1.0, e.g. 0.9 = keep top 10%
+    prune_fraction: f32, // 0.0-1.0, e.g. 0.9 = prune 90%, keep top 10%
 ) -> (Vec<usize>, Vec<f32>) {
     let norms = approx_row_norms_f32(a, m, k);
 
     // Find threshold norm
     let mut sorted_norms = norms.clone();
     sorted_norms.sort_unstable_by(|a, b| a.total_cmp(b));
-    let thresh_idx = ((m as f32 * threshold_percentile) as usize).min(m - 1);
+    let thresh_idx = ((m as f32 * prune_fraction) as usize).min(m - 1);
     let threshold = sorted_norms[thresh_idx];
 
     // Select rows above threshold

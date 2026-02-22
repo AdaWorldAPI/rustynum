@@ -340,6 +340,13 @@ impl CompressedTree {
     /// Decompress a single point.
     pub fn decompress_point(&self, point_idx: usize, data: &[u8], vec_len: usize) -> Vec<u8> {
         let center_idx = self.encoding_centers[point_idx];
+        assert!(
+            (center_idx + 1) * vec_len <= data.len(),
+            "decompress_point: center_idx {} out of bounds (data has {} vectors of len {})",
+            center_idx,
+            data.len() / vec_len,
+            vec_len,
+        );
         let center = &data[center_idx * vec_len..(center_idx + 1) * vec_len];
         self.encodings[point_idx].decode(center)
     }
@@ -372,25 +379,18 @@ impl CompressedTree {
 /// Cache for d(query, center) values — avoids recomputing for points
 /// sharing the same cluster center.
 pub struct DistanceCache {
-    entries: Vec<(usize, u64)>, // (center_idx, distance)
+    entries: std::collections::HashMap<usize, u64>,
 }
 
 impl DistanceCache {
     pub fn new() -> Self {
         DistanceCache {
-            entries: Vec::with_capacity(64),
+            entries: std::collections::HashMap::with_capacity(64),
         }
     }
 
     pub fn get_or_compute(&mut self, center_idx: usize, compute: impl FnOnce() -> u64) -> u64 {
-        for &(idx, dist) in &self.entries {
-            if idx == center_idx {
-                return dist;
-            }
-        }
-        let dist = compute();
-        self.entries.push((center_idx, dist));
-        dist
+        *self.entries.entry(center_idx).or_insert_with(compute)
     }
 
     pub fn clear(&mut self) {

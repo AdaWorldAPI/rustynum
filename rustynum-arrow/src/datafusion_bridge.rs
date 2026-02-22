@@ -67,6 +67,9 @@ pub fn cascade_scan_4ch(
     thresholds: [u64; 4],
 ) -> Vec<(usize, [u64; 4])> {
     let n = meta_col.len();
+    assert_eq!(cam_col.len(), n, "cascade_scan_4ch: cam_col length {} != meta_col length {}", cam_col.len(), n);
+    assert_eq!(btree_col.len(), n, "cascade_scan_4ch: btree_col length {} != meta_col length {}", btree_col.len(), n);
+    assert_eq!(embed_col.len(), n, "cascade_scan_4ch: embed_col length {} != meta_col length {}", embed_col.len(), n);
     let vec_len = meta_col.value_length() as usize;
     let meta_flat = arrow_to_flat_bytes(meta_col);
     let cam_flat = arrow_to_flat_bytes(cam_col);
