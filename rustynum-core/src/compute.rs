@@ -231,6 +231,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_detect_caps() {
         let caps = detect();
         // On this machine we know AVX-512 is available
@@ -240,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_recommend_tier() {
         let tier = recommend_tier(1024, 1024, 1024, Precision::Approximate);
         // Should recommend INT8 VNNI since we have it
