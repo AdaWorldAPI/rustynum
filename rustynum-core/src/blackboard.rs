@@ -20,9 +20,9 @@
 //! let mut bb = Blackboard::new();
 //!
 //! // Allocate GEMM operands
-//! let a = bb.alloc_f32("A", 1024 * 1024);
-//! let b = bb.alloc_f32("B", 1024 * 1024);
-//! let c = bb.alloc_f32("C", 1024 * 1024);
+//! let _ = bb.alloc_f32("A", 1024 * 1024);
+//! let _ = bb.alloc_f32("B", 1024 * 1024);
+//! let _ = bb.alloc_f32("C", 1024 * 1024);
 //!
 //! // Get non-overlapping mutable slices — no borrow conflicts
 //! let (a_slice, b_slice, c_slice) = bb.borrow_3_mut_f32("A", "B", "C");
@@ -41,6 +41,10 @@ use std::collections::HashMap;
 const ALIGNMENT: usize = 64;
 
 /// Opaque handle to a buffer in the blackboard.
+///
+/// Returned by `alloc_*` methods. Currently unused externally —
+/// all buffer access is by name via `borrow_*_mut` methods.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct BufferHandle(u32);
 
@@ -106,6 +110,7 @@ impl Drop for BufferMeta {
 pub struct Blackboard {
     buffers: HashMap<String, UnsafeCell<BufferMeta>>,
     next_handle: u32,
+    #[allow(dead_code)]
     handles: HashMap<String, BufferHandle>,
 }
 

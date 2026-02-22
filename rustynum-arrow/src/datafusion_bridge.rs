@@ -6,6 +6,7 @@
 //! search — no 8KB-per-record allocation.
 
 use arrow::array::{Array, FixedSizeBinaryArray};
+use rustynum_core::simd::hamming_distance;
 use rustynum_rs::CogRecord;
 
 /// Zero-copy slice into an Arrow `FixedSizeBinaryArray`'s backing buffer.
@@ -43,7 +44,7 @@ pub fn hamming_scan_column(
         let candidate = &flat[offset..offset + vec_len];
 
         // Scalar Hamming via u64 popcount
-        let dist = hamming_slice(query, candidate);
+        let dist = hamming_distance(query, candidate);
         if dist <= max_distance {
             results.push((i, dist));
         }
@@ -87,25 +88,25 @@ pub fn cascade_scan_4ch(
         let offset = i * vec_len;
 
         // Stage 1: META (cheapest rejection)
-        let meta_dist = hamming_slice(q_meta, &meta_flat[offset..offset + vec_len]);
+        let meta_dist = hamming_distance(q_meta, &meta_flat[offset..offset + vec_len]);
         if meta_dist > thresholds[0] {
             continue;
         }
 
         // Stage 2: CAM
-        let cam_dist = hamming_slice(q_cam, &cam_flat[offset..offset + vec_len]);
+        let cam_dist = hamming_distance(q_cam, &cam_flat[offset..offset + vec_len]);
         if cam_dist > thresholds[1] {
             continue;
         }
 
         // Stage 3: BTREE
-        let btree_dist = hamming_slice(q_btree, &btree_flat[offset..offset + vec_len]);
+        let btree_dist = hamming_distance(q_btree, &btree_flat[offset..offset + vec_len]);
         if btree_dist > thresholds[2] {
             continue;
         }
 
         // Stage 4: EMBED
-        let embed_dist = hamming_slice(q_embed, &embed_flat[offset..offset + vec_len]);
+        let embed_dist = hamming_distance(q_embed, &embed_flat[offset..offset + vec_len]);
         if embed_dist > thresholds[3] {
             continue;
         }
@@ -114,14 +115,6 @@ pub fn cascade_scan_4ch(
     }
 
     results
-}
-
-/// Inline Hamming distance via u64 popcount.
-/// Hamming distance between two byte slices.
-/// Routes to rustynum_core for VPOPCNTDQ acceleration on AVX-512 CPUs.
-#[inline]
-fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    rustynum_core::simd::hamming_distance(a, b)
 }
 
 // ---------------------------------------------------------------------------
@@ -245,12 +238,12 @@ mod tests {
     }
 
     #[test]
-    fn test_hamming_slice_correctness() {
+    fn test_hamming_distance_correctness() {
         let a = vec![0u8; 64];
         let b = vec![0xFFu8; 64];
-        assert_eq!(hamming_slice(&a, &b), 64 * 8);
+        assert_eq!(hamming_distance(&a, &b), 64 * 8);
 
         let c = vec![0u8; 64];
-        assert_eq!(hamming_slice(&a, &c), 0);
+        assert_eq!(hamming_distance(&a, &c), 0);
     }
 }

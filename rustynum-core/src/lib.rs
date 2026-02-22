@@ -35,7 +35,7 @@ pub mod simd;
 #[cfg(feature = "mkl")]
 pub mod mkl_ffi;
 
-pub use blackboard::{Blackboard, BufferHandle};
+pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use fingerprint::{Fingerprint, Fingerprint2K, Fingerprint1K, Fingerprint64K};
 pub use layout::{Layout, Transpose};

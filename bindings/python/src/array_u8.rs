@@ -1,5 +1,6 @@
 // bindings/python/src/array_u8.rs
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
 use pyo3::types::{PyList, PyTuple};
 use rustynum_rs::NumArrayU8;
 
@@ -159,6 +160,16 @@ impl PyNumArrayU8 {
 
     /// Adaptive Hamming batch search: returns vec of (index, distance) for matches below threshold.
     fn hamming_search_adaptive(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64) -> PyResult<Vec<(usize, u64)>> {
+        if database.inner.len() != vec_len * count {
+            return Err(PyValueError::new_err(
+                format!("database length {} != vec_len * count = {}", database.inner.len(), vec_len * count)
+            ));
+        }
+        if self.inner.len() != vec_len {
+            return Err(PyValueError::new_err(
+                format!("query length {} != vec_len = {}", self.inner.len(), vec_len)
+            ));
+        }
         Ok(self.inner.hamming_search_adaptive(&database.inner, vec_len, count, threshold))
     }
 
@@ -170,6 +181,16 @@ impl PyNumArrayU8 {
     /// HDR cascade search: 3-stroke adaptive with cosine precision tier.
     /// Returns list of (index, hamming_distance, cosine_similarity).
     fn hdr_search(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64) -> PyResult<Vec<(usize, u64, f64)>> {
+        if database.inner.len() != vec_len * count {
+            return Err(PyValueError::new_err(
+                format!("database length {} != vec_len * count = {}", database.inner.len(), vec_len * count)
+            ));
+        }
+        if self.inner.len() != vec_len {
+            return Err(PyValueError::new_err(
+                format!("query length {} != vec_len = {}", self.inner.len(), vec_len)
+            ));
+        }
         Ok(self.inner.hdr_search(&database.inner, vec_len, count, threshold))
     }
 
@@ -177,6 +198,16 @@ impl PyNumArrayU8 {
     /// Dequantizes finalists using scale/zero_point, then computes f32 cosine.
     /// Returns list of (index, hamming_distance, cosine_similarity).
     fn hdr_search_f32(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64, scale: f32, zero_point: i32) -> PyResult<Vec<(usize, u64, f64)>> {
+        if database.inner.len() != vec_len * count {
+            return Err(PyValueError::new_err(
+                format!("database length {} != vec_len * count = {}", database.inner.len(), vec_len * count)
+            ));
+        }
+        if self.inner.len() != vec_len {
+            return Err(PyValueError::new_err(
+                format!("query length {} != vec_len = {}", self.inner.len(), vec_len)
+            ));
+        }
         Ok(self.inner.hdr_search_f32(&database.inner, vec_len, count, threshold, scale, zero_point))
     }
 
@@ -184,6 +215,21 @@ impl PyNumArrayU8 {
     /// Blends Hamming and INT8 cosine with delta_weight (0.0=pure Hamming, 1.0=pure INT8).
     /// Returns list of (index, hamming_distance, blended_similarity).
     fn hdr_search_delta(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64, delta_weight: f32) -> PyResult<Vec<(usize, u64, f64)>> {
+        if database.inner.len() != vec_len * count {
+            return Err(PyValueError::new_err(
+                format!("database length {} != vec_len * count = {}", database.inner.len(), vec_len * count)
+            ));
+        }
+        if self.inner.len() != vec_len {
+            return Err(PyValueError::new_err(
+                format!("query length {} != vec_len = {}", self.inner.len(), vec_len)
+            ));
+        }
+        if !(0.0..=1.0).contains(&delta_weight) {
+            return Err(PyValueError::new_err(
+                format!("delta_weight {} must be in [0.0, 1.0]", delta_weight)
+            ));
+        }
         Ok(self.inner.hdr_search_delta(&database.inner, vec_len, count, threshold, delta_weight))
     }
 }

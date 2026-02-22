@@ -18,8 +18,8 @@
 //! use rustymkl::vml;
 //!
 //! let mut bb = Blackboard::new();
-//! bb.alloc_f32("input", 1024);
-//! bb.alloc_f32("output", 1024);
+//! let _ = bb.alloc_f32("input", 1024);
+//! let _ = bb.alloc_f32("output", 1024);
 //!
 //! // Fill input...
 //! let (inp, out) = bb.borrow_2_mut_f32("input", "output");
