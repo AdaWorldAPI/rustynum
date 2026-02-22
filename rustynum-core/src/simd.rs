@@ -1174,9 +1174,49 @@ pub struct HdrResult {
     pub index: usize,
     /// Exact Hamming distance (from Stroke 2).
     pub hamming: u64,
-    /// Optional high-precision distance (from Stroke 3, if BF16/cosine enabled).
-    /// f64::NAN if Stroke 3 was not run.
+    /// Optional high-precision distance (from Stroke 3).
+    /// f64::NAN if Stroke 3 was not run (PreciseMode::Off).
     pub precise: f64,
+}
+
+/// Precision mode for Stroke 3 of the HDR cascade.
+///
+/// Five data paths through the same cascade engine:
+///
+/// | Case | Source | Tier 1-2 | Tier 3 | Example |
+/// |------|--------|----------|--------|---------|
+/// | Off  | —      | hamming  | none   | reject-only |
+/// | Vnni | native binary 64Kbit | partial popcount | VNNI dot_i8 cosine | SimHash/LSH/HDC |
+/// | F32  | f32 embedding → u8 | hamming on u8 | dequant → f32 dot | Jina embed |
+/// | BF16 | f32 embedding → u8 | hamming on u8 | dequant → bf16 dot | large embed db |
+/// | DeltaXor | 3D + INT8 delta | XOR delta popcount | INT8 residual dot | DeltaLayer |
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PreciseMode {
+    /// No precision tier — return Hamming distances only.
+    Off,
+
+    /// Case 1+2: Native u8 vectors (HDC/SimHash/LSH, including 64Kbit hires).
+    /// Uses VNNI dot_i8 (_mm512_dpbusd_epi32). No type conversion.
+    /// Exact integer arithmetic → f64 cosine.
+    Vnni,
+
+    /// Case 1 (float source): Quantized f32 embeddings → dequantize to f32.
+    /// f32_val = scale * (u8_val - zero_point), then SIMD dot_f32 → cosine.
+    /// Use when embed channel holds quantized Jina/CLIP vectors.
+    F32 { scale: f32, zero_point: i32 },
+
+    /// Case 1 (float source, large DB): Same dequantization but signals BF16 intent.
+    /// Currently falls through to f32 path.
+    /// Future (VDPBF16PS): bf16×bf16→f32 at 2× throughput, halved bandwidth.
+    /// Worth it when finalists > ~500 or database is bandwidth-bound.
+    BF16 { scale: f32, zero_point: i32 },
+
+    /// Case 5: XOR Delta Layer + INT8 residual.
+    /// Tier 1-2 operate on XOR delta popcount (ground ^ delta).
+    /// Tier 3 computes INT8 dot on the raw bytes as signed values,
+    /// treating byte magnitudes as a continuous residual signal.
+    /// `delta_weight` controls blend: distance = hamming * (1-w) + residual_dot * w
+    DeltaXor { delta_weight: f32 },
 }
 
 /// 3-Stroke Adaptive HDR Cascade Search.
@@ -1198,8 +1238,11 @@ pub struct HdrResult {
 ///
 /// ## Stroke 3 (HDR precision)
 ///
-/// VNNI-accelerated dot_i8 → cosine similarity on finalists.
-/// Only runs if `precise_tier` is true.
+/// High-precision distance on finalists. Mode selected by `precise_mode`:
+/// - `Off` — no Stroke 3, return Hamming only
+/// - `Vnni` — VNNI dot_i8 → cosine (native u8 vectors)
+/// - `F32`/`BF16` — dequantize u8 → f32, SIMD dot → cosine
+/// - `DeltaXor` — blended Hamming + INT8 cosine
 ///
 /// ## Performance model (100K × 2KB vectors, threshold=500)
 ///
@@ -1217,7 +1260,7 @@ pub fn hdr_cascade_search(
     vec_bytes: usize,
     num_vectors: usize,
     threshold: u64,
-    precise_tier: bool,
+    precise_mode: PreciseMode,
 ) -> Vec<HdrResult> {
     assert_eq!(query.len(), vec_bytes);
     assert_eq!(database.len(), vec_bytes * num_vectors);
@@ -1239,8 +1282,8 @@ pub fn hdr_cascade_search(
                 results.push(HdrResult { index: i, hamming: d, precise: f64::NAN });
             }
         }
-        if precise_tier && !results.is_empty() {
-            apply_precision_tier(query, database, vec_bytes, &mut results);
+        if precise_mode != PreciseMode::Off && !results.is_empty() {
+            apply_precision_tier(query, database, vec_bytes, &mut results, precise_mode);
         }
         return results;
     }
@@ -1330,49 +1373,146 @@ pub fn hdr_cascade_search(
     // STROKE 3: High-precision distance (optional VNNI cosine)
     // ════════════════════════════════════════════════════════
 
-    if precise_tier && !finalists.is_empty() {
-        apply_precision_tier(query, database, vec_bytes, &mut finalists);
+    if precise_mode != PreciseMode::Off && !finalists.is_empty() {
+        apply_precision_tier(query, database, vec_bytes, &mut finalists, precise_mode);
     }
 
     finalists
 }
 
-/// Stroke 3: compute VNNI dot_i8 → cosine similarity for finalists.
-/// Sorts by cosine descending (best first).
+/// Stroke 3: compute high-precision distance for finalists.
+///
+/// Mode selection:
+/// - `Vnni` — VNNI dot_i8 → cosine (native u8 vectors, no conversion)
+/// - `F32`/`BF16` — dequantize u8 → f32, SIMD dot_f32 → cosine
+/// - `DeltaXor` — blended hamming_norm * (1-w) + INT8 cosine * w
+///
+/// Sorts by precise distance descending (most similar first).
 fn apply_precision_tier(
     query: &[u8],
     database: &[u8],
     vec_bytes: usize,
     finalists: &mut Vec<HdrResult>,
+    precise_mode: PreciseMode,
 ) {
-    let dot_fn = select_dot_i8_fn();
+    match precise_mode {
+        PreciseMode::Off => return,
 
-    let query_norm_sq = dot_fn(query, query);
-    let query_norm = (query_norm_sq as f64).sqrt();
+        PreciseMode::Vnni => {
+            let dot_fn = select_dot_i8_fn();
+            let query_norm_sq = dot_fn(query, query);
+            let query_norm = (query_norm_sq as f64).sqrt();
 
-    if query_norm == 0.0 {
-        for r in finalists.iter_mut() {
-            r.precise = 0.0;
+            if query_norm == 0.0 {
+                for r in finalists.iter_mut() {
+                    r.precise = 0.0;
+                }
+                return;
+            }
+
+            for r in finalists.iter_mut() {
+                let base = r.index * vec_bytes;
+                let candidate = &database[base..base + vec_bytes];
+
+                let dot = dot_fn(query, candidate);
+                let cand_norm_sq = dot_fn(candidate, candidate);
+                let cand_norm = (cand_norm_sq as f64).sqrt();
+
+                r.precise = if cand_norm > 0.0 {
+                    dot as f64 / (query_norm * cand_norm)
+                } else {
+                    0.0
+                };
+            }
         }
-        return;
+
+        PreciseMode::F32 { scale, zero_point } | PreciseMode::BF16 { scale, zero_point } => {
+            // Dequantize u8 → f32, then SIMD dot_f32 → cosine.
+            //
+            // Both F32 and BF16 modes use the same f32 path for now.
+            // When VDPBF16PS is wired (native bf16×bf16→f32 dot), BF16 mode
+            // should skip the f32 intermediate entirely.
+            //
+            // For ~200 finalists × 2KB = 400KB temporary — fits L2.
+
+            // Dequantize query once
+            let mut query_f32 = vec![0.0f32; vec_bytes];
+            for i in 0..vec_bytes {
+                query_f32[i] = scale * (query[i] as i32 - zero_point) as f32;
+            }
+            let query_norm_sq = dot_f32(&query_f32, &query_f32);
+            let query_norm = (query_norm_sq as f64).sqrt();
+
+            if query_norm == 0.0 {
+                for r in finalists.iter_mut() {
+                    r.precise = 0.0;
+                }
+                return;
+            }
+
+            // Reuse buffer for candidates (avoid per-candidate allocation)
+            let mut cand_f32 = vec![0.0f32; vec_bytes];
+
+            for r in finalists.iter_mut() {
+                let base = r.index * vec_bytes;
+                let candidate = &database[base..base + vec_bytes];
+
+                // Dequantize candidate into reused buffer
+                for i in 0..vec_bytes {
+                    cand_f32[i] = scale * (candidate[i] as i32 - zero_point) as f32;
+                }
+
+                let dot = dot_f32(&query_f32, &cand_f32) as f64;
+                let cand_norm = (dot_f32(&cand_f32, &cand_f32) as f64).sqrt();
+
+                r.precise = if cand_norm > 0.0 {
+                    dot / (query_norm * cand_norm)
+                } else {
+                    0.0
+                };
+            }
+        }
+
+        PreciseMode::DeltaXor { delta_weight } => {
+            // XOR Delta Layer + INT8 residual.
+            //
+            // The u8 vectors are XOR deltas (ground ^ layer).
+            // Tier 1-2 already computed Hamming on them.
+            // Tier 3 adds INT8 dot product on the raw bytes as signed values,
+            // treating byte magnitudes as a continuous residual signal.
+            //
+            // Final score blends:
+            //   distance = hamming_norm * (1 - w) + (1 - cosine_i8) * w
+            //   where w = delta_weight, hamming_norm = hamming / total_bits
+
+            let total_bits = (vec_bytes * 8) as f64;
+            let dot_fn = select_dot_i8_fn();
+            let query_norm_sq = dot_fn(query, query);
+            let query_norm = (query_norm_sq as f64).sqrt();
+
+            let w = delta_weight as f64;
+
+            for r in finalists.iter_mut() {
+                let base = r.index * vec_bytes;
+                let candidate = &database[base..base + vec_bytes];
+
+                let hamming_norm = r.hamming as f64 / total_bits;
+
+                let cosine = if query_norm > 0.0 {
+                    let dot = dot_fn(query, candidate);
+                    let cand_norm = (dot_fn(candidate, candidate) as f64).sqrt();
+                    if cand_norm > 0.0 { dot as f64 / (query_norm * cand_norm) } else { 0.0 }
+                } else {
+                    0.0
+                };
+
+                let blended = hamming_norm * (1.0 - w) + (1.0 - cosine) * w;
+                r.precise = 1.0 - blended; // higher = more similar (cosine convention)
+            }
+        }
     }
 
-    for r in finalists.iter_mut() {
-        let base = r.index * vec_bytes;
-        let candidate = &database[base..base + vec_bytes];
-
-        let dot = dot_fn(query, candidate);
-        let cand_norm_sq = dot_fn(candidate, candidate);
-        let cand_norm = (cand_norm_sq as f64).sqrt();
-
-        r.precise = if cand_norm > 0.0 {
-            dot as f64 / (query_norm * cand_norm)
-        } else {
-            0.0
-        };
-    }
-
-    // Sort by cosine descending (most similar first)
+    // Sort by precise distance descending (most similar first)
     finalists.sort_unstable_by(|a, b| {
         b.precise.partial_cmp(&a.precise).unwrap_or(std::cmp::Ordering::Equal)
     });
@@ -1534,7 +1674,7 @@ mod tests {
         db.extend(vec![0xAA; vec_len]); // vec 2: identical
         db.extend(vec![0x00; vec_len]); // vec 3: very different
 
-        let results = hdr_cascade_search(&query, &db, vec_len, 4, 100, false);
+        let results = hdr_cascade_search(&query, &db, vec_len, 4, 100, PreciseMode::Off);
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].index, 0);
         assert_eq!(results[0].hamming, 0);
@@ -1566,7 +1706,7 @@ mod tests {
             }
         }
 
-        let results = hdr_cascade_search(&query, &db, vec_len, total, 500, false);
+        let results = hdr_cascade_search(&query, &db, vec_len, total, 500, PreciseMode::Off);
         assert!(results.len() >= num_close, "Expected at least {} matches, got {}", num_close, results.len());
         // All planted matches should appear
         let indices: Vec<usize> = results.iter().map(|r| r.index).collect();
@@ -1583,7 +1723,7 @@ mod tests {
         db.extend(vec![0xAA; vec_len]); // identical → cosine ≈ 1.0
         db.extend(vec![0x55; vec_len]); // maximally different (won't survive)
 
-        let results = hdr_cascade_search(&query, &db, vec_len, 2, 100, true);
+        let results = hdr_cascade_search(&query, &db, vec_len, 2, 100, PreciseMode::Vnni);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].index, 0);
         assert!(results[0].precise.is_finite());
@@ -1608,12 +1748,127 @@ mod tests {
         db.extend_from_slice(&cand_a);
         db.extend_from_slice(&cand_b);
 
-        let results = hdr_cascade_search(&query, &db, vec_len, 2, 300, true);
+        let results = hdr_cascade_search(&query, &db, vec_len, 2, 300, PreciseMode::Vnni);
         assert_eq!(results.len(), 2);
         // Both have same Hamming distance (30*8 = 240 bits)
         assert_eq!(results[0].hamming, results[1].hamming);
         // Precision tier provides cosine ranking
         assert!(results[0].precise.is_finite());
         assert!(results[1].precise.is_finite());
+    }
+
+    // ---- PreciseMode::F32 tests ----
+
+    #[test]
+    fn test_hdr_f32_dequantize_identical() {
+        let vec_len = 2048;
+        // Uniform u8 vectors — when dequantized with scale=1.0, zp=128,
+        // value 200 → f32 = 1.0*(200-128) = 72.0
+        let query = vec![200u8; vec_len];
+        let mut db = Vec::new();
+        db.extend(vec![200u8; vec_len]); // identical
+        db.extend(vec![56u8; vec_len]);  // opposite sign: 56-128 = -72
+
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 2, 20000,
+            PreciseMode::F32 { scale: 1.0, zero_point: 128 },
+        );
+        // Both survive Hamming threshold (generous)
+        assert!(!results.is_empty());
+        // Identical vector should have cosine ~1.0
+        let ident = results.iter().find(|r| r.index == 0).unwrap();
+        assert!((ident.precise - 1.0).abs() < 0.01,
+            "Expected cosine ~1.0, got {}", ident.precise);
+    }
+
+    #[test]
+    fn test_hdr_f32_dequantize_cosine_ranking() {
+        let vec_len = 256;
+        // Query: constant 200 → dequantized = 72.0
+        let query = vec![200u8; vec_len];
+        // Close match: 190 → dequantized = 62.0 (positive, high cosine)
+        let close = vec![190u8; vec_len];
+        // Far match: 80 → dequantized = -48.0 (negative, low cosine)
+        let far = vec![80u8; vec_len];
+
+        let mut db = Vec::new();
+        db.extend_from_slice(&far);
+        db.extend_from_slice(&close);
+
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 2, 50000,
+            PreciseMode::F32 { scale: 1.0, zero_point: 128 },
+        );
+        assert_eq!(results.len(), 2);
+        // Sorted by cosine descending — close should be first
+        assert_eq!(results[0].index, 1, "Close match should rank first");
+        assert!(results[0].precise > results[1].precise);
+    }
+
+    // ---- PreciseMode::BF16 tests ----
+
+    #[test]
+    fn test_hdr_bf16_falls_through_to_f32() {
+        let vec_len = 256;
+        let query = vec![200u8; vec_len];
+        let db = vec![200u8; vec_len]; // single identical vector
+
+        let results_f32 = hdr_cascade_search(
+            &query, &db, vec_len, 1, 50000,
+            PreciseMode::F32 { scale: 1.0, zero_point: 128 },
+        );
+        let results_bf16 = hdr_cascade_search(
+            &query, &db, vec_len, 1, 50000,
+            PreciseMode::BF16 { scale: 1.0, zero_point: 128 },
+        );
+        // BF16 currently uses same f32 path, so results should be identical
+        assert_eq!(results_f32.len(), results_bf16.len());
+        if !results_f32.is_empty() {
+            assert!((results_f32[0].precise - results_bf16[0].precise).abs() < 1e-6);
+        }
+    }
+
+    // ---- PreciseMode::DeltaXor tests ----
+
+    #[test]
+    fn test_hdr_delta_xor_pure_hamming() {
+        // With delta_weight=0.0, DeltaXor degenerates to pure Hamming ranking
+        let vec_len = 2048;
+        let query = vec![0xAA; vec_len];
+        let mut db = Vec::new();
+        db.extend(vec![0xAA; vec_len]); // identical: hamming=0
+
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 1, 100,
+            PreciseMode::DeltaXor { delta_weight: 0.0 },
+        );
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].hamming, 0);
+        // With w=0: blended = hamming_norm * 1 + 0 = 0, precise = 1 - 0 = 1.0
+        assert!((results[0].precise - 1.0).abs() < 0.01,
+            "Expected ~1.0 with w=0.0, got {}", results[0].precise);
+    }
+
+    #[test]
+    fn test_hdr_delta_xor_blended() {
+        let vec_len = 2048;
+        let query = vec![0xAA; vec_len];
+
+        let mut close = query.clone();
+        // Flip 20 bytes → 160 bit hamming
+        for i in 0..20 { close[i * 100] ^= 0xFF; }
+
+        let mut db = Vec::new();
+        db.extend_from_slice(&close);
+
+        let results = hdr_cascade_search(
+            &query, &db, vec_len, 1, 500,
+            PreciseMode::DeltaXor { delta_weight: 0.3 },
+        );
+        assert_eq!(results.len(), 1);
+        assert!(results[0].precise.is_finite());
+        // Should be between 0 and 1 for a close-but-not-identical match
+        assert!(results[0].precise > 0.0 && results[0].precise < 1.0,
+            "Expected blended in (0,1), got {}", results[0].precise);
     }
 }

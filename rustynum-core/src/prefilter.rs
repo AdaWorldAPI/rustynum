@@ -302,7 +302,8 @@ pub fn two_stage_hamming_search(
     let threshold = (bytes_per_vec * 4) as u64;
 
     let mut results = crate::simd::hdr_cascade_search(
-        query, database, bytes_per_vec, n_vectors, threshold, false,
+        query, database, bytes_per_vec, n_vectors, threshold,
+        crate::simd::PreciseMode::Off,
     );
 
     results.sort_unstable_by_key(|r| r.hamming);

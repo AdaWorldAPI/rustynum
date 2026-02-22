@@ -150,6 +150,78 @@ impl CogRecord {
         Some([d0, d1, d2, d3])
     }
 
+    /// HDR sweep: 4-channel compound early exit with optional VNNI precision on EMBED.
+    ///
+    /// For each CogRecord in the database:
+    /// 1. Check META Hamming ≤ threshold[0] (reject type mismatch)
+    /// 2. Check CAM Hamming ≤ threshold[1] (reject content mismatch)
+    /// 3. Check BTREE Hamming ≤ threshold[2] (reject structural mismatch)
+    /// 4. Check EMBED Hamming ≤ threshold[3], then compute VNNI cosine on EMBED
+    ///
+    /// Returns `(index, [4 distances], cosine)` sorted by EMBED cosine (best first).
+    pub fn hdr_sweep(
+        &self,
+        database: &[u8],
+        n: usize,
+        thresholds: [u64; 4],
+    ) -> Vec<(usize, [u64; 4], f64)> {
+        assert_eq!(database.len(), n * COGRECORD_BYTES);
+
+        let hamming_fn = rustynum_core::simd::select_hamming_fn();
+        let dot_fn = rustynum_core::simd::select_dot_i8_fn();
+
+        // Pre-compute query EMBED norm for cosine
+        let query_embed = self.embed.get_data();
+        let query_norm_sq = dot_fn(query_embed, query_embed);
+        let query_norm = (query_norm_sq as f64).sqrt();
+
+        let query_meta = self.meta.get_data();
+        let query_cam = self.cam.get_data();
+        let query_btree = self.btree.get_data();
+
+        let mut results = Vec::new();
+
+        for i in 0..n {
+            let offset = i * COGRECORD_BYTES;
+            let record = &database[offset..offset + COGRECORD_BYTES];
+
+            // Stage 1: META
+            let d0 = hamming_fn(query_meta, &record[0..CONTAINER_BYTES]);
+            if d0 > thresholds[META] { continue; }
+
+            // Stage 2: CAM
+            let d1 = hamming_fn(query_cam, &record[CONTAINER_BYTES..2 * CONTAINER_BYTES]);
+            if d1 > thresholds[CAM] { continue; }
+
+            // Stage 3: BTREE
+            let d2 = hamming_fn(query_btree, &record[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES]);
+            if d2 > thresholds[BTREE] { continue; }
+
+            // Stage 4: EMBED Hamming
+            let embed_slice = &record[3 * CONTAINER_BYTES..4 * CONTAINER_BYTES];
+            let d3 = hamming_fn(query_embed, embed_slice);
+            if d3 > thresholds[EMBED] { continue; }
+
+            // Precision tier: VNNI cosine on EMBED
+            let cosine = if query_norm > 0.0 {
+                let dot = dot_fn(query_embed, embed_slice);
+                let cand_norm = (dot_fn(embed_slice, embed_slice) as f64).sqrt();
+                if cand_norm > 0.0 { dot as f64 / (query_norm * cand_norm) } else { 0.0 }
+            } else {
+                0.0
+            };
+
+            results.push((i, [d0, d1, d2, d3], cosine));
+        }
+
+        // Sort by cosine descending (most similar first)
+        results.sort_unstable_by(|a, b| {
+            b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        results
+    }
+
     /// Flat 8192-byte representation for Arrow/LanceDB storage.
     ///
     /// Layout: [META(2048) | CAM(2048) | BTREE(2048) | EMBED(2048)]
@@ -352,5 +424,41 @@ mod tests {
         assert_eq!(cr.container(CAM).len(), CONTAINER_BYTES);
         assert_eq!(cr.container(BTREE).len(), CONTAINER_BYTES);
         assert_eq!(cr.container(EMBED).len(), CONTAINER_BYTES);
+    }
+
+    #[test]
+    fn test_hdr_sweep_basic() {
+        let query = make_record(0xAA);
+
+        let mut database = Vec::with_capacity(3 * COGRECORD_BYTES);
+        database.extend_from_slice(&make_record(0xAA).to_bytes()); // identical
+        database.extend_from_slice(&make_record(0x55).to_bytes()); // different
+        database.extend_from_slice(&make_record(0xAA).to_bytes()); // identical
+
+        let results = query.hdr_sweep(&database, 3, [1000, 1000, 1000, 1000]);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, 0); // indices
+        assert_eq!(results[1].0, 2);
+        // Identical vectors → cosine ~1.0
+        assert!((results[0].2 - 1.0).abs() < 0.01,
+            "Expected cosine ~1.0, got {}", results[0].2);
+    }
+
+    #[test]
+    fn test_hdr_sweep_rejects_on_meta() {
+        let query = make_record(0xAA);
+
+        // Record with different META but same CAM/BTREE/EMBED
+        let record = CogRecord::new(
+            NumArrayU8::new(vec![0x55; CONTAINER_BYTES]), // different META
+            NumArrayU8::new(vec![0xAA; CONTAINER_BYTES]),
+            NumArrayU8::new(vec![0xAA; CONTAINER_BYTES]),
+            NumArrayU8::new(vec![0xAA; CONTAINER_BYTES]),
+        );
+        let database = record.to_bytes();
+
+        // META threshold very low → reject immediately
+        let results = query.hdr_sweep(&database, 1, [100, 20000, 20000, 20000]);
+        assert!(results.is_empty());
     }
 }

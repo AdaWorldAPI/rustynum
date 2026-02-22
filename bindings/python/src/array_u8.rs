@@ -172,4 +172,18 @@ impl PyNumArrayU8 {
     fn hdr_search(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64) -> PyResult<Vec<(usize, u64, f64)>> {
         Ok(self.inner.hdr_search(&database.inner, vec_len, count, threshold))
     }
+
+    /// HDR cascade search with f32 dequantization precision tier.
+    /// Dequantizes finalists using scale/zero_point, then computes f32 cosine.
+    /// Returns list of (index, hamming_distance, cosine_similarity).
+    fn hdr_search_f32(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64, scale: f32, zero_point: i32) -> PyResult<Vec<(usize, u64, f64)>> {
+        Ok(self.inner.hdr_search_f32(&database.inner, vec_len, count, threshold, scale, zero_point))
+    }
+
+    /// HDR cascade search with XOR Delta + INT8 residual precision tier.
+    /// Blends Hamming and INT8 cosine with delta_weight (0.0=pure Hamming, 1.0=pure INT8).
+    /// Returns list of (index, hamming_distance, blended_similarity).
+    fn hdr_search_delta(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64, delta_weight: f32) -> PyResult<Vec<(usize, u64, f64)>> {
+        Ok(self.inner.hdr_search_delta(&database.inner, vec_len, count, threshold, delta_weight))
+    }
 }
