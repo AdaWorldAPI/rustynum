@@ -25,6 +25,35 @@ use crate::sweep::Base;
 // 52 Signal-Processing Concepts
 // ---------------------------------------------------------------------------
 
+/// Named domain range constants for indexing into [`CONCEPTS`].
+///
+/// Each constant is the `Range<usize>` of indices in the `CONCEPTS` slice
+/// that belong to that domain.  `ALL_DOMAINS` collects them all for
+/// programmatic iteration and consistency checks.
+pub mod domain {
+    use std::ops::Range;
+
+    pub const MODE:  Range<usize> = 0..4;
+    pub const NAV:   Range<usize> = 4..10;
+    pub const PLAN:  Range<usize> = 10..16;
+    pub const SENS:  Range<usize> = 16..24;
+    pub const CTRL:  Range<usize> = 24..32;
+    pub const MOTOR: Range<usize> = 32..40;
+    pub const PROC:  Range<usize> = 40..46;
+    pub const COMM:  Range<usize> = 46..52;
+
+    pub const ALL_DOMAINS: &[(&str, Range<usize>)] = &[
+        ("mode",  MODE),
+        ("nav",   NAV),
+        ("plan",  PLAN),
+        ("sens",  SENS),
+        ("ctrl",  CTRL),
+        ("motor", MOTOR),
+        ("proc",  PROC),
+        ("comm",  COMM),
+    ];
+}
+
 /// A single concept from the signal-processing ontology.
 #[derive(Clone, Debug)]
 pub struct Concept {
@@ -107,6 +136,9 @@ pub const CONCEPTS: &[Concept] = &[
 
 /// Total concept count.
 pub const K_TOTAL: usize = 52;
+
+/// Alias derived from the slice length (compile-time equivalent of `CONCEPTS.len()`).
+pub const CONCEPT_COUNT: usize = K_TOTAL;
 
 /// Domain boundaries for grouping: (name, start_index, end_index).
 pub const DOMAINS: &[(&str, usize, usize)] = &[
@@ -1006,5 +1038,18 @@ mod tests {
             covered = end;
         }
         assert_eq!(covered, K_TOTAL);
+    }
+
+    #[test]
+    fn test_domain_ranges_consistent() {
+        for (name, range) in domain::ALL_DOMAINS {
+            for idx in range.clone() {
+                assert_eq!(CONCEPTS[idx].domain, *name,
+                    "CONCEPTS[{}] domain '{}' doesn't match expected '{}'",
+                    idx, CONCEPTS[idx].domain, name);
+            }
+        }
+        let total: usize = domain::ALL_DOMAINS.iter().map(|(_, r)| r.len()).sum();
+        assert_eq!(total, CONCEPT_COUNT);
     }
 }

@@ -30,9 +30,9 @@
 //! let m = 64;
 //! let k = 64;
 //! let n = 64;
-//! bb.alloc_f32("A", m * k);
-//! bb.alloc_f32("B", k * n);
-//! bb.alloc_f32("C", m * n);
+//! let _ = bb.alloc_f32("A", m * k);
+//! let _ = bb.alloc_f32("B", k * n);
+//! let _ = bb.alloc_f32("C", m * n);
 //!
 //! // Fill A, B...
 //! let (a, b, c) = bb.borrow_3_mut_f32("A", "B", "C");

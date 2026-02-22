@@ -282,13 +282,14 @@ pub fn approx_hamming_candidates(
     distances
 }
 
-/// Two-stage HDC search: uses HDR cascade engine internally.
+/// Two-stage Hamming search with prefix prefilter.
 ///
-/// Delegates to `hdr_cascade_search` for hoisted CPUID dispatch and
-/// batch-stroke processing. The `prefix_bytes` and `prefilter_k` parameters
-/// are now handled internally by the cascade's σ-based rejection.
+/// # Deprecated
 ///
-/// Returns `(index, exact_hamming_distance)` for the top `final_k` matches.
+/// This function delegates to `hdr_cascade_search` with `PreciseMode::Off`.
+/// The `prefix_bytes` and `prefilter_k` parameters are ignored.
+/// Use `hdr_cascade_search` directly for full control over cascade behavior.
+#[deprecated(since = "0.5.0", note = "Use hdr_cascade_search directly. prefix_bytes and prefilter_k are ignored.")]
 pub fn two_stage_hamming_search(
     query: &[u8],
     database: &[u8],
@@ -298,7 +299,9 @@ pub fn two_stage_hamming_search(
     _prefilter_k: usize,  // now handled by σ threshold
     final_k: usize,
 ) -> Vec<(usize, u32)> {
-    // Use a generous threshold: ~50% bit distance
+    // Heuristic threshold: 50% bit distance (bytes_per_vec * 8 bits * 0.5 = bytes * 4).
+    // This admits candidates with up to half their bits differing from the query.
+    // For tighter control, use hdr_cascade_search directly with an explicit threshold.
     let threshold = (bytes_per_vec * 4) as u64;
 
     let mut results = crate::simd::hdr_cascade_search(
@@ -426,6 +429,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_two_stage_hamming() {
         let bytes_per_vec = 128; // 1024-bit vectors
         let n_vectors = 200;

@@ -48,7 +48,10 @@ pub fn unbind(bound: &[i8], role: &[i8], base: Base) -> Vec<i8> {
         }
         Base::Signed(_) => {
             // Negate role, then bind (saturating add + clamp).
-            let neg_role: Vec<i8> = role.iter().map(|&v| v.saturating_neg()).collect();
+            // Widen to i16 to handle i8::MIN correctly: -(-128) = 128 → clamp to 127.
+            let neg_role: Vec<i8> = role.iter().map(|&v| {
+                (-(v as i16)).clamp(-128, 127) as i8
+            }).collect();
             bind(bound, &neg_role, base)
         }
     }
@@ -417,6 +420,18 @@ mod tests {
             recovered, a);
         assert_eq!(recovered, vec![1],
             "unbind(3,2) = bind(3,-2) = 1 (not 3)");
+    }
+
+    #[test]
+    fn test_unbind_signed_min_value() {
+        // i8::MIN (-128) should negate to 127 (clamped), not stay as -128
+        let bound = vec![0i8; 4];
+        let role = vec![i8::MIN; 4]; // [-128, -128, -128, -128]
+        let result = unbind(&bound, &role, Base::Signed(7));
+        // unbind(0, -128) should = bind(0, 127) since neg(-128) clamps to 127
+        // bind(0, 127) with Signed(7) = (0 + 127).clamp(-3, 3) = 3
+        let expected = bind(&bound, &vec![127i8; 4], Base::Signed(7));
+        assert_eq!(result, expected, "unbind should negate i8::MIN to 127, not -128");
     }
 
     // --- Forward / Reverse roundtrip ---
