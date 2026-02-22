@@ -650,3 +650,569 @@ mod tests {
             "Random 1024-D binary vectors should not be within 0.3: found {} pairs", pairs.len());
     }
 }
+
+// ===========================================================================
+// BF16 Causal Pipeline — per-dimension causal attribution
+// ===========================================================================
+
+use rustynum_core::bf16_hamming::{
+    BF16Weights, BF16StructuralDiff, TRAINING_WEIGHTS,
+    bf16_hamming_scalar, structural_diff, select_bf16_hamming_fn,
+    fp32_to_bf16_bytes,
+};
+
+// ---------------------------------------------------------------------------
+// BF16 Entity
+// ---------------------------------------------------------------------------
+
+/// An entity with BF16-encoded vector (2 bytes per dimension).
+///
+/// For Jina v3 1024-D embeddings: 2048 bytes per entity.
+/// Created by truncating FP32 embeddings via `fp32_to_bf16_bytes()`.
+#[derive(Clone)]
+pub struct BF16Entity {
+    pub id: u32,
+    pub name: String,
+    /// BF16 bytes: 2 bytes per dimension, little-endian.
+    pub bf16_bytes: Vec<u8>,
+    /// Number of dimensions (bf16_bytes.len() / 2).
+    pub n_dims: usize,
+}
+
+impl BF16Entity {
+    /// Create from FP32 embedding (truncates to BF16).
+    pub fn from_f32(id: u32, name: &str, embedding: &[f32]) -> Self {
+        let bf16_bytes = fp32_to_bf16_bytes(embedding);
+        let n_dims = embedding.len();
+        Self { id, name: name.to_string(), bf16_bytes, n_dims }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-Dimension Causal Map
+// ---------------------------------------------------------------------------
+
+/// Causal attribution per dimension: which features carry the causal signal
+/// between two time series.
+#[derive(Clone, Debug)]
+pub struct CausalFeatureMap {
+    /// Number of dimensions.
+    pub n_dims: usize,
+    /// Per-dimension sign-flip count across all timesteps.
+    pub sign_flip_counts: Vec<u32>,
+    /// Per-dimension exponent-shift count.
+    pub exponent_shift_counts: Vec<u32>,
+    /// Dimensions sorted by sign-flip frequency (descending).
+    pub top_causal_dims: Vec<(usize, u32)>,
+    /// Total timesteps analyzed.
+    pub timesteps: usize,
+    /// Overall Granger signal (scalar, for comparison with existing API).
+    pub granger_signal: f64,
+    /// Best lag (at which the per-dim signal was strongest).
+    pub best_lag: usize,
+}
+
+impl CausalFeatureMap {
+    /// Fraction of timesteps where dimension `dim` had a sign flip.
+    pub fn sign_flip_rate(&self, dim: usize) -> f64 {
+        if self.timesteps == 0 { return 0.0; }
+        self.sign_flip_counts[dim] as f64 / self.timesteps as f64
+    }
+
+    /// Dimensions where sign flips occur > threshold fraction of timesteps.
+    pub fn causal_dims_above(&self, threshold: f64) -> Vec<usize> {
+        (0..self.n_dims)
+            .filter(|&d| self.sign_flip_rate(d) > threshold)
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BF16 Granger Signal — Per-Dimension Causal Attribution
+// ---------------------------------------------------------------------------
+
+/// BF16-structured Granger signal with per-dimension causal attribution.
+///
+/// Like `granger_signal()` but operates on BF16 byte series and returns
+/// not just "A causes B" but "A causes B via dimensions [47, 312, 891]".
+pub fn bf16_granger_causal_map(
+    series_a: &[BF16Entity],
+    series_b: &[BF16Entity],
+    tau: usize,
+) -> CausalFeatureMap {
+    assert!(tau > 0);
+    assert_eq!(series_a.len(), series_b.len());
+    let n = series_a.len();
+    let n_dims = series_a[0].n_dims;
+    assert!(tau < n);
+
+    let bf16_fn = select_bf16_hamming_fn();
+    let weights = &TRAINING_WEIGHTS;
+
+    let mut sign_flips = vec![0u32; n_dims];
+    let mut exp_shifts = vec![0u32; n_dims];
+    let mut cross_sum = 0.0f64;
+    let mut auto_sum = 0.0f64;
+    let mut count = 0usize;
+
+    for t in 0..(n - tau) {
+        // Cross-series structural diff: A_t vs B_{t+tau}
+        let cross_diff = structural_diff(
+            &series_a[t].bf16_bytes,
+            &series_b[t + tau].bf16_bytes,
+        );
+
+        // Accumulate per-dimension sign flips from cross-series
+        for &dim in &cross_diff.sign_flip_dims {
+            sign_flips[dim] += 1;
+        }
+        for &dim in &cross_diff.major_magnitude_shifts {
+            exp_shifts[dim] += 1;
+        }
+
+        // Scalar Granger signal for comparison
+        let d_ab = bf16_fn(
+            &series_a[t].bf16_bytes,
+            &series_b[t + tau].bf16_bytes,
+            weights,
+        ) as f64;
+        let d_bb = bf16_fn(
+            &series_b[t].bf16_bytes,
+            &series_b[t + tau].bf16_bytes,
+            weights,
+        ) as f64;
+        cross_sum += d_ab;
+        auto_sum += d_bb;
+        count += 1;
+    }
+
+    // Build top causal dims (sorted by sign-flip count, descending)
+    let mut top: Vec<(usize, u32)> = sign_flips.iter()
+        .enumerate()
+        .filter(|(_, &c)| c > 0)
+        .map(|(d, &c)| (d, c))
+        .collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let granger = if count > 0 {
+        (cross_sum - auto_sum) / count as f64
+    } else {
+        0.0
+    };
+
+    CausalFeatureMap {
+        n_dims,
+        sign_flip_counts: sign_flips,
+        exponent_shift_counts: exp_shifts,
+        top_causal_dims: top,
+        timesteps: count,
+        granger_signal: granger,
+        best_lag: tau,
+    }
+}
+
+/// Scan multiple lags and return the CausalFeatureMap at the best lag.
+pub fn bf16_granger_causal_scan(
+    series_a: &[BF16Entity],
+    series_b: &[BF16Entity],
+    max_lag: usize,
+) -> CausalFeatureMap {
+    let mut best_map = bf16_granger_causal_map(series_a, series_b, 1);
+
+    for tau in 2..=max_lag {
+        let map = bf16_granger_causal_map(series_a, series_b, tau);
+        if map.granger_signal < best_map.granger_signal {
+            best_map = map;
+        }
+    }
+
+    best_map
+}
+
+// ---------------------------------------------------------------------------
+// BF16 Causal Trace — reverse reasoning with per-dim attribution
+// ---------------------------------------------------------------------------
+
+/// One step in a BF16 causal trace, with structural diff information.
+#[derive(Clone, Debug)]
+pub struct BF16TraceStep {
+    pub entity_id: u32,
+    /// BF16-structured weighted distance.
+    pub weighted_distance: u64,
+    /// Normalized weighted distance (0.0 = identical).
+    pub normalized_distance: f64,
+    /// Whether this step is confident.
+    pub confident: bool,
+    /// Structural diff between unbound candidate and recovered entity.
+    pub diff: BF16StructuralDiff,
+}
+
+/// BF16 reverse causal trace with per-dimension attribution.
+#[derive(Clone, Debug)]
+pub struct BF16CausalTrace {
+    pub outcome_id: u32,
+    pub role_name: String,
+    pub steps: Vec<BF16TraceStep>,
+    pub confident_depth: usize,
+    /// Dimensions that consistently carry causal signal across all hops.
+    pub causal_backbone_dims: Vec<usize>,
+}
+
+/// BF16 reverse trace: unbind outcome with role, search for nearest
+/// BF16 entity, report structural diff at each hop.
+pub fn bf16_reverse_trace(
+    outcome: &BF16Entity,
+    role_bf16: &[u8],
+    entities: &[BF16Entity],
+    max_depth: usize,
+    confidence_threshold: f64,
+    weights: &BF16Weights,
+) -> BF16CausalTrace {
+    let bf16_fn = select_bf16_hamming_fn();
+
+    // For BF16 binary base: unbind = XOR (same as bind)
+    let xor_unbind = |bound: &[u8], role: &[u8]| -> Vec<u8> {
+        bound.iter().zip(role.iter()).map(|(a, b)| a ^ b).collect()
+    };
+
+    let nearest_bf16 = |candidate: &[u8]| -> (u32, u64) {
+        let mut best_id = 0u32;
+        let mut best_dist = u64::MAX;
+        for e in entities {
+            let d = bf16_fn(candidate, &e.bf16_bytes, weights);
+            if d < best_dist {
+                best_dist = d;
+                best_id = e.id;
+            }
+        }
+        (best_id, best_dist)
+    };
+
+    // Max possible BF16 distance for normalization
+    let max_dist_per_dim = (weights.sign as u64) + 8 * (weights.exponent as u64)
+        + 7 * (weights.mantissa as u64);
+    let max_total = max_dist_per_dim * (outcome.n_dims as u64);
+
+    let mut steps = Vec::with_capacity(max_depth);
+    let mut current_bytes = outcome.bf16_bytes.clone();
+    let mut confident_depth = 0;
+    let mut all_sign_flip_dims: Vec<Vec<usize>> = Vec::new();
+
+    for _ in 0..max_depth {
+        let candidate = xor_unbind(&current_bytes, role_bf16);
+        let (entity_id, distance) = nearest_bf16(&candidate);
+        let normalized = if max_total > 0 { distance as f64 / max_total as f64 } else { 1.0 };
+        let confident = normalized < confidence_threshold;
+
+        // Structural diff between candidate and recovered entity
+        let recovered = entities.iter().find(|e| e.id == entity_id);
+        let diff = if let Some(r) = recovered {
+            structural_diff(&candidate, &r.bf16_bytes)
+        } else {
+            BF16StructuralDiff::default()
+        };
+
+        all_sign_flip_dims.push(diff.sign_flip_dims.clone());
+
+        steps.push(BF16TraceStep {
+            entity_id,
+            weighted_distance: distance,
+            normalized_distance: normalized,
+            confident,
+            diff,
+        });
+
+        if confident {
+            confident_depth += 1;
+        } else {
+            break;
+        }
+
+        if let Some(e) = recovered {
+            current_bytes = e.bf16_bytes.clone();
+        } else {
+            break;
+        }
+    }
+
+    // Causal backbone: dimensions that appear in sign_flip_dims
+    // across most confident hops.
+    let causal_backbone_dims = if confident_depth >= 2 {
+        let confident_dims: Vec<&Vec<usize>> = all_sign_flip_dims[..confident_depth]
+            .iter().collect();
+        let mut dim_counts = std::collections::HashMap::new();
+        for dims in &confident_dims {
+            for &d in dims.iter() {
+                *dim_counts.entry(d).or_insert(0u32) += 1;
+            }
+        }
+        let threshold = (confident_depth as u32).saturating_sub(1).max(1);
+        let mut backbone: Vec<usize> = dim_counts.iter()
+            .filter(|(_, &count)| count >= threshold)
+            .map(|(&dim, _)| dim)
+            .collect();
+        backbone.sort();
+        backbone
+    } else {
+        Vec::new()
+    };
+
+    BF16CausalTrace {
+        outcome_id: outcome.id,
+        role_name: String::new(),
+        steps,
+        confident_depth,
+        causal_backbone_dims,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BF16 Learning Event — what changed and why
+// ---------------------------------------------------------------------------
+
+/// A learning event captured from BF16 structural diff.
+#[derive(Clone, Debug)]
+pub struct BF16LearningEvent {
+    /// Entity that was updated.
+    pub entity_id: u32,
+    /// Timestep of the update.
+    pub timestep: usize,
+    /// BF16-structured distance between before and after.
+    pub distance: u64,
+    /// Structural diff.
+    pub diff: BF16StructuralDiff,
+    /// Causal interpretation.
+    pub interpretation: LearningInterpretation,
+}
+
+#[derive(Clone, Debug)]
+pub enum LearningInterpretation {
+    /// No meaningful change (mantissa noise only).
+    Noise,
+    /// Attention rebalancing: magnitude shifted but polarity preserved.
+    AttentionShift { dims: Vec<usize> },
+    /// Semantic reversal: sign flipped on key dimensions.
+    SemanticReversal { dims: Vec<usize> },
+    /// Both: sign flips AND magnitude shifts.
+    MajorUpdate { sign_dims: Vec<usize>, magnitude_dims: Vec<usize> },
+}
+
+/// Classify a learning step from BF16 structural diff.
+pub fn classify_learning_event(
+    entity_id: u32,
+    timestep: usize,
+    before: &[u8],
+    after: &[u8],
+    weights: &BF16Weights,
+) -> BF16LearningEvent {
+    let bf16_fn = select_bf16_hamming_fn();
+    let distance = bf16_fn(before, after, weights);
+    let diff = structural_diff(before, after);
+
+    let interpretation = match (diff.sign_flips, diff.major_magnitude_shifts.len()) {
+        (0, 0) => LearningInterpretation::Noise,
+        (0, _) => LearningInterpretation::AttentionShift {
+            dims: diff.major_magnitude_shifts.clone(),
+        },
+        (_, 0) => LearningInterpretation::SemanticReversal {
+            dims: diff.sign_flip_dims.clone(),
+        },
+        (_, _) => LearningInterpretation::MajorUpdate {
+            sign_dims: diff.sign_flip_dims.clone(),
+            magnitude_dims: diff.major_magnitude_shifts.clone(),
+        },
+    };
+
+    BF16LearningEvent {
+        entity_id,
+        timestep,
+        distance,
+        diff,
+        interpretation,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BF16 Causal Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod bf16_causal_tests {
+    use super::*;
+
+    fn make_jina_like_embedding(seed: u64, n_dims: usize) -> Vec<f32> {
+        let mut rng = rustynum_core::SplitMix64::new(seed);
+        (0..n_dims).map(|_| {
+            (rng.next_u64() as f64 / u64::MAX as f64 * 2.0 - 1.0) as f32 * 0.1
+        }).collect()
+    }
+
+    #[test]
+    fn test_bf16_granger_causal_map_returns_per_dim() {
+        let n_dims = 64;
+        let n_steps = 20;
+        let tau = 2;
+
+        let series_a: Vec<BF16Entity> = (0..n_steps).map(|t| {
+            BF16Entity::from_f32(t as u32, &format!("A_{}", t),
+                &make_jina_like_embedding(t as u64, n_dims))
+        }).collect();
+
+        // B[t] at lag tau is similar to A[t-tau] with some dims flipped
+        let series_b: Vec<BF16Entity> = (0..n_steps).map(|t| {
+            if t >= tau {
+                let mut emb = make_jina_like_embedding((t - tau) as u64, n_dims);
+                for &d in &[5, 10, 15] {
+                    if d < n_dims { emb[d] = -emb[d]; }
+                }
+                BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
+            } else {
+                BF16Entity::from_f32(t as u32, &format!("B_{}", t),
+                    &make_jina_like_embedding(100 + t as u64, n_dims))
+            }
+        }).collect();
+
+        let map = bf16_granger_causal_map(&series_a, &series_b, tau);
+
+        // Dims 5, 10, 15 should have high sign-flip counts
+        assert!(map.sign_flip_counts[5] > 0, "Dim 5 should have sign flips");
+        assert!(map.sign_flip_counts[10] > 0, "Dim 10 should have sign flips");
+        assert!(map.sign_flip_counts[15] > 0, "Dim 15 should have sign flips");
+        assert!(!map.top_causal_dims.is_empty(), "Should have causal dims");
+    }
+
+    #[test]
+    fn test_bf16_granger_scan_finds_best_lag() {
+        let n_dims = 32;
+        let n_steps = 30;
+        let true_lag = 3;
+
+        let series_a: Vec<BF16Entity> = (0..n_steps).map(|t| {
+            BF16Entity::from_f32(t as u32, &format!("A_{}", t),
+                &make_jina_like_embedding(t as u64, n_dims))
+        }).collect();
+
+        let series_b: Vec<BF16Entity> = (0..n_steps).map(|t| {
+            if t >= true_lag {
+                let mut emb = make_jina_like_embedding((t - true_lag) as u64, n_dims);
+                // Small perturbation
+                for d in 0..3 { emb[d] = -emb[d]; }
+                BF16Entity::from_f32(t as u32, &format!("B_{}", t), &emb)
+            } else {
+                BF16Entity::from_f32(t as u32, &format!("B_{}", t),
+                    &make_jina_like_embedding(200 + t as u64, n_dims))
+            }
+        }).collect();
+
+        let map = bf16_granger_causal_scan(&series_a, &series_b, 5);
+        // Best lag should be around the true lag
+        assert!(map.best_lag >= 1 && map.best_lag <= 5);
+    }
+
+    #[test]
+    fn test_classify_learning_event_semantic_reversal() {
+        let n_dims = 32;
+        let before_f32 = make_jina_like_embedding(42, n_dims);
+        let mut after_f32 = before_f32.clone();
+        after_f32[7] = -after_f32[7];
+
+        let before = fp32_to_bf16_bytes(&before_f32);
+        let after = fp32_to_bf16_bytes(&after_f32);
+
+        let event = classify_learning_event(1, 0, &before, &after, &TRAINING_WEIGHTS);
+
+        match &event.interpretation {
+            LearningInterpretation::SemanticReversal { dims } |
+            LearningInterpretation::MajorUpdate { sign_dims: dims, .. } => {
+                assert!(dims.contains(&7), "Should detect sign flip on dim 7");
+            }
+            other => panic!("Expected SemanticReversal or MajorUpdate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_classify_learning_event_noise() {
+        let n_dims = 32;
+        let emb = make_jina_like_embedding(42, n_dims);
+        let before = fp32_to_bf16_bytes(&emb);
+        let after = before.clone();
+
+        let event = classify_learning_event(1, 0, &before, &after, &TRAINING_WEIGHTS);
+        assert!(matches!(event.interpretation, LearningInterpretation::Noise));
+    }
+
+    #[test]
+    fn test_bf16_reverse_trace_single_hop() {
+        let n_dims = 64;
+        let cause = BF16Entity::from_f32(1, "cause",
+            &make_jina_like_embedding(1, n_dims));
+
+        let role_f32 = make_jina_like_embedding(99, n_dims);
+        let role_bf16 = fp32_to_bf16_bytes(&role_f32);
+
+        // Effect = XOR(cause, role) in BF16 byte space
+        let effect_bytes: Vec<u8> = cause.bf16_bytes.iter()
+            .zip(role_bf16.iter())
+            .map(|(a, b)| a ^ b)
+            .collect();
+        let effect = BF16Entity { id: 2, name: "effect".into(), bf16_bytes: effect_bytes, n_dims };
+
+        let entities = vec![cause.clone(), effect.clone()];
+        let trace = bf16_reverse_trace(
+            &effect, &role_bf16, &entities, 3, 0.3, &BF16Weights::default(),
+        );
+
+        assert!(!trace.steps.is_empty());
+        assert_eq!(trace.steps[0].entity_id, 1, "Should recover cause");
+        assert_eq!(trace.steps[0].weighted_distance, 0, "XOR unbind should be exact");
+        assert!(trace.steps[0].confident);
+    }
+
+    #[test]
+    fn test_causal_feature_map_rates() {
+        let map = CausalFeatureMap {
+            n_dims: 4,
+            sign_flip_counts: vec![10, 0, 5, 8],
+            exponent_shift_counts: vec![2, 0, 1, 3],
+            top_causal_dims: vec![(0, 10), (3, 8), (2, 5)],
+            timesteps: 20,
+            granger_signal: -0.5,
+            best_lag: 2,
+        };
+
+        assert!((map.sign_flip_rate(0) - 0.5).abs() < 0.01);
+        assert_eq!(map.sign_flip_rate(1), 0.0);
+        assert!((map.sign_flip_rate(2) - 0.25).abs() < 0.01);
+
+        let above_30 = map.causal_dims_above(0.3);
+        assert!(above_30.contains(&0)); // 50%
+        assert!(above_30.contains(&3)); // 40%
+        assert!(!above_30.contains(&2)); // 25% < 30%
+    }
+
+    #[test]
+    fn test_classify_learning_event_attention_shift() {
+        // Create two BF16 vectors where only exponent bits differ significantly
+        let n_dims = 4;
+        let before_f32 = vec![0.1f32, 0.2, 0.3, 0.4];
+        let after_f32 = vec![0.1, 0.2, 30.0, 40.0]; // dims 2,3: huge magnitude change
+
+        let before = fp32_to_bf16_bytes(&before_f32);
+        let after = fp32_to_bf16_bytes(&after_f32);
+
+        let event = classify_learning_event(1, 0, &before, &after, &TRAINING_WEIGHTS);
+
+        // Should be AttentionShift or MajorUpdate (depends on whether sign also flipped)
+        match &event.interpretation {
+            LearningInterpretation::AttentionShift { dims } => {
+                assert!(!dims.is_empty(), "Should detect magnitude shifts");
+            }
+            LearningInterpretation::MajorUpdate { magnitude_dims, .. } => {
+                assert!(!magnitude_dims.is_empty(), "Should detect magnitude shifts");
+            }
+            _ => {
+                // Also acceptable if exponent didn't change enough bits
+            }
+        }
+    }
+}

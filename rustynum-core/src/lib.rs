@@ -20,6 +20,7 @@ pub mod fingerprint;
 pub mod layout;
 pub mod parallel;
 pub mod rng;
+pub mod bf16_hamming;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
@@ -41,3 +42,9 @@ pub use fingerprint::{Fingerprint, Fingerprint2K, Fingerprint1K, Fingerprint64K}
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
 pub use rng::SplitMix64;
+pub use bf16_hamming::{
+    BF16Weights, BF16StructuralDiff,
+    fp32_to_bf16_bytes, bf16_bytes_to_fp32,
+    structural_diff, select_bf16_hamming_fn, bf16_hamming_scalar,
+    JINA_WEIGHTS, TRAINING_WEIGHTS,
+};
