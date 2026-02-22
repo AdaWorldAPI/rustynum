@@ -151,11 +151,12 @@ pub fn indexed_cascade_search(
 
     // ── Stage 2: CAM via sidecar index ──
     let cam_candidates = indices.cam_index.overlapping_row_ids(q_cam, thresholds[1]);
-    // Intersect with META survivors
-    let cam_check: Vec<usize> = survivor_rows.iter()
-        .filter(|id| cam_candidates.contains(id))
-        .copied()
-        .collect();
+    // Intersect: iterate the smaller set, probe the larger (both are HashSets).
+    let cam_check: Vec<usize> = if survivor_rows.len() <= cam_candidates.len() {
+        survivor_rows.iter().filter(|id| cam_candidates.contains(id)).copied().collect()
+    } else {
+        cam_candidates.iter().filter(|id| survivor_rows.contains(id)).copied().collect()
+    };
     stats.cam_fetched = cam_check.len();
 
     let mut cam_survivors: HashSet<usize> = HashSet::new();
@@ -168,10 +169,11 @@ pub fn indexed_cascade_search(
 
     // ── Stage 3: BTREE via sidecar index ──
     let btree_candidates = indices.btree_index.overlapping_row_ids(q_btree, thresholds[2]);
-    let btree_check: Vec<usize> = cam_survivors.iter()
-        .filter(|id| btree_candidates.contains(id))
-        .copied()
-        .collect();
+    let btree_check: Vec<usize> = if cam_survivors.len() <= btree_candidates.len() {
+        cam_survivors.iter().filter(|id| btree_candidates.contains(id)).copied().collect()
+    } else {
+        btree_candidates.iter().filter(|id| cam_survivors.contains(id)).copied().collect()
+    };
     stats.btree_fetched = btree_check.len();
 
     let mut btree_survivors: HashSet<usize> = HashSet::new();
@@ -184,10 +186,11 @@ pub fn indexed_cascade_search(
 
     // ── Stage 4: EMBED via sidecar index ──
     let embed_candidates = indices.embed_index.overlapping_row_ids(q_embed, thresholds[3]);
-    let embed_check: Vec<usize> = btree_survivors.iter()
-        .filter(|id| embed_candidates.contains(id))
-        .copied()
-        .collect();
+    let embed_check: Vec<usize> = if btree_survivors.len() <= embed_candidates.len() {
+        btree_survivors.iter().filter(|id| embed_candidates.contains(id)).copied().collect()
+    } else {
+        embed_candidates.iter().filter(|id| btree_survivors.contains(id)).copied().collect()
+    };
     stats.embed_fetched = embed_check.len();
 
     let mut hits = Vec::new();
@@ -212,7 +215,8 @@ pub fn indexed_cascade_search(
 ///
 /// Call this after appending new CogRecords to the dataset. The primary
 /// FragmentIndex is NOT updated here — new records go into a logical
-/// "pending" set. Call `rebuild_primary()` periodically.
+/// "pending" set visible only to sidecar stages (CAM/BTREE/EMBED).
+/// Call `rebuild()` periodically to reconstruct the META fragment index.
 ///
 /// # Arguments
 /// * `indices` — mutable reference to the cascade indices

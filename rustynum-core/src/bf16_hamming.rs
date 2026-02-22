@@ -110,9 +110,12 @@ pub fn bf16_hamming_scalar(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
 /// - VPOPCNTB for per-byte popcount
 /// - VPADDW for accumulation
 ///
-/// Requires: AVX-512BW + AVX-512VPOPCNTDQ (Ice Lake+)
+/// Requires: AVX-512BW + AVX-512BITALG (Ice Lake+)
+///
+/// Note: `_mm512_popcnt_epi8` is AVX-512 BITALG, not VPOPCNTDQ.
+/// VPOPCNTDQ provides 32/64-bit lane popcount; per-byte popcount is BITALG.
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx512f,avx512bw,avx512vpopcntdq")]
+#[target_feature(enable = "avx512f,avx512bw,avx512bitalg")]
 unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     use std::arch::x86_64::*;
 
@@ -127,9 +130,17 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
     let mask_0x7f = _mm512_set1_epi16(0x007F);
     let one = _mm512_set1_epi16(1);
 
-    // Accumulate in 32-bit to avoid overflow.
-    // Max per-element contribution: 256 + 8×16 + 7×1 = 391
-    // 32 elements per chunk × 391 = 12512 per chunk
+    // Accumulate in 32-bit to avoid u16 overflow.
+    //
+    // Per-element max (default weights): 256 + 8×16 + 7×1 = 391
+    // 32 BF16 pairs per 512-bit chunk → 12,512 per chunk.
+    // For 1024-D (32 chunks): 32 × 12,512 = 400,384 — fits u32 (max 4.29B).
+    // Even with TRAINING_WEIGHTS (1024/64/0): 1024 + 8×64 = 1,536 per elem,
+    // 32 × 1,536 × 32 chunks = 1,572,864 — still fits comfortably in u32.
+    //
+    // Overflow budget: safe for vectors up to ~2.7M dimensions with default
+    // weights, or ~87K dimensions with TRAINING_WEIGHTS. Beyond that, widen
+    // to u64 accumulators or add periodic reduction.
     let mut acc_lo = _mm512_setzero_si512();
     let mut acc_hi = _mm512_setzero_si512();
 
@@ -165,7 +176,10 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
             man_weighted,
         );
 
-        // Widen to u32 and accumulate
+        // Widen u16 lanes to u32 and accumulate in two halves.
+        // BF16 pairs are 2 bytes each so u16 lane boundaries coincide with
+        // BF16 element boundaries — even lanes are elements 0,2,4,...
+        // and odd lanes (shifted right 16 within each 32-bit word) are 1,3,5,...
         let even = _mm512_and_si512(per_elem, _mm512_set1_epi32(0x0000FFFF));
         let odd = _mm512_srli_epi32(per_elem, 16);
         acc_lo = _mm512_add_epi32(acc_lo, even);
@@ -194,7 +208,7 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 pub fn select_bf16_hamming_fn() -> fn(&[u8], &[u8], &BF16Weights) -> u64 {
     #[cfg(target_arch = "x86_64")]
     {
-        if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512vpopcntdq") {
+        if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
             return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
         }
     }
@@ -415,7 +429,7 @@ mod tests {
         #[cfg(target_arch = "x86_64")]
         {
             if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512vpopcntdq")
+                || !is_x86_feature_detected!("avx512bitalg")
             {
                 return;
             }
@@ -436,7 +450,7 @@ mod tests {
         #[cfg(target_arch = "x86_64")]
         {
             if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512vpopcntdq")
+                || !is_x86_feature_detected!("avx512bitalg")
             {
                 return;
             }
