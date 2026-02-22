@@ -147,8 +147,8 @@ impl Blackboard {
         self.buffers.remove(name);
 
         let byte_len = len * dtype.element_size();
-        let layout = alloc::Layout::from_size_align(byte_len.max(1), ALIGNMENT)
-            .expect("Invalid layout");
+        let layout =
+            alloc::Layout::from_size_align(byte_len.max(1), ALIGNMENT).expect("Invalid layout");
 
         let ptr = if byte_len == 0 {
             std::ptr::null_mut()
@@ -253,7 +253,11 @@ impl Blackboard {
     /// # Panics
     ///
     /// Panics if names are the same (logic error — aliasing would be unsound).
-    pub fn borrow_2_mut_f32<'a>(&'a mut self, a: &str, b: &str) -> Option<(&'a mut [f32], &'a mut [f32])> {
+    pub fn borrow_2_mut_f32<'a>(
+        &'a mut self,
+        a: &str,
+        b: &str,
+    ) -> Option<(&'a mut [f32], &'a mut [f32])> {
         assert_ne!(a, b, "Cannot borrow the same buffer twice mutably");
         let ma = self.meta_checked(a, DType::F32)?;
         let mb = self.meta_checked(b, DType::F32)?;

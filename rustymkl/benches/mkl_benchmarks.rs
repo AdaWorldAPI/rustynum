@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use rustymkl::{vml, fft};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use rustymkl::{fft, vml};
 
 fn bench_vsexp(c: &mut Criterion) {
     let mut group = c.benchmark_group("vsexp");

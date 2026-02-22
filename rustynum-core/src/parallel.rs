@@ -93,9 +93,7 @@ mod tests {
 
     #[test]
     fn test_parallel_map_chunks() {
-        let results = parallel_map_chunks(0, 100, |start, end| {
-            (start..end).sum::<usize>()
-        });
+        let results = parallel_map_chunks(0, 100, |start, end| (start..end).sum::<usize>());
         let total: usize = results.iter().sum();
         assert_eq!(total, (0..100).sum::<usize>());
     }

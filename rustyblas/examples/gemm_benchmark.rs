@@ -40,20 +40,38 @@ fn gemm_transpose_dot(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n
 }
 
 fn bench_one(name: &str, m: usize, n: usize, k: usize, iters: usize) {
-    let a: Vec<f32> = (0..m*k).map(|i| ((i * 7 + 3) % 1000) as f32 * 0.001).collect();
-    let b: Vec<f32> = (0..k*n).map(|i| ((i * 11 + 5) % 1000) as f32 * 0.001).collect();
+    let a: Vec<f32> = (0..m * k)
+        .map(|i| ((i * 7 + 3) % 1000) as f32 * 0.001)
+        .collect();
+    let b: Vec<f32> = (0..k * n)
+        .map(|i| ((i * 11 + 5) % 1000) as f32 * 0.001)
+        .collect();
     let mut c_old = vec![0.0f32; m * n];
     let mut c_new = vec![0.0f32; m * n];
 
     // Warmup
     gemm_transpose_dot(&a, &b, &mut c_old, m, k, n);
     rustyblas::level3::sgemm(
-        rustyblas::Layout::RowMajor, rustyblas::Transpose::NoTrans, rustyblas::Transpose::NoTrans,
-        m, n, k, 1.0, &a, k, &b, n, 0.0, &mut c_new, n,
+        rustyblas::Layout::RowMajor,
+        rustyblas::Transpose::NoTrans,
+        rustyblas::Transpose::NoTrans,
+        m,
+        n,
+        k,
+        1.0,
+        &a,
+        k,
+        &b,
+        n,
+        0.0,
+        &mut c_new,
+        n,
     );
 
     // Verify correctness
-    let max_err = c_old.iter().zip(c_new.iter())
+    let max_err = c_old
+        .iter()
+        .zip(c_new.iter())
         .map(|(a, b)| (a - b).abs())
         .fold(0.0f32, f32::max);
     let max_val = c_old.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
@@ -71,8 +89,20 @@ fn bench_one(name: &str, m: usize, n: usize, k: usize, iters: usize) {
     for _ in 0..iters {
         c_new.fill(0.0);
         rustyblas::level3::sgemm(
-            rustyblas::Layout::RowMajor, rustyblas::Transpose::NoTrans, rustyblas::Transpose::NoTrans,
-            m, n, k, 1.0, &a, k, &b, n, 0.0, &mut c_new, n,
+            rustyblas::Layout::RowMajor,
+            rustyblas::Transpose::NoTrans,
+            rustyblas::Transpose::NoTrans,
+            m,
+            n,
+            k,
+            1.0,
+            &a,
+            k,
+            &b,
+            n,
+            0.0,
+            &mut c_new,
+            n,
         );
     }
     let new_time = t1.elapsed().as_secs_f64() / iters as f64;
@@ -91,9 +121,17 @@ fn bench_one(name: &str, m: usize, n: usize, k: usize, iters: usize) {
 }
 
 fn main() {
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-    println!("=== GEMM Benchmark: old (transpose-dot) vs new (cache-blocked + {}T) ===", cores);
-    println!("  {:12} | {:>38} | {:>38} | {:>11} | err", "Size", "Old (transpose-dot)", "New (Goto+MT)", "Speedup");
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    println!(
+        "=== GEMM Benchmark: old (transpose-dot) vs new (cache-blocked + {}T) ===",
+        cores
+    );
+    println!(
+        "  {:12} | {:>38} | {:>38} | {:>11} | err",
+        "Size", "Old (transpose-dot)", "New (Goto+MT)", "Speedup"
+    );
     println!("  {}", "-".repeat(130));
 
     bench_one("32x32", 32, 32, 32, 5000);

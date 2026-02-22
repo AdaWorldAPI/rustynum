@@ -38,97 +38,97 @@
 //! - `carrier_spectrum` / `spectral_distance` — frequency fingerprinting
 //! - `CarrierRecord` — hybrid binary + carrier containers
 
-pub mod phase;
-pub mod cogrecord_v3;
 pub mod carrier;
+pub mod cogrecord_v3;
 pub mod delta_layer;
 pub mod focus;
+pub mod holo_search;
 pub mod holograph;
 pub mod lod_pyramid;
-pub mod holo_search;
+pub mod phase;
 
 pub use phase::{
-    phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
-    phase_unbind_i8,
-    wasserstein_sorted_i8, wasserstein_search_adaptive,
-    circular_distance_i8,
-    phase_histogram_16, histogram_l1_distance,
-    phase_bundle_circular, phase_bundle_approximate,
-    project_5d_to_phase, recover_5d_from_phase, generate_5d_basis,
-    sort_phase_vector, unsort_phase_vector,
+    circular_distance_i8, generate_5d_basis, histogram_l1_distance, phase_bind_i8,
+    phase_bind_i8_inplace, phase_bundle_approximate, phase_bundle_circular, phase_histogram_16,
+    phase_inverse_i8, phase_unbind_i8, project_5d_to_phase, recover_5d_from_phase,
+    sort_phase_vector, unsort_phase_vector, wasserstein_search_adaptive, wasserstein_sorted_i8,
 };
 
-pub use cogrecord_v3::{
-    CogRecordV3, HybridThresholds, HybridDistances, CONTAINER_BYTES,
-};
+pub use cogrecord_v3::{CogRecordV3, HybridDistances, HybridThresholds, CONTAINER_BYTES};
 
 pub use carrier::{
-    CarrierBasis, CarrierRecord, CarrierThresholds, CarrierDistances,
-    CARRIER_FREQUENCIES, CARRIER_AMPLITUDE,
-    carrier_encode, carrier_decode, carrier_bundle,
-    carrier_distance_l1, carrier_correlation,
-    carrier_spectrum, spectral_distance,
+    carrier_bundle, carrier_correlation, carrier_decode, carrier_distance_l1, carrier_encode,
+    carrier_spectrum, spectral_distance, CarrierBasis, CarrierDistances, CarrierRecord,
+    CarrierThresholds, CARRIER_AMPLITUDE, CARRIER_FREQUENCIES,
 };
 
 pub use focus::{
-    FocusDensity, FocusRegistry,
-    pack_focus, unpack_focus,
-    concept_to_focus, materialize_focus_mask,
-    focus_xor, focus_read, focus_add, focus_sub,
-    focus_xor_materialized, focus_add_materialized,
-    focus_hamming, focus_l1,
-    focus_bind_binary, focus_bind_phase, focus_unbind_phase,
-    focus_carrier_encode,
-    focus_delta, CompactDelta,
-    focus_xor_auto,
-    FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z,
+    concept_to_focus, focus_add, focus_add_materialized, focus_bind_binary, focus_bind_phase,
+    focus_carrier_encode, focus_delta, focus_hamming, focus_l1, focus_read, focus_sub,
+    focus_unbind_phase, focus_xor, focus_xor_auto, focus_xor_materialized, materialize_focus_mask,
+    pack_focus, unpack_focus, CompactDelta, FocusDensity, FocusRegistry, FOCUS_DIM_X, FOCUS_DIM_Y,
+    FOCUS_DIM_Z,
 };
 
 pub use delta_layer::{DeltaLayer, LayerStack};
 
-pub use lod_pyramid::{
-    LodLevel, LodPyramid, LodAnnotation,
-    or_reduce_2d, or_mask_lower_bound,
-};
+pub use lod_pyramid::{or_mask_lower_bound, or_reduce_2d, LodAnnotation, LodLevel, LodPyramid};
 
 pub use holo_search::{
-    LodIndex, LodSearchResult, LodSearchStats,
-    lod_knn_search, lod_knn_search_oneshot, annotate_tree_with_lod,
+    annotate_tree_with_lod, lod_knn_search, lod_knn_search_oneshot, LodIndex, LodSearchResult,
+    LodSearchStats,
 };
 
 pub use holograph::{
-    // Core Gabor wavelet types and operations
-    GaussianLUT, WaveletTemplate,
-    gabor_write, gabor_read,
+    adapt_sigma,
+    anti_hebbian_update,
+    apply_migrations,
+    bootstrap_read,
+    bootstrap_write,
+    clean_if_needed,
+    crystallize_archetypes,
+    crystallize_from_superposition,
+    delta_cube_read_gabor,
+    delta_cube_recover_phase,
+    delta_cube_recover_xor,
+    delta_cube_sub,
+    delta_cube_write_gabor,
     // Delta cube operations
-    delta_cube_xor, delta_cube_sub,
-    delta_cube_write_gabor, delta_cube_read_gabor,
-    delta_cube_recover_xor, delta_cube_recover_phase,
-    // Spatial transforms
-    SpatialTransform,
-    spatial_bind, spatial_unbind,
-    spatial_bind_i8, spatial_unbind_i8,
-    // Overlay / blackboard layer
-    Overlay,
-    // Spectral analysis and cleaning
-    SpectralMap,
-    residual_energy, clean_if_needed, orthogonal_project,
+    delta_cube_xor,
+    gabor_read,
+    gabor_write,
+    get_container_mode,
     // Learning
-    hebbian_update, anti_hebbian_update, adapt_sigma,
-    // Archetype detection
-    FastArchetypeDetector, crystallize_archetypes,
+    hebbian_update,
+    incremental_axis_update,
+    migrate_carrier_to_gabor,
+    orthogonal_project,
+    ready_for_crystallization,
+    residual_energy,
+    set_container_mode,
+    spatial_bind,
+    spatial_bind_i8,
+    spatial_unbind,
+    spatial_unbind_i8,
     // BLAS acceleration
-    spectral_analysis_blas, GaborBatch,
-    // Co-occurrence and axis discovery
-    CooccurrenceMatrix, ready_for_crystallization,
+    spectral_analysis_blas,
     AxisCrystallizer,
     // Container lifecycle and migration
-    ContainerMode, MODE_BYTE_OFFSET,
-    get_container_mode, set_container_mode,
+    ContainerMode,
+    // Co-occurrence and axis discovery
+    CooccurrenceMatrix,
+    // Archetype detection
+    FastArchetypeDetector,
+    GaborBatch,
+    // Core Gabor wavelet types and operations
+    GaussianLUT,
     MigrationResult,
-    bootstrap_write, bootstrap_read,
-    migrate_carrier_to_gabor,
-    crystallize_from_superposition,
-    incremental_axis_update,
-    apply_migrations,
+    // Overlay / blackboard layer
+    Overlay,
+    // Spatial transforms
+    SpatialTransform,
+    // Spectral analysis and cleaning
+    SpectralMap,
+    WaveletTemplate,
+    MODE_BYTE_OFFSET,
 };

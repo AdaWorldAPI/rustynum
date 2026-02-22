@@ -166,8 +166,6 @@ where
 mod tests {
     use crate::NumArrayF32;
 
-    
-
     #[test]
     fn test_zeros_array() {
         let shape = vec![2, 3]; // 2x3 matrix

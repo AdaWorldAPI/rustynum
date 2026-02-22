@@ -10,9 +10,9 @@
 //! survivor set. This intersection is small (10%/1%/0.1% of N), so random
 //! access via Lance `take()` is acceptable.
 
-use std::collections::HashSet;
-use rustynum_clam::tree::{ClamTree, BuildConfig};
+use rustynum_clam::tree::{BuildConfig, ClamTree};
 use rustynum_core::simd::hamming_distance;
+use std::collections::HashSet;
 
 /// Metadata for one cluster in a secondary channel's CLAM tree.
 #[derive(Clone, Debug)]
@@ -70,7 +70,8 @@ impl ChannelIndex {
                 continue;
             }
             let center = tree.center_data(cluster, column_data, vec_len).to_vec();
-            let row_ids: Vec<usize> = tree.cluster_points(cluster, column_data, vec_len)
+            let row_ids: Vec<usize> = tree
+                .cluster_points(cluster, column_data, vec_len)
                 .map(|(orig_idx, _)| orig_idx)
                 .collect();
             clusters.push(ClusterMeta {
@@ -80,7 +81,12 @@ impl ChannelIndex {
             });
         }
 
-        ChannelIndex { channel, clusters, tree, vec_len }
+        ChannelIndex {
+            channel,
+            clusters,
+            tree,
+            vec_len,
+        }
     }
 
     /// Find original row IDs in clusters that overlap the query ball.
@@ -205,7 +211,8 @@ mod tests {
         let new_vecs: Vec<Vec<u8>> = (0..5)
             .map(|i| vec![(i * 50 % 256) as u8; vec_len])
             .collect();
-        let new_data: Vec<(usize, &[u8])> = new_vecs.iter()
+        let new_data: Vec<(usize, &[u8])> = new_vecs
+            .iter()
             .enumerate()
             .map(|(i, v)| (count + i, v.as_slice()))
             .collect();

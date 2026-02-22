@@ -96,8 +96,7 @@ mod tests {
         let samples: Vec<f64> = (0..n).map(|_| rng.next_gaussian()).collect();
 
         let mean: f64 = samples.iter().sum::<f64>() / n as f64;
-        let variance: f64 =
-            samples.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
+        let variance: f64 = samples.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
 
         assert!(mean.abs() < 0.1, "Gaussian mean = {}, expected ~0.0", mean);
         assert!(

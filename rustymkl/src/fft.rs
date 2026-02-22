@@ -50,9 +50,7 @@ pub fn fft_f32(data: &mut [f32], n: usize) {
         use rustynum_core::mkl_ffi::*;
         unsafe {
             let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
-            let status = DftiCreateDescriptor(
-                &mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64,
-            );
+            let status = DftiCreateDescriptor(&mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64);
             if status == 0 {
                 DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
                 DftiCommitDescriptor(handle);
@@ -105,8 +103,8 @@ pub fn fft_f32(data: &mut [f32], n: usize) {
                     let sj = sin_tbl[base_j + c];
                     wr_arr[2 * c] = cj;
                     wr_arr[2 * c + 1] = cj;
-                    wi_arr[2 * c] = -sj;     // -sin for real part
-                    wi_arr[2 * c + 1] = sj;  // +sin for imaginary part
+                    wi_arr[2 * c] = -sj; // -sin for real part
+                    wi_arr[2 * c + 1] = sj; // +sin for imaginary part
                 }
                 wr_vecs.push(f32x16::from_array(wr_arr));
                 wi_vecs.push(f32x16::from_array(wi_arr));
@@ -204,9 +202,7 @@ pub fn ifft_f32(data: &mut [f32], n: usize) {
         use rustynum_core::mkl_ffi::*;
         unsafe {
             let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
-            let status = DftiCreateDescriptor(
-                &mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64,
-            );
+            let status = DftiCreateDescriptor(&mut handle, DFTI_SINGLE, DFTI_COMPLEX, 1, n as i64);
             if status == 0 {
                 let scale = 1.0f32 / n as f32;
                 DftiSetValue(handle, DFTI_BACKWARD_SCALE, scale);
@@ -282,9 +278,7 @@ pub fn fft_f64(data: &mut [f64], n: usize) {
         use rustynum_core::mkl_ffi::*;
         unsafe {
             let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
-            let status = DftiCreateDescriptor(
-                &mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64,
-            );
+            let status = DftiCreateDescriptor(&mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64);
             if status == 0 {
                 DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
                 DftiCommitDescriptor(handle);
@@ -419,9 +413,7 @@ pub fn ifft_f64(data: &mut [f64], n: usize) {
         use rustynum_core::mkl_ffi::*;
         unsafe {
             let mut handle: DftiDescriptorHandle = std::ptr::null_mut();
-            let status = DftiCreateDescriptor(
-                &mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64,
-            );
+            let status = DftiCreateDescriptor(&mut handle, DFTI_DOUBLE, DFTI_COMPLEX, 1, n as i64);
             if status == 0 {
                 DftiSetValue(handle, DFTI_PLACEMENT, DFTI_INPLACE);
                 DftiSetValue(handle, DFTI_BACKWARD_SCALE, 1.0f64 / n as f64);
@@ -571,12 +563,15 @@ mod tests {
             assert!(
                 (data[2 * i] - original[i]).abs() < 1e-5,
                 "Roundtrip mismatch at {}: {} vs {}",
-                i, data[2 * i], original[i]
+                i,
+                data[2 * i],
+                original[i]
             );
             assert!(
                 data[2 * i + 1].abs() < 1e-5,
                 "Imaginary part should be ~0 at {}: {}",
-                i, data[2 * i + 1]
+                i,
+                data[2 * i + 1]
             );
         }
     }
@@ -597,7 +592,8 @@ mod tests {
         for i in 0..n {
             assert!(
                 (data[2 * i] - original[i]).abs() < 1e-10,
-                "f64 roundtrip mismatch at {}", i
+                "f64 roundtrip mismatch at {}",
+                i
             );
         }
     }
@@ -617,7 +613,8 @@ mod tests {
         for i in 1..n {
             assert!(
                 data[2 * i].abs() < 1e-6 && data[2 * i + 1].abs() < 1e-6,
-                "Non-DC component {} should be 0", i
+                "Non-DC component {} should be 0",
+                i
             );
         }
     }

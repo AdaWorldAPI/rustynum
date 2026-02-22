@@ -45,17 +45,14 @@ pub mod indexed_cascade;
 // Re-exports for convenience
 #[cfg(feature = "arrow")]
 pub use arrow_bridge::{
-    FromArrow, IntoArrow,
-    cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords,
+    cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords, FromArrow, IntoArrow,
 };
 
 #[cfg(feature = "arrow")]
-pub use datafusion_bridge::{
-    arrow_to_flat_bytes, hamming_scan_column, cascade_scan_4ch,
-};
+pub use datafusion_bridge::{arrow_to_flat_bytes, cascade_scan_4ch, hamming_scan_column};
 
 #[cfg(feature = "lance")]
-pub use lance_io::{write_cogrecords, read_cogrecords, append_cogrecords};
+pub use lance_io::{append_cogrecords, read_cogrecords, write_cogrecords};
 
 #[cfg(feature = "arrow")]
 pub use fragment_index::{FragmentIndex, FragmentMeta};
@@ -65,6 +62,6 @@ pub use channel_index::{ChannelIndex, ClusterMeta};
 
 #[cfg(feature = "arrow")]
 pub use indexed_cascade::{
-    indexed_cascade_search, learn, rebuild,
-    CascadeIndices, IndexedCascadeResult, IndexedCascadeStats,
+    indexed_cascade_search, learn, rebuild, CascadeIndices, IndexedCascadeResult,
+    IndexedCascadeStats,
 };

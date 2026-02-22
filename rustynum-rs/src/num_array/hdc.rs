@@ -467,7 +467,10 @@ impl NumArrayU8 {
             threshold,
             rustynum_core::simd::PreciseMode::Vnni,
         );
-        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+        results
+            .iter()
+            .map(|r| (r.index, r.hamming, r.precise))
+            .collect()
     }
 
     /// HDR search with f32 dequantization precision tier.
@@ -492,7 +495,10 @@ impl NumArrayU8 {
             threshold,
             rustynum_core::simd::PreciseMode::F32 { scale, zero_point },
         );
-        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+        results
+            .iter()
+            .map(|r| (r.index, r.hamming, r.precise))
+            .collect()
     }
 
     /// HDR search with XOR Delta + INT8 residual precision tier (Case 5).
@@ -517,7 +523,10 @@ impl NumArrayU8 {
             threshold,
             rustynum_core::simd::PreciseMode::DeltaXor { delta_weight },
         );
-        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+        results
+            .iter()
+            .map(|r| (r.index, r.hamming, r.precise))
+            .collect()
     }
 
     /// HDR search with BF16-structured Hamming precision tier.
@@ -542,7 +551,10 @@ impl NumArrayU8 {
             threshold,
             rustynum_core::simd::PreciseMode::BF16Hamming { weights },
         );
-        results.iter().map(|r| (r.index, r.hamming, r.precise)).collect()
+        results
+            .iter()
+            .map(|r| (r.index, r.hamming, r.precise))
+            .collect()
     }
 
     /// Adaptive cosine similarity search for int8 embeddings.
@@ -587,11 +599,7 @@ impl NumArrayU8 {
             vec_len * count,
             "Database length must be vec_len * count"
         );
-        assert_eq!(
-            self.data.len(),
-            vec_len,
-            "Query must have length vec_len"
-        );
+        assert_eq!(self.data.len(), vec_len, "Query must have length vec_len");
 
         let query = &self.data;
         let db = &database.data;
@@ -648,8 +656,7 @@ impl NumArrayU8 {
 
             // ── Stage 2: 1/4 sample (incremental) ──
             let dot_s2 = dot_s1 + dot_fn(&query[s1..s2], &candidate[s1..s2]);
-            let cand_norm_sq_s2 =
-                cand_norm_sq_s1 + dot_fn(&candidate[s1..s2], &candidate[s1..s2]);
+            let cand_norm_sq_s2 = cand_norm_sq_s1 + dot_fn(&candidate[s1..s2], &candidate[s1..s2]);
             let cand_norm_s2 = (cand_norm_sq_s2 as f64 * scale_2).sqrt();
 
             if cand_norm_s2 > 0.0 {
@@ -661,8 +668,7 @@ impl NumArrayU8 {
 
             // ── Stage 3: full precision ──
             let dot_full = dot_s2 + dot_fn(&query[s2..], &candidate[s2..]);
-            let cand_norm_sq_full =
-                cand_norm_sq_s2 + dot_fn(&candidate[s2..], &candidate[s2..]);
+            let cand_norm_sq_full = cand_norm_sq_s2 + dot_fn(&candidate[s2..], &candidate[s2..]);
             let cand_norm = (cand_norm_sq_full as f64).sqrt();
 
             if cand_norm > 0.0 {
@@ -688,7 +694,6 @@ fn hamming_chunk_inline(a: &[u8], b: &[u8]) -> u64 {
     rustynum_core::simd::hamming_distance(a, b)
 }
 
-
 // ── Bundle implementations ──
 
 /// Per-byte majority vote. The compiler auto-vectorizes the inner loop to AVX-512.
@@ -711,14 +716,30 @@ fn bundle_naive(vectors: &[&NumArrayU8], len: usize, threshold: usize) -> NumArr
             count[7] += ((byte >> 7) & 1) as u16;
         }
         let mut result_byte = 0u8;
-        if count[0] as usize > threshold { result_byte |= 1; }
-        if count[1] as usize > threshold { result_byte |= 2; }
-        if count[2] as usize > threshold { result_byte |= 4; }
-        if count[3] as usize > threshold { result_byte |= 8; }
-        if count[4] as usize > threshold { result_byte |= 16; }
-        if count[5] as usize > threshold { result_byte |= 32; }
-        if count[6] as usize > threshold { result_byte |= 64; }
-        if count[7] as usize > threshold { result_byte |= 128; }
+        if count[0] as usize > threshold {
+            result_byte |= 1;
+        }
+        if count[1] as usize > threshold {
+            result_byte |= 2;
+        }
+        if count[2] as usize > threshold {
+            result_byte |= 4;
+        }
+        if count[3] as usize > threshold {
+            result_byte |= 8;
+        }
+        if count[4] as usize > threshold {
+            result_byte |= 16;
+        }
+        if count[5] as usize > threshold {
+            result_byte |= 32;
+        }
+        if count[6] as usize > threshold {
+            result_byte |= 64;
+        }
+        if count[7] as usize > threshold {
+            result_byte |= 128;
+        }
         out[byte_idx] = result_byte;
     }
 
@@ -1097,15 +1118,23 @@ mod tests {
 
         // n=16: should use naive path (9 ones, 7 zeros → majority 1)
         let mut vecs16: Vec<&NumArrayU8> = Vec::new();
-        for _ in 0..9 { vecs16.push(&ones); }
-        for _ in 0..7 { vecs16.push(&zeros); }
+        for _ in 0..9 {
+            vecs16.push(&ones);
+        }
+        for _ in 0..7 {
+            vecs16.push(&zeros);
+        }
         let result16 = NumArrayU8::bundle(&vecs16);
         assert_eq!(result16.get_data(), &vec![0xFF; 8192]);
 
         // n=17: should use ripple path (10 ones, 7 zeros → majority 1)
         let mut vecs17: Vec<&NumArrayU8> = Vec::new();
-        for _ in 0..10 { vecs17.push(&ones); }
-        for _ in 0..7 { vecs17.push(&zeros); }
+        for _ in 0..10 {
+            vecs17.push(&ones);
+        }
+        for _ in 0..7 {
+            vecs17.push(&zeros);
+        }
         let result17 = NumArrayU8::bundle(&vecs17);
         assert_eq!(result17.get_data(), &vec![0xFF; 8192]);
     }
@@ -1259,9 +1288,9 @@ mod tests {
     fn test_adaptive_search_batch() {
         let query = NumArrayU8::new(vec![0xAA; 2048]);
         let mut db_data = vec![0xAA; 2048]; // vec 0: identical (d=0)
-        db_data.extend(vec![0x55; 2048]);   // vec 1: maximally different
-        db_data.extend(vec![0xAA; 2048]);   // vec 2: identical (d=0)
-        db_data.extend(vec![0x00; 2048]);   // vec 3: very different
+        db_data.extend(vec![0x55; 2048]); // vec 1: maximally different
+        db_data.extend(vec![0xAA; 2048]); // vec 2: identical (d=0)
+        db_data.extend(vec![0x00; 2048]); // vec 3: very different
         let db = NumArrayU8::new(db_data);
 
         let results = query.hamming_search_adaptive(&db, 2048, 4, 100);
@@ -1295,8 +1324,8 @@ mod tests {
     fn test_cosine_search_identical() {
         let query = NumArrayU8::new(vec![100u8; 1024]);
         let mut db_data = vec![100u8; 1024]; // identical
-        db_data.extend(vec![0u8; 1024]);     // different
-        db_data.extend(vec![100u8; 1024]);   // identical
+        db_data.extend(vec![0u8; 1024]); // different
+        db_data.extend(vec![100u8; 1024]); // identical
         let db = NumArrayU8::new(db_data);
 
         let results = query.cosine_search_adaptive(&db, 1024, 3, 0.9);
@@ -1385,14 +1414,18 @@ mod tests {
     fn test_hdr_search_f32_identical() {
         let query = NumArrayU8::new(vec![200u8; 2048]);
         let mut db_data = vec![200u8; 2048]; // identical
-        db_data.extend(vec![50u8; 2048]);    // very different
+        db_data.extend(vec![50u8; 2048]); // very different
         let db = NumArrayU8::new(db_data);
 
         let results = query.hdr_search_f32(&db, 2048, 2, 20000, 1.0, 128);
         assert!(!results.is_empty());
         // Identical vector should have cosine ~1.0
         let ident = results.iter().find(|r| r.0 == 0).unwrap();
-        assert!((ident.2 - 1.0).abs() < 0.01, "Expected ~1.0, got {}", ident.2);
+        assert!(
+            (ident.2 - 1.0).abs() < 0.01,
+            "Expected ~1.0, got {}",
+            ident.2
+        );
     }
 
     // ---- HDR search delta tests ----
@@ -1401,7 +1434,7 @@ mod tests {
     fn test_hdr_search_delta_basic() {
         let query = NumArrayU8::new(vec![0xAA; 2048]);
         let mut db_data = vec![0xAA; 2048]; // identical
-        db_data.extend(vec![0x55; 2048]);   // maximally different
+        db_data.extend(vec![0x55; 2048]); // maximally different
         let db = NumArrayU8::new(db_data);
 
         let results = query.hdr_search_delta(&db, 2048, 2, 100, 0.3);
@@ -1416,9 +1449,9 @@ mod tests {
     fn test_hamming_search_adaptive_backward_compat() {
         let query = NumArrayU8::new(vec![0xAA; 2048]);
         let mut db_data = vec![0xAA; 2048]; // identical
-        db_data.extend(vec![0x55; 2048]);   // maximally different
-        db_data.extend(vec![0xAA; 2048]);   // identical
-        db_data.extend(vec![0x00; 2048]);   // different
+        db_data.extend(vec![0x55; 2048]); // maximally different
+        db_data.extend(vec![0xAA; 2048]); // identical
+        db_data.extend(vec![0x00; 2048]); // different
         let db = NumArrayU8::new(db_data);
 
         let results = query.hamming_search_adaptive(&db, 2048, 4, 100);

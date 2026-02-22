@@ -10,7 +10,7 @@
 //! With fragment index:    ~3 surviving clusters × ~400 records × 2KB = 2.4MB.
 //! That's ~80× bandwidth reduction on Stage 1 alone.
 
-use rustynum_clam::tree::{ClamTree, BuildConfig};
+use rustynum_clam::tree::{BuildConfig, ClamTree};
 use rustynum_core::simd::hamming_distance;
 
 /// Metadata for a contiguous group of rows that form one CLAM leaf cluster.
@@ -91,7 +91,12 @@ impl FragmentIndex {
 
         let reorder = tree.reordered.clone();
 
-        FragmentIndex { fragments, tree, reorder, vec_len }
+        FragmentIndex {
+            fragments,
+            tree,
+            reorder,
+            vec_len,
+        }
     }
 
     /// Find fragments whose clusters overlap the query ball.
@@ -101,10 +106,13 @@ impl FragmentIndex {
     ///
     /// Returns references to surviving fragment descriptors.
     pub fn find_overlapping(&self, query: &[u8], threshold: u64) -> Vec<&FragmentMeta> {
-        self.fragments.iter().filter(|f| {
-            let d = hamming_distance(query, &f.center);
-            d.saturating_sub(f.radius) <= threshold
-        }).collect()
+        self.fragments
+            .iter()
+            .filter(|f| {
+                let d = hamming_distance(query, &f.center);
+                d.saturating_sub(f.radius) <= threshold
+            })
+            .collect()
     }
 
     /// Map reordered row positions to original row IDs.
@@ -190,7 +198,10 @@ mod tests {
         // Query = first row of the data — should find at least one overlapping fragment
         let query = &data[0..vec_len];
         let overlapping = idx.find_overlapping(query, 500);
-        assert!(!overlapping.is_empty(), "exact query should find overlapping fragments");
+        assert!(
+            !overlapping.is_empty(),
+            "exact query should find overlapping fragments"
+        );
     }
 
     #[test]

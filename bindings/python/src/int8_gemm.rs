@@ -1,6 +1,6 @@
 // bindings/python/src/int8_gemm.rs
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 /// Quantize f32 data to u8 with scale/zero_point.
 /// Returns (quantized_data, scale, zero_point).
@@ -24,10 +24,18 @@ pub fn quantize_f32_to_i8(data: Vec<f32>) -> (Vec<i8>, f32, i32) {
 #[pyfunction]
 pub fn int8_gemm_i32(a: Vec<u8>, b: Vec<i8>, m: usize, n: usize, k: usize) -> PyResult<Vec<i32>> {
     if a.len() != m * k {
-        return Err(PyValueError::new_err(format!("A must be m*k={} elements, got {}", m * k, a.len())));
+        return Err(PyValueError::new_err(format!(
+            "A must be m*k={} elements, got {}",
+            m * k,
+            a.len()
+        )));
     }
     if b.len() != k * n {
-        return Err(PyValueError::new_err(format!("B must be k*n={} elements, got {}", k * n, b.len())));
+        return Err(PyValueError::new_err(format!(
+            "B must be k*n={} elements, got {}",
+            k * n,
+            b.len()
+        )));
     }
     let mut c = vec![0i32; m * n];
     rustyblas::int8_gemm::int8_gemm_i32(&a, &b, &mut c, m, n, k);
@@ -38,16 +46,28 @@ pub fn int8_gemm_i32(a: Vec<u8>, b: Vec<i8>, m: usize, n: usize, k: usize) -> Py
 /// Handles quantization parameters for accurate dequantization.
 #[pyfunction]
 pub fn int8_gemm_f32(
-    a: Vec<u8>, b: Vec<i8>,
-    m: usize, n: usize, k: usize,
-    scale_a: f32, zero_point_a: i32,
+    a: Vec<u8>,
+    b: Vec<i8>,
+    m: usize,
+    n: usize,
+    k: usize,
+    scale_a: f32,
+    zero_point_a: i32,
     scale_b: f32,
 ) -> PyResult<Vec<f32>> {
     if a.len() != m * k {
-        return Err(PyValueError::new_err(format!("A must be m*k={} elements, got {}", m * k, a.len())));
+        return Err(PyValueError::new_err(format!(
+            "A must be m*k={} elements, got {}",
+            m * k,
+            a.len()
+        )));
     }
     if b.len() != k * n {
-        return Err(PyValueError::new_err(format!("B must be k*n={} elements, got {}", k * n, b.len())));
+        return Err(PyValueError::new_err(format!(
+            "B must be k*n={} elements, got {}",
+            k * n,
+            b.len()
+        )));
     }
     let mut c = vec![0.0f32; m * n];
     rustyblas::int8_gemm::int8_gemm_f32(&a, &b, &mut c, m, n, k, scale_a, zero_point_a, scale_b);

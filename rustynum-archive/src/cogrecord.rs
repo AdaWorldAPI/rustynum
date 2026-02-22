@@ -75,7 +75,12 @@ impl CogRecord {
         debug_assert_eq!(cam.len(), CONTAINER_BYTES);
         debug_assert_eq!(btree.len(), CONTAINER_BYTES);
         debug_assert_eq!(embed.len(), CONTAINER_BYTES);
-        Self { meta, cam, btree, embed }
+        Self {
+            meta,
+            cam,
+            btree,
+            embed,
+        }
     }
 
     /// Create a zeroed CogRecord.
@@ -121,19 +126,27 @@ impl CogRecord {
     pub fn sweep_adaptive(&self, other: &Self, thresholds: [u64; 4]) -> Option<[u64; 4]> {
         // Stage 1: META — cheapest rejection (type mismatch)
         let d0 = self.meta.hamming_distance(&other.meta);
-        if d0 > thresholds[META] { return None; }
+        if d0 > thresholds[META] {
+            return None;
+        }
 
         // Stage 2: CAM — content similarity
         let d1 = self.cam.hamming_distance(&other.cam);
-        if d1 > thresholds[CAM] { return None; }
+        if d1 > thresholds[CAM] {
+            return None;
+        }
 
         // Stage 3: BTREE — structural position
         let d2 = self.btree.hamming_distance(&other.btree);
-        if d2 > thresholds[BTREE] { return None; }
+        if d2 > thresholds[BTREE] {
+            return None;
+        }
 
         // Stage 4: EMBED — embedding similarity
         let d3 = self.embed.hamming_distance(&other.embed);
-        if d3 > thresholds[EMBED] { return None; }
+        if d3 > thresholds[EMBED] {
+            return None;
+        }
 
         Some([d0, d1, d2, d3])
     }
@@ -152,7 +165,12 @@ impl CogRecord {
 
     /// Construct from flat 8192-byte representation.
     pub fn from_bytes(data: &[u8]) -> Self {
-        assert_eq!(data.len(), COGRECORD_BYTES, "CogRecord requires {} bytes", COGRECORD_BYTES);
+        assert_eq!(
+            data.len(),
+            COGRECORD_BYTES,
+            "CogRecord requires {} bytes",
+            COGRECORD_BYTES
+        );
         Self {
             meta: NumArrayU8::new(data[0..CONTAINER_BYTES].to_vec()),
             cam: NumArrayU8::new(data[CONTAINER_BYTES..2 * CONTAINER_BYTES].to_vec()),
@@ -211,22 +229,30 @@ pub fn sweep_cogrecords(
         // Stage 1: META
         let meta_slice = &record_bytes[0..CONTAINER_BYTES];
         let d0 = rustynum_core::simd::hamming_distance(query.meta.get_data(), meta_slice);
-        if d0 > thresholds[META] { continue; }
+        if d0 > thresholds[META] {
+            continue;
+        }
 
         // Stage 2: CAM
         let cam_slice = &record_bytes[CONTAINER_BYTES..2 * CONTAINER_BYTES];
         let d1 = rustynum_core::simd::hamming_distance(query.cam.get_data(), cam_slice);
-        if d1 > thresholds[CAM] { continue; }
+        if d1 > thresholds[CAM] {
+            continue;
+        }
 
         // Stage 3: BTREE
         let btree_slice = &record_bytes[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES];
         let d2 = rustynum_core::simd::hamming_distance(query.btree.get_data(), btree_slice);
-        if d2 > thresholds[BTREE] { continue; }
+        if d2 > thresholds[BTREE] {
+            continue;
+        }
 
         // Stage 4: EMBED
         let embed_slice = &record_bytes[3 * CONTAINER_BYTES..4 * CONTAINER_BYTES];
         let d3 = rustynum_core::simd::hamming_distance(query.embed.get_data(), embed_slice);
-        if d3 > thresholds[EMBED] { continue; }
+        if d3 > thresholds[EMBED] {
+            continue;
+        }
 
         results.push(SweepResult {
             index: i,
@@ -236,7 +262,6 @@ pub fn sweep_cogrecords(
 
     results
 }
-
 
 #[cfg(test)]
 mod tests {

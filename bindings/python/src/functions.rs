@@ -339,14 +339,18 @@ pub fn norm_f64(
 #[pyfunction]
 pub fn bundle_u8(vectors: Vec<PyRef<PyNumArrayU8>>) -> PyResult<PyNumArrayU8> {
     let refs: Vec<&NumArrayU8> = vectors.iter().map(|v| &v.inner).collect();
-    Ok(PyNumArrayU8 { inner: NumArrayU8::bundle(&refs) })
+    Ok(PyNumArrayU8 {
+        inner: NumArrayU8::bundle(&refs),
+    })
 }
 
 /// Hamming distance between two byte arrays (VPOPCNTDQ-accelerated).
 #[pyfunction]
 pub fn hamming_distance(a: Vec<u8>, b: Vec<u8>) -> PyResult<u64> {
     if a.len() != b.len() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Arrays must be same length"));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Arrays must be same length",
+        ));
     }
     Ok(rustynum_core::simd::hamming_distance(&a, &b))
 }
@@ -354,32 +358,55 @@ pub fn hamming_distance(a: Vec<u8>, b: Vec<u8>) -> PyResult<u64> {
 /// Batch Hamming: distances from query to each row in database.
 /// database is flat, with num_rows rows of row_bytes each.
 #[pyfunction]
-pub fn hamming_batch(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize) -> PyResult<Vec<u64>> {
+pub fn hamming_batch(
+    query: Vec<u8>,
+    database: Vec<u8>,
+    num_rows: usize,
+    row_bytes: usize,
+) -> PyResult<Vec<u64>> {
     if query.len() != row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Query must be {} bytes, got {}", row_bytes, query.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Query must be {} bytes, got {}",
+            row_bytes,
+            query.len()
+        )));
     }
     if database.len() != num_rows * row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Database must be {} bytes, got {}",
+            num_rows * row_bytes,
+            database.len()
+        )));
     }
-    Ok(rustynum_core::simd::hamming_batch(&query, &database, num_rows, row_bytes))
+    Ok(rustynum_core::simd::hamming_batch(
+        &query, &database, num_rows, row_bytes,
+    ))
 }
 
 /// Top-K nearest by Hamming distance. Returns (indices, distances).
 #[pyfunction]
-pub fn hamming_top_k(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize, k: usize) -> PyResult<(Vec<usize>, Vec<u64>)> {
+pub fn hamming_top_k(
+    query: Vec<u8>,
+    database: Vec<u8>,
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> PyResult<(Vec<usize>, Vec<u64>)> {
     if query.len() != row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Query must be {} bytes, got {}", row_bytes, query.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Query must be {} bytes, got {}",
+            row_bytes,
+            query.len()
+        )));
     }
     if database.len() != num_rows * row_bytes {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Database must be {} bytes, got {}",
+            num_rows * row_bytes,
+            database.len()
+        )));
     }
-    Ok(rustynum_core::simd::hamming_top_k(&query, &database, num_rows, row_bytes, k))
+    Ok(rustynum_core::simd::hamming_top_k(
+        &query, &database, num_rows, row_bytes, k,
+    ))
 }

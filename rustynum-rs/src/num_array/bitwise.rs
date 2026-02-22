@@ -4,8 +4,8 @@
 //! and dedicated methods for bitpacked hamming distance computation.
 //! Operations are implemented for `u8`, `i32`, and `i64` element types.
 
-use crate::simd_ops::{BitwiseSimdOps, HammingSimdOps};
 use super::{NumArrayI32, NumArrayI64, NumArrayU8};
+use crate::simd_ops::{BitwiseSimdOps, HammingSimdOps};
 
 use std::ops::{BitAnd, BitOr, BitXor, Not};
 
@@ -45,7 +45,9 @@ macro_rules! impl_bitwise_ops {
             #[inline]
             fn bitand(self, rhs: $elem) -> Self::Output {
                 let mut out = vec![<$elem>::default(); self.data.len()];
-                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_and_scalar(&self.data, rhs, &mut out);
+                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_and_scalar(
+                    &self.data, rhs, &mut out,
+                );
                 <$array_type>::new_with_shape(out, self.shape.clone())
             }
         }
@@ -55,7 +57,9 @@ macro_rules! impl_bitwise_ops {
             #[inline]
             fn bitand(self, rhs: $elem) -> Self::Output {
                 let mut out = vec![<$elem>::default(); self.data.len()];
-                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_and_scalar(&self.data, rhs, &mut out);
+                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_and_scalar(
+                    &self.data, rhs, &mut out,
+                );
                 <$array_type>::new_with_shape(out, self.shape.clone())
             }
         }
@@ -89,7 +93,9 @@ macro_rules! impl_bitwise_ops {
             #[inline]
             fn bitxor(self, rhs: $elem) -> Self::Output {
                 let mut out = vec![<$elem>::default(); self.data.len()];
-                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_xor_scalar(&self.data, rhs, &mut out);
+                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_xor_scalar(
+                    &self.data, rhs, &mut out,
+                );
                 <$array_type>::new_with_shape(out, self.shape.clone())
             }
         }
@@ -99,7 +105,9 @@ macro_rules! impl_bitwise_ops {
             #[inline]
             fn bitxor(self, rhs: $elem) -> Self::Output {
                 let mut out = vec![<$elem>::default(); self.data.len()];
-                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_xor_scalar(&self.data, rhs, &mut out);
+                <$simd_type as BitwiseSimdOps<$elem>>::bitwise_xor_scalar(
+                    &self.data, rhs, &mut out,
+                );
                 <$array_type>::new_with_shape(out, self.shape.clone())
             }
         }

@@ -53,8 +53,12 @@ pub fn sgetrf(
         let lapacke_layout = layout as i32;
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_sgetrf(
-                lapacke_layout, m as i32, n as i32,
-                a.as_mut_ptr(), lda as i32, ipiv_i32.as_mut_ptr(),
+                lapacke_layout,
+                m as i32,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
+                ipiv_i32.as_mut_ptr(),
             )
         };
         // Convert 1-based LAPACKE ipiv to 0-based Rust ipiv
@@ -106,8 +110,12 @@ pub fn dgetrf(
         let mut ipiv_i32 = vec![0i32; min_mn];
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_dgetrf(
-                layout as i32, m as i32, n as i32,
-                a.as_mut_ptr(), lda as i32, ipiv_i32.as_mut_ptr(),
+                layout as i32,
+                m as i32,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
+                ipiv_i32.as_mut_ptr(),
             )
         };
         for i in 0..min_mn {
@@ -440,9 +448,15 @@ pub fn sgetrs(
         let mut ipiv_i32: Vec<i32> = ipiv.iter().map(|&p| (p + 1) as i32).collect();
         unsafe {
             rustynum_core::mkl_ffi::LAPACKE_sgetrs(
-                layout as i32, b'N', n as i32, nrhs as i32,
-                a.as_ptr(), lda as i32, ipiv_i32.as_ptr(),
-                b.as_mut_ptr(), ldb as i32,
+                layout as i32,
+                b'N',
+                n as i32,
+                nrhs as i32,
+                a.as_ptr(),
+                lda as i32,
+                ipiv_i32.as_ptr(),
+                b.as_mut_ptr(),
+                ldb as i32,
             );
         }
         return;
@@ -553,9 +567,15 @@ pub fn dgetrs(
         let ipiv_i32: Vec<i32> = ipiv.iter().map(|&p| (p + 1) as i32).collect();
         unsafe {
             rustynum_core::mkl_ffi::LAPACKE_dgetrs(
-                layout as i32, b'N', n as i32, nrhs as i32,
-                a.as_ptr(), lda as i32, ipiv_i32.as_ptr(),
-                b.as_mut_ptr(), ldb as i32,
+                layout as i32,
+                b'N',
+                n as i32,
+                nrhs as i32,
+                a.as_ptr(),
+                lda as i32,
+                ipiv_i32.as_ptr(),
+                b.as_mut_ptr(),
+                ldb as i32,
             );
         }
         return;
@@ -664,19 +684,18 @@ pub fn spotrf(
         };
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_spotrf(
-                layout as i32, uplo_char, n as i32,
-                a.as_mut_ptr(), lda as i32,
+                layout as i32,
+                uplo_char,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
             )
         };
         return info;
     }
     match uplo {
-        rustynum_core::layout::Uplo::Lower => {
-            spotrf_lower(layout, n, a, lda)
-        }
-        rustynum_core::layout::Uplo::Upper => {
-            spotrf_upper(layout, n, a, lda)
-        }
+        rustynum_core::layout::Uplo::Lower => spotrf_lower(layout, n, a, lda),
+        rustynum_core::layout::Uplo::Upper => spotrf_upper(layout, n, a, lda),
     }
 }
 
@@ -804,8 +823,11 @@ pub fn dpotrf(
         };
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_dpotrf(
-                layout as i32, uplo_char, n as i32,
-                a.as_mut_ptr(), lda as i32,
+                layout as i32,
+                uplo_char,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
             )
         };
         return info;
@@ -940,9 +962,14 @@ pub fn spotrs(
         };
         unsafe {
             rustynum_core::mkl_ffi::LAPACKE_spotrs(
-                layout as i32, uplo_char, n as i32, nrhs as i32,
-                a.as_ptr(), lda as i32,
-                b.as_mut_ptr(), ldb as i32,
+                layout as i32,
+                uplo_char,
+                n as i32,
+                nrhs as i32,
+                a.as_ptr(),
+                lda as i32,
+                b.as_mut_ptr(),
+                ldb as i32,
             );
         }
         return;
@@ -1095,7 +1122,8 @@ fn trsm_forward_upper_trans_f32(
                     // U^T column: U[k, k+1..n] → ColMajor: (k+1..n)*lda + k → strided
                     // But column k of U^T = row k of U → A[k, k+1..n]
                     // ColMajor: A[k, i] = i*lda + k for i in k+1..n → strided
-                    let a_slice: Vec<f32> = (0..remain).map(|di| a[(k + 1 + di) * lda + k]).collect();
+                    let a_slice: Vec<f32> =
+                        (0..remain).map(|di| a[(k + 1 + di) * lda + k]).collect();
                     let b_col = j * ldb + (k + 1);
                     simd::axpy_f32(-bkj, &a_slice, &mut b[b_col..b_col + remain]);
                 }
@@ -1173,8 +1201,12 @@ pub fn sgeqrf(
     {
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_sgeqrf(
-                layout as i32, m as i32, n as i32,
-                a.as_mut_ptr(), lda as i32, tau.as_mut_ptr(),
+                layout as i32,
+                m as i32,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
+                tau.as_mut_ptr(),
             )
         };
         return info;
@@ -1300,8 +1332,12 @@ pub fn dgeqrf(
     {
         let info = unsafe {
             rustynum_core::mkl_ffi::LAPACKE_dgeqrf(
-                layout as i32, m as i32, n as i32,
-                a.as_mut_ptr(), lda as i32, tau.as_mut_ptr(),
+                layout as i32,
+                m as i32,
+                n as i32,
+                a.as_mut_ptr(),
+                lda as i32,
+                tau.as_mut_ptr(),
             )
         };
         return info;
@@ -1430,7 +1466,13 @@ mod tests {
     fn test_spotrf_cholesky() {
         // A = [[4, 2], [2, 3]] (symmetric positive definite)
         let mut a = vec![4.0f32, 2.0, 2.0, 3.0];
-        let info = spotrf(Layout::RowMajor, rustynum_core::layout::Uplo::Lower, 2, &mut a, 2);
+        let info = spotrf(
+            Layout::RowMajor,
+            rustynum_core::layout::Uplo::Lower,
+            2,
+            &mut a,
+            2,
+        );
         assert_eq!(info, 0);
 
         // L[0,0] = sqrt(4) = 2
@@ -1445,7 +1487,13 @@ mod tests {
     fn test_spotrf_not_positive_definite() {
         // A = [[1, 2], [2, 1]] — not positive definite
         let mut a = vec![1.0f32, 2.0, 2.0, 1.0];
-        let info = spotrf(Layout::RowMajor, rustynum_core::layout::Uplo::Lower, 2, &mut a, 2);
+        let info = spotrf(
+            Layout::RowMajor,
+            rustynum_core::layout::Uplo::Lower,
+            2,
+            &mut a,
+            2,
+        );
         assert!(info > 0, "Should detect non-positive-definite matrix");
     }
 
@@ -1481,13 +1529,28 @@ mod tests {
         // A = [[4, 2], [2, 3]] — SPD
         let a_orig = vec![4.0f32, 2.0, 2.0, 3.0];
         let mut a = a_orig.clone();
-        let info = spotrf(Layout::RowMajor, rustynum_core::layout::Uplo::Lower, 2, &mut a, 2);
+        let info = spotrf(
+            Layout::RowMajor,
+            rustynum_core::layout::Uplo::Lower,
+            2,
+            &mut a,
+            2,
+        );
         assert_eq!(info, 0);
 
         // Solve A*x = [8, 8] using Cholesky
         // Expected: 4x0+2x1=8, 2x0+3x1=8 → x = [1, 2]
         let mut b = vec![8.0f32, 8.0];
-        spotrs(Layout::RowMajor, rustynum_core::layout::Uplo::Lower, 2, 1, &a, 2, &mut b, 1);
+        spotrs(
+            Layout::RowMajor,
+            rustynum_core::layout::Uplo::Lower,
+            2,
+            1,
+            &a,
+            2,
+            &mut b,
+            1,
+        );
         assert!((b[0] - 1.0).abs() < 1e-4, "x[0] = {}", b[0]);
         assert!((b[1] - 2.0).abs() < 1e-4, "x[1] = {}", b[1]);
     }

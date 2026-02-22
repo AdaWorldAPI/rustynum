@@ -65,9 +65,12 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     for i in 0..full_iters {
         let base = i * 4 * F32_LANES;
         acc0 += f32x8::from_slice(&a[base..]) * f32x8::from_slice(&b[base..]);
-        acc1 += f32x8::from_slice(&a[base + F32_LANES..]) * f32x8::from_slice(&b[base + F32_LANES..]);
-        acc2 += f32x8::from_slice(&a[base + 2 * F32_LANES..]) * f32x8::from_slice(&b[base + 2 * F32_LANES..]);
-        acc3 += f32x8::from_slice(&a[base + 3 * F32_LANES..]) * f32x8::from_slice(&b[base + 3 * F32_LANES..]);
+        acc1 +=
+            f32x8::from_slice(&a[base + F32_LANES..]) * f32x8::from_slice(&b[base + F32_LANES..]);
+        acc2 += f32x8::from_slice(&a[base + 2 * F32_LANES..])
+            * f32x8::from_slice(&b[base + 2 * F32_LANES..]);
+        acc3 += f32x8::from_slice(&a[base + 3 * F32_LANES..])
+            * f32x8::from_slice(&b[base + 3 * F32_LANES..]);
     }
 
     for i in (full_iters * 4)..chunks {
@@ -97,9 +100,12 @@ pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
     for i in 0..full_iters {
         let base = i * 4 * F64_LANES;
         acc0 += f64x4::from_slice(&a[base..]) * f64x4::from_slice(&b[base..]);
-        acc1 += f64x4::from_slice(&a[base + F64_LANES..]) * f64x4::from_slice(&b[base + F64_LANES..]);
-        acc2 += f64x4::from_slice(&a[base + 2 * F64_LANES..]) * f64x4::from_slice(&b[base + 2 * F64_LANES..]);
-        acc3 += f64x4::from_slice(&a[base + 3 * F64_LANES..]) * f64x4::from_slice(&b[base + 3 * F64_LANES..]);
+        acc1 +=
+            f64x4::from_slice(&a[base + F64_LANES..]) * f64x4::from_slice(&b[base + F64_LANES..]);
+        acc2 += f64x4::from_slice(&a[base + 2 * F64_LANES..])
+            * f64x4::from_slice(&b[base + 2 * F64_LANES..]);
+        acc3 += f64x4::from_slice(&a[base + 3 * F64_LANES..])
+            * f64x4::from_slice(&b[base + 3 * F64_LANES..]);
     }
 
     for i in (full_iters * 4)..chunks {
@@ -280,12 +286,24 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
     for i in 0..u64_chunks {
         let base = i * 8;
         let a_u64 = u64::from_le_bytes([
-            a[base], a[base+1], a[base+2], a[base+3],
-            a[base+4], a[base+5], a[base+6], a[base+7],
+            a[base],
+            a[base + 1],
+            a[base + 2],
+            a[base + 3],
+            a[base + 4],
+            a[base + 5],
+            a[base + 6],
+            a[base + 7],
         ]);
         let b_u64 = u64::from_le_bytes([
-            b[base], b[base+1], b[base+2], b[base+3],
-            b[base+4], b[base+5], b[base+6], b[base+7],
+            b[base],
+            b[base + 1],
+            b[base + 2],
+            b[base + 3],
+            b[base + 4],
+            b[base + 5],
+            b[base + 6],
+            b[base + 7],
         ]);
         sum += (a_u64 ^ b_u64).count_ones() as u64;
     }
@@ -308,10 +326,20 @@ pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: 
     let full = num_rows / 4;
     for i in 0..full {
         let base = i * 4;
-        distances[base] = hamming_distance(query, &database[base * row_bytes..(base + 1) * row_bytes]);
-        distances[base + 1] = hamming_distance(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
-        distances[base + 2] = hamming_distance(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
-        distances[base + 3] = hamming_distance(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
+        distances[base] =
+            hamming_distance(query, &database[base * row_bytes..(base + 1) * row_bytes]);
+        distances[base + 1] = hamming_distance(
+            query,
+            &database[(base + 1) * row_bytes..(base + 2) * row_bytes],
+        );
+        distances[base + 2] = hamming_distance(
+            query,
+            &database[(base + 2) * row_bytes..(base + 3) * row_bytes],
+        );
+        distances[base + 3] = hamming_distance(
+            query,
+            &database[(base + 3) * row_bytes..(base + 4) * row_bytes],
+        );
     }
     for i in (full * 4)..num_rows {
         distances[i] = hamming_distance(query, &database[i * row_bytes..(i + 1) * row_bytes]);
@@ -321,7 +349,13 @@ pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: 
 }
 
 /// Top-k nearest neighbors by Hamming distance.
-pub fn hamming_top_k(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize, k: usize) -> (Vec<usize>, Vec<u64>) {
+pub fn hamming_top_k(
+    query: &[u8],
+    database: &[u8],
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> (Vec<usize>, Vec<u64>) {
     let distances = hamming_batch(query, database, num_rows, row_bytes);
     let k = k.min(num_rows);
 
@@ -344,7 +378,12 @@ mod tests {
         let b: Vec<f32> = (0..100).map(|i| (i * 2) as f32).collect();
         let result = dot_f32(&a, &b);
         let expected: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        assert!((result - expected).abs() < 1.0, "dot_f32: {} vs {}", result, expected);
+        assert!(
+            (result - expected).abs() < 1.0,
+            "dot_f32: {} vs {}",
+            result,
+            expected
+        );
     }
 
     #[test]
@@ -402,8 +441,11 @@ mod tests {
         let a: Vec<u8> = (0..2048).map(|i| (i % 256) as u8).collect();
         let b: Vec<u8> = (0..2048).map(|i| ((i + 1) % 256) as u8).collect();
         let dist = hamming_distance(&a, &b);
-        let expected: u64 = a.iter().zip(b.iter())
-            .map(|(&x, &y)| (x ^ y).count_ones() as u64).sum();
+        let expected: u64 = a
+            .iter()
+            .zip(b.iter())
+            .map(|(&x, &y)| (x ^ y).count_ones() as u64)
+            .sum();
         assert_eq!(dist, expected);
     }
 
@@ -411,11 +453,21 @@ mod tests {
     fn test_hamming_batch() {
         let query = vec![0xAAu8; 16];
         let mut database = vec![0u8; 16 * 4];
-        for i in 0..16 { database[i] = 0xAA; }
-        for i in 16..32 { database[i] = 0x55; }
-        for i in 32..40 { database[i] = 0xAA; }
-        for i in 40..48 { database[i] = 0x55; }
-        for i in 48..64 { database[i] = 0xAA; }
+        for i in 0..16 {
+            database[i] = 0xAA;
+        }
+        for i in 16..32 {
+            database[i] = 0x55;
+        }
+        for i in 32..40 {
+            database[i] = 0xAA;
+        }
+        for i in 40..48 {
+            database[i] = 0x55;
+        }
+        for i in 48..64 {
+            database[i] = 0xAA;
+        }
         database[48] = 0x55;
 
         let distances = hamming_batch(&query, &database, 4, 16);

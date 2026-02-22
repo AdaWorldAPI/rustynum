@@ -81,7 +81,13 @@ pub struct PerChannelQuantParams {
 /// Uses SIMD f32x16 for both min/max reduction and the quantization loop.
 pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
     if data.is_empty() {
-        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+        return (
+            vec![],
+            QuantParams {
+                scale: 1.0,
+                zero_point: 0,
+            },
+        );
     }
 
     // ---- SIMD min/max reduction ----
@@ -149,7 +155,13 @@ pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
 /// Uses SIMD f32x16 for abs_max reduction and the quantization loop.
 pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
     if data.is_empty() {
-        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+        return (
+            vec![],
+            QuantParams {
+                scale: 1.0,
+                zero_point: 0,
+            },
+        );
     }
 
     let abs_max = simd_abs_max(data);
@@ -181,7 +193,13 @@ pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
         quantized[i] = (data[i] / scale).round().clamp(-128.0, 127.0) as i8;
     }
 
-    (quantized, QuantParams { scale, zero_point: 0 })
+    (
+        quantized,
+        QuantParams {
+            scale,
+            zero_point: 0,
+        },
+    )
 }
 
 /// Per-channel quantization: quantize each row of an MxK matrix to i8.
@@ -232,7 +250,13 @@ pub fn quantize_per_channel_i8(
         zero_points.push(0);
     }
 
-    (quantized, PerChannelQuantParams { scales, zero_points })
+    (
+        quantized,
+        PerChannelQuantParams {
+            scales,
+            zero_points,
+        },
+    )
 }
 
 // ============================================================================
@@ -251,8 +275,8 @@ pub fn quantize_per_channel_i8(
 /// instruction (16 lanes × 4 pairs each). For a 512×512 GEMM, this
 /// gives ~4x throughput vs f32 GEMM.
 pub fn int8_gemm_i32(
-    a: &[u8],   // M × K, row-major
-    b: &[i8],   // K × N, row-major
+    a: &[u8],      // M × K, row-major
+    b: &[i8],      // K × N, row-major
     c: &mut [i32], // M × N, row-major
     m: usize,
     n: usize,
@@ -472,9 +496,9 @@ pub fn int8_gemm_per_channel_f32(
     m: usize,
     n: usize,
     k: usize,
-    a_scales: &[f32],    // M scales
+    a_scales: &[f32],      // M scales
     a_zero_points: &[i32], // M zero points
-    b_scales: &[f32],    // N scales
+    b_scales: &[f32],      // N scales
 ) {
     let mut c_i32 = vec![0i32; m * n];
     int8_gemm_i32(a, b, &mut c_i32, m, n, k);
@@ -520,7 +544,13 @@ pub fn int8_gemm_per_channel_f32(
 /// Nibble packing remains scalar (inherently byte-level interleave).
 pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
     if data.is_empty() {
-        return (vec![], QuantParams { scale: 1.0, zero_point: 0 });
+        return (
+            vec![],
+            QuantParams {
+                scale: 1.0,
+                zero_point: 0,
+            },
+        );
     }
 
     // SIMD abs_max reduction
@@ -564,7 +594,13 @@ pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
         packed[i / 2] = ((v0 as u8 & 0x0F) << 4) | (v1 as u8 & 0x0F);
     }
 
-    (packed, QuantParams { scale, zero_point: 0 })
+    (
+        packed,
+        QuantParams {
+            scale,
+            zero_point: 0,
+        },
+    )
 }
 
 /// Dequantize int4 packed data back to f32.
@@ -575,12 +611,16 @@ pub fn dequantize_i4_to_f32(packed: &[u8], params: &QuantParams, len: usize) -> 
         // High nibble (even index)
         let hi = ((packed[i] >> 4) as i8) << 4 >> 4; // sign-extend 4-bit
         out.push(hi as f32 * params.scale);
-        if out.len() >= len { break; }
+        if out.len() >= len {
+            break;
+        }
 
         // Low nibble (odd index)
         let lo = (packed[i] as i8) << 4 >> 4; // sign-extend 4-bit
         out.push(lo as f32 * params.scale);
-        if out.len() >= len { break; }
+        if out.len() >= len {
+            break;
+        }
     }
 
     out
@@ -602,7 +642,13 @@ mod tests {
         // Dequantize and verify
         for i in 0..5 {
             let deq = params.scale * (q[i] as i32 - params.zero_point) as f32;
-            assert!((deq - data[i]).abs() < 0.02, "mismatch at {}: {} vs {}", i, deq, data[i]);
+            assert!(
+                (deq - data[i]).abs() < 0.02,
+                "mismatch at {}: {} vs {}",
+                i,
+                deq,
+                data[i]
+            );
         }
     }
 
@@ -613,7 +659,13 @@ mod tests {
         assert_eq!(params.zero_point, 0); // Symmetric
         for i in 0..5 {
             let deq = params.scale * q[i] as f32;
-            assert!((deq - data[i]).abs() < 0.02, "mismatch at {}: {} vs {}", i, deq, data[i]);
+            assert!(
+                (deq - data[i]).abs() < 0.02,
+                "mismatch at {}: {} vs {}",
+                i,
+                deq,
+                data[i]
+            );
         }
     }
 
@@ -635,7 +687,7 @@ mod tests {
         let a: Vec<u8> = vec![10, 20, 30, 40];
         let b: Vec<i8> = vec![1, 2, 3, 4];
         let mut c = vec![0.0f32; 4];
-        int8_gemm_f32(&a, &b, &mut c, 2, 2, 2, 0.1, 0, 0.01, );
+        int8_gemm_f32(&a, &b, &mut c, 2, 2, 2, 0.1, 0, 0.01);
         // Raw: [10*1+20*3=70, 10*2+20*4=100, 30*1+40*3=150, 30*2+40*4=220]
         // Scaled: 0.1 * 0.01 * raw = 0.001 * raw
         assert!((c[0] - 0.070).abs() < 1e-5);
@@ -651,7 +703,9 @@ mod tests {
         let k = 64;
         let n = 64;
         let a: Vec<u8> = (0..m * k).map(|i| (i % 200) as u8).collect();
-        let b: Vec<i8> = (0..k * n).map(|i| ((i % 200) as i8).wrapping_sub(100)).collect();
+        let b: Vec<i8> = (0..k * n)
+            .map(|i| ((i % 200) as i8).wrapping_sub(100))
+            .collect();
         let mut c = vec![0i32; m * n];
         int8_gemm_i32(&a, &b, &mut c, m, n, k);
 
@@ -685,8 +739,15 @@ mod tests {
         // Quantized GEMM
         let mut c_q = vec![0.0f32; m * n];
         int8_gemm_f32(
-            &a_q, &b_q, &mut c_q, m, n, k,
-            a_params.scale, a_params.zero_point, b_params.scale,
+            &a_q,
+            &b_q,
+            &mut c_q,
+            m,
+            n,
+            k,
+            a_params.scale,
+            a_params.zero_point,
+            b_params.scale,
         );
 
         // Reference f32 GEMM
@@ -706,7 +767,10 @@ mod tests {
             assert!(
                 err < tol,
                 "Quantized GEMM error at {}: {} vs {} (err={})",
-                i, c_q[i], c_ref[i], err
+                i,
+                c_q[i],
+                c_ref[i],
+                err
             );
         }
     }
@@ -720,9 +784,14 @@ mod tests {
         for i in 0..data.len() {
             let err = (recovered[i] - data[i]).abs();
             // int4 has only 16 levels — coarser than int8
-            assert!(err < params.scale * 1.5,
+            assert!(
+                err < params.scale * 1.5,
                 "int4 roundtrip error at {}: {} vs {} (err={})",
-                i, recovered[i], data[i], err);
+                i,
+                recovered[i],
+                data[i],
+                err
+            );
         }
     }
 

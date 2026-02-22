@@ -259,13 +259,7 @@ where
         let mut stride = 1;
         let mut accumulated_strides = 1;
 
-        for (&original_dim, &reduced_dim) in self
-            .shape
-            .iter()
-            .zip(reduction_shape.iter())
-            .rev()
-            
-        {
+        for (&original_dim, &reduced_dim) in self.shape.iter().zip(reduction_shape.iter()).rev() {
             let index_in_dim = (index / stride) % original_dim;
 
             if reduced_dim != 1 {
@@ -572,7 +566,10 @@ where
     /// assert_eq!(array.argmin(), 1);
     /// ```
     pub fn argmin(&self) -> usize {
-        assert!(!self.data.is_empty(), "Cannot compute argmin of empty array.");
+        assert!(
+            !self.data.is_empty(),
+            "Cannot compute argmin of empty array."
+        );
         let mut min_idx = 0;
         let mut min_val = self.data[0];
         for (i, &val) in self.data.iter().enumerate().skip(1) {
@@ -599,7 +596,10 @@ where
     /// assert_eq!(array.argmax(), 2);
     /// ```
     pub fn argmax(&self) -> usize {
-        assert!(!self.data.is_empty(), "Cannot compute argmax of empty array.");
+        assert!(
+            !self.data.is_empty(),
+            "Cannot compute argmax of empty array."
+        );
         let mut max_idx = 0;
         let mut max_val = self.data[0];
         for (i, &val) in self.data.iter().enumerate().skip(1) {
@@ -631,8 +631,7 @@ where
     /// ```
     pub fn top_k(&self, k: usize) -> (Vec<usize>, Vec<T>) {
         assert!(k <= self.data.len(), "k must be <= array length.");
-        let mut indexed: Vec<(usize, T)> =
-            self.data.iter().copied().enumerate().collect();
+        let mut indexed: Vec<(usize, T)> = self.data.iter().copied().enumerate().collect();
         indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         indexed.truncate(k);
         let indices: Vec<usize> = indexed.iter().map(|&(i, _)| i).collect();
@@ -1790,9 +1789,11 @@ mod tests {
         assert_eq!(normalized.shape(), &[3, 3]);
 
         // Verify some normalized values (comparing with NumPy results)
-        let expected_first_row = [1.0 / (14.0_f32).sqrt(),
+        let expected_first_row = [
+            1.0 / (14.0_f32).sqrt(),
             2.0 / (14.0_f32).sqrt(),
-            3.0 / (14.0_f32).sqrt()];
+            3.0 / (14.0_f32).sqrt(),
+        ];
 
         for i in 0..3 {
             assert!(
@@ -1905,7 +1906,11 @@ mod tests {
         let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
         let sm = array.softmax();
         let sum: f32 = sm.get_data().iter().sum();
-        assert!((sum - 1.0).abs() < 1e-5, "Softmax should sum to 1, got {}", sum);
+        assert!(
+            (sum - 1.0).abs() < 1e-5,
+            "Softmax should sum to 1, got {}",
+            sum
+        );
         // Values should be monotonically increasing
         assert!(sm.get_data()[0] < sm.get_data()[1]);
         assert!(sm.get_data()[1] < sm.get_data()[2]);
@@ -1930,7 +1935,11 @@ mod tests {
         let array = NumArrayF32::new(vec![1000.0, 1001.0, 1002.0]);
         let sm = array.softmax();
         let sum: f32 = sm.get_data().iter().sum();
-        assert!((sum - 1.0).abs() < 1e-5, "Softmax should be stable, got sum {}", sum);
+        assert!(
+            (sum - 1.0).abs() < 1e-5,
+            "Softmax should be stable, got sum {}",
+            sum
+        );
     }
 
     #[test]

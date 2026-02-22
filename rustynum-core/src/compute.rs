@@ -51,7 +51,12 @@ static CAPS: OnceLock<ComputeCaps> = OnceLock::new();
 /// Which CPUID output register to check.
 #[derive(Clone, Copy)]
 #[allow(dead_code)] // All four registers exist; only Edx used for current AMX checks.
-enum CpuidReg { Eax, Ebx, Ecx, Edx }
+enum CpuidReg {
+    Eax,
+    Ebx,
+    Ecx,
+    Edx,
+}
 
 /// Check a specific CPUID feature bit (for AMX detection which lacks stable Rust macros).
 #[cfg(target_arch = "x86_64")]
@@ -150,12 +155,7 @@ pub enum ComputeTier {
 }
 
 /// Recommend compute tier based on workload characteristics.
-pub fn recommend_tier(
-    m: usize,
-    n: usize,
-    k: usize,
-    precision_required: Precision,
-) -> ComputeTier {
+pub fn recommend_tier(m: usize, n: usize, k: usize, precision_required: Precision) -> ComputeTier {
     let caps = detect();
     let total_flops = 2 * m * n * k;
 

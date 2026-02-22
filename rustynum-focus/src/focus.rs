@@ -137,22 +137,22 @@ pub fn concept_to_focus(concept_id: u64, density: FocusDensity) -> (u8, u8, u32)
 ///
 /// Self-inverse: `focus_xor(focus_xor(c, m, v), m, v)` restores c.
 /// Bytes outside the mask are NEVER touched.
-pub fn focus_xor(
-    container: &mut [u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-    value: &[u8],
-) {
+pub fn focus_xor(container: &mut [u8], mask_x: u8, mask_y: u8, mask_z: u32, value: &[u8]) {
     assert!(container.len() >= 2048);
     assert!(value.len() >= 2048);
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 container[idx] ^= value[idx];
             }
@@ -166,21 +166,22 @@ pub fn focus_xor(
 
 /// Extract the focused sub-volume. Non-focused positions are zeroed.
 /// Non-destructive read — the container is unchanged.
-pub fn focus_read(
-    container: &[u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-) -> Vec<u8> {
+pub fn focus_read(container: &[u8], mask_x: u8, mask_y: u8, mask_z: u32) -> Vec<u8> {
     assert!(container.len() >= 2048);
     let mut out = vec![0u8; 2048];
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 out[idx] = container[idx];
             }
@@ -196,22 +197,22 @@ pub fn focus_read(
 
 /// ADD a value into the container at the focused sub-volume (phase-space).
 /// NOT self-inverse — use focus_sub to undo.
-pub fn focus_add(
-    container: &mut [u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-    value: &[u8],
-) {
+pub fn focus_add(container: &mut [u8], mask_x: u8, mask_y: u8, mask_z: u32, value: &[u8]) {
     assert!(container.len() >= 2048);
     assert!(value.len() >= 2048);
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 container[idx] = container[idx].wrapping_add(value[idx]);
             }
@@ -221,22 +222,22 @@ pub fn focus_add(
 
 /// SUB a value from the container at the focused sub-volume.
 /// Exact inverse of focus_add.
-pub fn focus_sub(
-    container: &mut [u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-    value: &[u8],
-) {
+pub fn focus_sub(container: &mut [u8], mask_x: u8, mask_y: u8, mask_z: u32, value: &[u8]) {
     assert!(container.len() >= 2048);
     assert!(value.len() >= 2048);
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 container[idx] = container[idx].wrapping_sub(value[idx]);
             }
@@ -250,23 +251,23 @@ pub fn focus_sub(
 
 /// Hamming distance within focus region (for binary containers).
 /// Returns (hamming_distance, region_size_bytes).
-pub fn focus_hamming(
-    a: &[u8],
-    b: &[u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-) -> (u64, u32) {
+pub fn focus_hamming(a: &[u8], b: &[u8], mask_x: u8, mask_y: u8, mask_z: u32) -> (u64, u32) {
     assert!(a.len() >= 2048 && b.len() >= 2048);
     let mut distance: u64 = 0;
     let mut region_size: u32 = 0;
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 distance += (a[idx] ^ b[idx]).count_ones() as u64;
                 region_size += 1;
@@ -279,23 +280,23 @@ pub fn focus_hamming(
 
 /// L1 distance within focus region (for phase containers).
 /// Returns (l1_distance, region_size_bytes).
-pub fn focus_l1(
-    a: &[u8],
-    b: &[u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-) -> (u64, u32) {
+pub fn focus_l1(a: &[u8], b: &[u8], mask_x: u8, mask_y: u8, mask_z: u32) -> (u64, u32) {
     assert!(a.len() >= 2048 && b.len() >= 2048);
     let mut distance: u64 = 0;
     let mut region_size: u32 = 0;
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 distance += (a[idx] as i16 - b[idx] as i16).unsigned_abs() as u64;
                 region_size += 1;
@@ -312,19 +313,21 @@ pub fn focus_l1(
 
 /// Expand the 48-bit focus address into a full 2048-byte mask.
 /// out[i] = 0xFF if position i is in focus, 0x00 otherwise.
-pub fn materialize_focus_mask(
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-) -> [u8; 2048] {
+pub fn materialize_focus_mask(mask_x: u8, mask_y: u8, mask_z: u32) -> [u8; 2048] {
     let mut mask = [0u8; 2048];
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 mask[x * 256 + y * 32 + z] = 0xFF;
             }
         }
@@ -335,11 +338,7 @@ pub fn materialize_focus_mask(
 
 /// Materialized XOR: `container[i] ^= (value[i] & mask[i])`.
 /// SIMD-friendly: VPAND + VPXORD per 64-byte chunk.
-pub fn focus_xor_materialized(
-    container: &mut [u8],
-    mask: &[u8; 2048],
-    value: &[u8],
-) {
+pub fn focus_xor_materialized(container: &mut [u8], mask: &[u8; 2048], value: &[u8]) {
     assert!(container.len() >= 2048);
     assert!(value.len() >= 2048);
 
@@ -350,11 +349,7 @@ pub fn focus_xor_materialized(
 
 /// Materialized ADD: `container[i] = container[i].wrapping_add(value[i] & mask[i])`.
 /// SIMD-friendly: VPAND + VPADDB per 64-byte chunk.
-pub fn focus_add_materialized(
-    container: &mut [u8],
-    mask: &[u8; 2048],
-    value: &[u8],
-) {
+pub fn focus_add_materialized(container: &mut [u8], mask: &[u8; 2048], value: &[u8]) {
     assert!(container.len() >= 2048);
     assert!(value.len() >= 2048);
 
@@ -364,13 +359,7 @@ pub fn focus_add_materialized(
 }
 
 /// Auto-dispatch: scalar for sparse, materialized for broad.
-pub fn focus_xor_auto(
-    container: &mut [u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-    value: &[u8],
-) {
+pub fn focus_xor_auto(container: &mut [u8], mask_x: u8, mask_y: u8, mask_z: u32, value: &[u8]) {
     let region = mask_x.count_ones() * mask_y.count_ones() * mask_z.count_ones();
     if region < SIMD_THRESHOLD {
         focus_xor(container, mask_x, mask_y, mask_z, value);
@@ -440,11 +429,17 @@ pub fn focus_carrier_encode(
     let scale = amplitude / crate::carrier::CARRIER_AMPLITUDE;
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let j = x * 256 + y * 32 + z;
                 let cos_val = basis.basis_cos[fi][j] as f32;
                 let sin_val = basis.basis_sin[fi][j] as f32;
@@ -463,22 +458,22 @@ pub fn focus_carrier_encode(
 
 /// Compute the XOR delta between two containers, restricted to a focus region.
 /// Returns a 2048-byte delta where non-focused positions are zero.
-pub fn focus_delta(
-    old: &[u8],
-    new: &[u8],
-    mask_x: u8,
-    mask_y: u8,
-    mask_z: u32,
-) -> Vec<u8> {
+pub fn focus_delta(old: &[u8], new: &[u8], mask_x: u8, mask_y: u8, mask_z: u32) -> Vec<u8> {
     assert!(old.len() >= 2048 && new.len() >= 2048);
     let mut delta = vec![0u8; 2048];
 
     for x in 0..FOCUS_DIM_X {
-        if mask_x & (1 << x) == 0 { continue; }
+        if mask_x & (1 << x) == 0 {
+            continue;
+        }
         for y in 0..FOCUS_DIM_Y {
-            if mask_y & (1 << y) == 0 { continue; }
+            if mask_y & (1 << y) == 0 {
+                continue;
+            }
             for z in 0..FOCUS_DIM_Z {
-                if mask_z & (1 << z) == 0 { continue; }
+                if mask_z & (1 << z) == 0 {
+                    continue;
+                }
                 let idx = x * 256 + y * 32 + z;
                 delta[idx] = old[idx] ^ new[idx];
             }
@@ -542,7 +537,9 @@ impl Default for FocusRegistry {
 
 impl FocusRegistry {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// Register a concept at a focus address.
@@ -596,17 +593,25 @@ impl FocusRegistry {
 
     /// Total bytes occupied across all registered concepts (overlap counted once).
     pub fn total_coverage(&self) -> u32 {
-        if self.entries.is_empty() { return 0; }
+        if self.entries.is_empty() {
+            return 0;
+        }
 
         let mut coverage = [false; 2048];
         for &(packed, _) in &self.entries {
             let (mx, my, mz) = unpack_focus(packed);
             for x in 0..FOCUS_DIM_X {
-                if mx & (1 << x) == 0 { continue; }
+                if mx & (1 << x) == 0 {
+                    continue;
+                }
                 for y in 0..FOCUS_DIM_Y {
-                    if my & (1 << y) == 0 { continue; }
+                    if my & (1 << y) == 0 {
+                        continue;
+                    }
                     for z in 0..FOCUS_DIM_Z {
-                        if mz & (1 << z) == 0 { continue; }
+                        if mz & (1 << z) == 0 {
+                            continue;
+                        }
                         coverage[x * 256 + y * 32 + z] = true;
                     }
                 }
@@ -669,9 +674,8 @@ mod tests {
         for (mx, my, mz) in test_cases {
             let mask = materialize_focus_mask(mx, my, mz);
             let count = mask.iter().filter(|&&b| b == 0xFF).count();
-            let expected = mx.count_ones() as usize
-                * my.count_ones() as usize
-                * mz.count_ones() as usize;
+            let expected =
+                mx.count_ones() as usize * my.count_ones() as usize * mz.count_ones() as usize;
             assert_eq!(count, expected, "mx={:#x} my={:#x} mz={:#x}", mx, my, mz);
         }
     }
@@ -740,7 +744,11 @@ mod tests {
         let mask = materialize_focus_mask(mx, my, mz);
         for i in 0..2048 {
             if mask[i] == 0 {
-                assert_eq!(container[i], original[i], "position {} outside mask changed", i);
+                assert_eq!(
+                    container[i], original[i],
+                    "position {} outside mask changed",
+                    i
+                );
             }
         }
     }
@@ -996,12 +1004,20 @@ mod tests {
             masks.insert((mx, my, mz));
         }
         // With 100 random IDs and medium density, most should be distinct
-        assert!(masks.len() > 50, "expected most masks unique, got {}", masks.len());
+        assert!(
+            masks.len() > 50,
+            "expected most masks unique, got {}",
+            masks.len()
+        );
     }
 
     #[test]
     fn test_concept_to_focus_density_bits() {
-        for density in [FocusDensity::Sparse, FocusDensity::Medium, FocusDensity::Broad] {
+        for density in [
+            FocusDensity::Sparse,
+            FocusDensity::Medium,
+            FocusDensity::Broad,
+        ] {
             let (bits_x, bits_y, bits_z) = density.bit_counts();
             let (mx, my, mz) = concept_to_focus(42, density);
             assert_eq!(mx.count_ones(), bits_x, "density={:?} mask_x bits", density);
@@ -1052,7 +1068,9 @@ mod tests {
             assert!(
                 matches as f64 / total as f64 > 0.5,
                 "concept {} signal too weak: {}/{}",
-                id, matches, total
+                id,
+                matches,
+                total
             );
         }
     }
@@ -1071,7 +1089,11 @@ mod tests {
 
         // Check that MOST positions are unchanged
         // (10 sparse concepts × 4 bytes each = ~40 bytes changed, out of 2048)
-        let changed = container.iter().zip(original.iter()).filter(|(a, b)| a != b).count();
+        let changed = container
+            .iter()
+            .zip(original.iter())
+            .filter(|(a, b)| a != b)
+            .count();
         assert!(
             changed <= 200, // generous bound for overlaps
             "too many positions changed: {} (expected ~40)",
@@ -1145,8 +1167,14 @@ mod tests {
         let delta = focus_delta(&old, &new, mx, my, mz);
         let compact = CompactDelta::from_delta(&delta, mx, my, mz);
 
-        assert!(compact.wire_size() < 2048, "compact should be smaller than full");
-        assert!(compact.changes.len() <= 4, "sparse focus: at most 4 changes");
+        assert!(
+            compact.wire_size() < 2048,
+            "compact should be smaller than full"
+        );
+        assert!(
+            compact.changes.len() <= 4,
+            "sparse focus: at most 4 changes"
+        );
     }
 
     #[test]
@@ -1201,7 +1229,11 @@ mod tests {
     fn test_focus_capacity_experiment() {
         println!("\n=== Focus Gating Capacity Experiment ===\n");
 
-        for &density in &[FocusDensity::Sparse, FocusDensity::Medium, FocusDensity::Broad] {
+        for &density in &[
+            FocusDensity::Sparse,
+            FocusDensity::Medium,
+            FocusDensity::Broad,
+        ] {
             let (bits_x, bits_y, bits_z) = density.bit_counts();
             let region_bytes = bits_x * bits_y * bits_z;
 
@@ -1212,9 +1244,7 @@ mod tests {
                 let mut container = vec![0u8; 2048];
                 let concepts: Vec<(u64, Vec<u8>)> = (0..n)
                     .map(|id| {
-                        let value: Vec<u8> = (0..2048)
-                            .map(|_| (rng.next() % 256) as u8)
-                            .collect();
+                        let value: Vec<u8> = (0..2048).map(|_| (rng.next() % 256) as u8).collect();
                         (id, value)
                     })
                     .collect();
@@ -1251,7 +1281,12 @@ mod tests {
 
                 println!(
                     "  {:?} ({}B region) N={:>3}: accuracy={:.1}% ({}/{})",
-                    density, region_bytes, n, accuracy * 100.0, total_match, total_bits
+                    density,
+                    region_bytes,
+                    n,
+                    accuracy * 100.0,
+                    total_match,
+                    total_bits
                 );
             }
             println!();
@@ -1263,9 +1298,7 @@ mod tests {
             let mut rng = super::SplitMix64(999);
             let concepts: Vec<(u64, Vec<u8>)> = (0..10)
                 .map(|id| {
-                    let value: Vec<u8> = (0..2048)
-                        .map(|_| (rng.next() % 256) as u8)
-                        .collect();
+                    let value: Vec<u8> = (0..2048).map(|_| (rng.next() % 256) as u8).collect();
                     (id, value)
                 })
                 .collect();
@@ -1311,8 +1344,14 @@ mod tests {
         let mz = 0x0000000Fu32; // 1×1×4 = 4 bytes
 
         focus_carrier_encode(
-            &mut container, &basis, mx, my, mz,
-            0, 1.0, crate::carrier::CARRIER_AMPLITUDE,
+            &mut container,
+            &basis,
+            mx,
+            my,
+            mz,
+            0,
+            1.0,
+            crate::carrier::CARRIER_AMPLITUDE,
         );
 
         // Check that only masked positions are non-zero
@@ -1331,6 +1370,9 @@ mod tests {
         let nonzero_in_mask = (0..2048)
             .filter(|&i| mask[i] == 0xFF && container[i] != 0)
             .count();
-        assert!(nonzero_in_mask > 0, "carrier should write some non-zero values");
+        assert!(
+            nonzero_in_mask > 0,
+            "carrier should write some non-zero values"
+        );
     }
 }

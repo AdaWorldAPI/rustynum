@@ -33,24 +33,24 @@ use crate::sweep::Base;
 pub mod domain {
     use std::ops::Range;
 
-    pub const MODE:  Range<usize> = 0..4;
-    pub const NAV:   Range<usize> = 4..10;
-    pub const PLAN:  Range<usize> = 10..16;
-    pub const SENS:  Range<usize> = 16..24;
-    pub const CTRL:  Range<usize> = 24..32;
+    pub const MODE: Range<usize> = 0..4;
+    pub const NAV: Range<usize> = 4..10;
+    pub const PLAN: Range<usize> = 10..16;
+    pub const SENS: Range<usize> = 16..24;
+    pub const CTRL: Range<usize> = 24..32;
     pub const MOTOR: Range<usize> = 32..40;
-    pub const PROC:  Range<usize> = 40..46;
-    pub const COMM:  Range<usize> = 46..52;
+    pub const PROC: Range<usize> = 40..46;
+    pub const COMM: Range<usize> = 46..52;
 
     pub const ALL_DOMAINS: &[(&str, Range<usize>)] = &[
-        ("mode",  MODE),
-        ("nav",   NAV),
-        ("plan",  PLAN),
-        ("sens",  SENS),
-        ("ctrl",  CTRL),
+        ("mode", MODE),
+        ("nav", NAV),
+        ("plan", PLAN),
+        ("sens", SENS),
+        ("ctrl", CTRL),
         ("motor", MOTOR),
-        ("proc",  PROC),
-        ("comm",  COMM),
+        ("proc", PROC),
+        ("comm", COMM),
     ];
 }
 
@@ -66,72 +66,325 @@ pub struct Concept {
 /// 52 concepts across 8 signal-processing domains.
 pub const CONCEPTS: &[Concept] = &[
     // mode domain (4) — Operating modes [0x80-0x8F]
-    Concept { id: "mode.standby", tau: 0x87, name: "Standby",   domain: "mode" },
-    Concept { id: "mode.active",  tau: 0x83, name: "Active",    domain: "mode" },
-    Concept { id: "mode.learn",   tau: 0x81, name: "Learning",  domain: "mode" },
-    Concept { id: "mode.deploy",  tau: 0x88, name: "Deploy",    domain: "mode" },
-
+    Concept {
+        id: "mode.standby",
+        tau: 0x87,
+        name: "Standby",
+        domain: "mode",
+    },
+    Concept {
+        id: "mode.active",
+        tau: 0x83,
+        name: "Active",
+        domain: "mode",
+    },
+    Concept {
+        id: "mode.learn",
+        tau: 0x81,
+        name: "Learning",
+        domain: "mode",
+    },
+    Concept {
+        id: "mode.deploy",
+        tau: 0x88,
+        name: "Deploy",
+        domain: "mode",
+    },
     // nav domain (6) — Navigation [0x60-0x6F]
-    Concept { id: "nav.waypoint", tau: 0x66, name: "Waypoint",    domain: "nav" },
-    Concept { id: "nav.heading",  tau: 0x61, name: "Heading",     domain: "nav" },
-    Concept { id: "nav.altitude", tau: 0x62, name: "Altitude",    domain: "nav" },
-    Concept { id: "nav.velocity", tau: 0x63, name: "Velocity",    domain: "nav" },
-    Concept { id: "nav.bearing",  tau: 0x64, name: "Bearing",     domain: "nav" },
-    Concept { id: "nav.terrain",  tau: 0x65, name: "Terrain",     domain: "nav" },
-
+    Concept {
+        id: "nav.waypoint",
+        tau: 0x66,
+        name: "Waypoint",
+        domain: "nav",
+    },
+    Concept {
+        id: "nav.heading",
+        tau: 0x61,
+        name: "Heading",
+        domain: "nav",
+    },
+    Concept {
+        id: "nav.altitude",
+        tau: 0x62,
+        name: "Altitude",
+        domain: "nav",
+    },
+    Concept {
+        id: "nav.velocity",
+        tau: 0x63,
+        name: "Velocity",
+        domain: "nav",
+    },
+    Concept {
+        id: "nav.bearing",
+        tau: 0x64,
+        name: "Bearing",
+        domain: "nav",
+    },
+    Concept {
+        id: "nav.terrain",
+        tau: 0x65,
+        name: "Terrain",
+        domain: "nav",
+    },
     // plan domain (6) — Planning / scheduling [0x70-0x7F]
-    Concept { id: "plan.mission",   tau: 0x70, name: "Mission",     domain: "plan" },
-    Concept { id: "plan.objective", tau: 0x71, name: "Objective",   domain: "plan" },
-    Concept { id: "plan.priority",  tau: 0x72, name: "Priority",    domain: "plan" },
-    Concept { id: "plan.deadline",  tau: 0x73, name: "Deadline",    domain: "plan" },
-    Concept { id: "plan.resource",  tau: 0x74, name: "Resource",    domain: "plan" },
-    Concept { id: "plan.constraint",tau: 0x75, name: "Constraint",  domain: "plan" },
-
+    Concept {
+        id: "plan.mission",
+        tau: 0x70,
+        name: "Mission",
+        domain: "plan",
+    },
+    Concept {
+        id: "plan.objective",
+        tau: 0x71,
+        name: "Objective",
+        domain: "plan",
+    },
+    Concept {
+        id: "plan.priority",
+        tau: 0x72,
+        name: "Priority",
+        domain: "plan",
+    },
+    Concept {
+        id: "plan.deadline",
+        tau: 0x73,
+        name: "Deadline",
+        domain: "plan",
+    },
+    Concept {
+        id: "plan.resource",
+        tau: 0x74,
+        name: "Resource",
+        domain: "plan",
+    },
+    Concept {
+        id: "plan.constraint",
+        tau: 0x75,
+        name: "Constraint",
+        domain: "plan",
+    },
     // sens domain (8) — Sensorimotor / perception [0xE0-0xEF]
-    Concept { id: "sens.lidar",     tau: 0xE0, name: "Lidar",       domain: "sens" },
-    Concept { id: "sens.radar",     tau: 0xE8, name: "Radar",       domain: "sens" },
-    Concept { id: "sens.camera",    tau: 0xE1, name: "Camera",      domain: "sens" },
-    Concept { id: "sens.imu",       tau: 0xE2, name: "IMU",         domain: "sens" },
-    Concept { id: "sens.gps",       tau: 0xE3, name: "GPS",         domain: "sens" },
-    Concept { id: "sens.sonar",     tau: 0xE4, name: "Sonar",       domain: "sens" },
-    Concept { id: "sens.thermal",   tau: 0xE5, name: "Thermal",     domain: "sens" },
-    Concept { id: "sens.magnetic",  tau: 0xE7, name: "Magnetic",    domain: "sens" },
-
+    Concept {
+        id: "sens.lidar",
+        tau: 0xE0,
+        name: "Lidar",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.radar",
+        tau: 0xE8,
+        name: "Radar",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.camera",
+        tau: 0xE1,
+        name: "Camera",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.imu",
+        tau: 0xE2,
+        name: "IMU",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.gps",
+        tau: 0xE3,
+        name: "GPS",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.sonar",
+        tau: 0xE4,
+        name: "Sonar",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.thermal",
+        tau: 0xE5,
+        name: "Thermal",
+        domain: "sens",
+    },
+    Concept {
+        id: "sens.magnetic",
+        tau: 0xE7,
+        name: "Magnetic",
+        domain: "sens",
+    },
     // ctrl domain (8) — Control signals [0x50-0x5F]
-    Concept { id: "ctrl.throttle",  tau: 0x50, name: "Throttle",    domain: "ctrl" },
-    Concept { id: "ctrl.steering",  tau: 0x51, name: "Steering",    domain: "ctrl" },
-    Concept { id: "ctrl.brake",     tau: 0x52, name: "Brake",       domain: "ctrl" },
-    Concept { id: "ctrl.pitch",     tau: 0x53, name: "Pitch",       domain: "ctrl" },
-    Concept { id: "ctrl.roll",      tau: 0x54, name: "Roll",        domain: "ctrl" },
-    Concept { id: "ctrl.yaw",       tau: 0x55, name: "Yaw",         domain: "ctrl" },
-    Concept { id: "ctrl.gain",      tau: 0x56, name: "Gain",        domain: "ctrl" },
-    Concept { id: "ctrl.damping",   tau: 0x57, name: "Damping",     domain: "ctrl" },
-
+    Concept {
+        id: "ctrl.throttle",
+        tau: 0x50,
+        name: "Throttle",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.steering",
+        tau: 0x51,
+        name: "Steering",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.brake",
+        tau: 0x52,
+        name: "Brake",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.pitch",
+        tau: 0x53,
+        name: "Pitch",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.roll",
+        tau: 0x54,
+        name: "Roll",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.yaw",
+        tau: 0x55,
+        name: "Yaw",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.gain",
+        tau: 0x56,
+        name: "Gain",
+        domain: "ctrl",
+    },
+    Concept {
+        id: "ctrl.damping",
+        tau: 0x57,
+        name: "Damping",
+        domain: "ctrl",
+    },
     // motor domain (8) — Actuator / motor commands [0x40-0x4F]
-    Concept { id: "motor.torque",    tau: 0x40, name: "Torque",      domain: "motor" },
-    Concept { id: "motor.rpm",       tau: 0x41, name: "RPM",         domain: "motor" },
-    Concept { id: "motor.current",   tau: 0x42, name: "Current",     domain: "motor" },
-    Concept { id: "motor.pwm",       tau: 0x43, name: "PWM",         domain: "motor" },
-    Concept { id: "motor.position",  tau: 0x44, name: "Position",    domain: "motor" },
-    Concept { id: "motor.force",     tau: 0x45, name: "Force",       domain: "motor" },
-    Concept { id: "motor.encoder",   tau: 0x46, name: "Encoder",     domain: "motor" },
-    Concept { id: "motor.servo",     tau: 0x47, name: "Servo",       domain: "motor" },
-
+    Concept {
+        id: "motor.torque",
+        tau: 0x40,
+        name: "Torque",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.rpm",
+        tau: 0x41,
+        name: "RPM",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.current",
+        tau: 0x42,
+        name: "Current",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.pwm",
+        tau: 0x43,
+        name: "PWM",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.position",
+        tau: 0x44,
+        name: "Position",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.force",
+        tau: 0x45,
+        name: "Force",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.encoder",
+        tau: 0x46,
+        name: "Encoder",
+        domain: "motor",
+    },
+    Concept {
+        id: "motor.servo",
+        tau: 0x47,
+        name: "Servo",
+        domain: "motor",
+    },
     // proc domain (6) — Signal processing [0x90-0x9F]
-    Concept { id: "proc.fft",        tau: 0x92, name: "FFT",         domain: "proc" },
-    Concept { id: "proc.filter",     tau: 0x93, name: "Filter",      domain: "proc" },
-    Concept { id: "proc.kalman",     tau: 0x94, name: "Kalman",      domain: "proc" },
-    Concept { id: "proc.fusion",     tau: 0x95, name: "Fusion",      domain: "proc" },
-    Concept { id: "proc.detect",     tau: 0x96, name: "Detection",   domain: "proc" },
-    Concept { id: "proc.classify",   tau: 0x97, name: "Classify",    domain: "proc" },
-
+    Concept {
+        id: "proc.fft",
+        tau: 0x92,
+        name: "FFT",
+        domain: "proc",
+    },
+    Concept {
+        id: "proc.filter",
+        tau: 0x93,
+        name: "Filter",
+        domain: "proc",
+    },
+    Concept {
+        id: "proc.kalman",
+        tau: 0x94,
+        name: "Kalman",
+        domain: "proc",
+    },
+    Concept {
+        id: "proc.fusion",
+        tau: 0x95,
+        name: "Fusion",
+        domain: "proc",
+    },
+    Concept {
+        id: "proc.detect",
+        tau: 0x96,
+        name: "Detection",
+        domain: "proc",
+    },
+    Concept {
+        id: "proc.classify",
+        tau: 0x97,
+        name: "Classify",
+        domain: "proc",
+    },
     // comm domain (6) — Communications [0xA0-0xAF]
-    Concept { id: "comm.radio",      tau: 0xA0, name: "Radio",       domain: "comm" },
-    Concept { id: "comm.protocol",   tau: 0xA1, name: "Protocol",    domain: "comm" },
-    Concept { id: "comm.telemetry",  tau: 0xA2, name: "Telemetry",   domain: "comm" },
-    Concept { id: "comm.mesh",       tau: 0xA3, name: "Mesh",        domain: "comm" },
-    Concept { id: "comm.encrypt",    tau: 0xA4, name: "Encrypt",     domain: "comm" },
-    Concept { id: "comm.sync",       tau: 0xA5, name: "Sync",        domain: "comm" },
+    Concept {
+        id: "comm.radio",
+        tau: 0xA0,
+        name: "Radio",
+        domain: "comm",
+    },
+    Concept {
+        id: "comm.protocol",
+        tau: 0xA1,
+        name: "Protocol",
+        domain: "comm",
+    },
+    Concept {
+        id: "comm.telemetry",
+        tau: 0xA2,
+        name: "Telemetry",
+        domain: "comm",
+    },
+    Concept {
+        id: "comm.mesh",
+        tau: 0xA3,
+        name: "Mesh",
+        domain: "comm",
+    },
+    Concept {
+        id: "comm.encrypt",
+        tau: 0xA4,
+        name: "Encrypt",
+        domain: "comm",
+    },
+    Concept {
+        id: "comm.sync",
+        tau: 0xA5,
+        name: "Sync",
+        domain: "comm",
+    },
 ];
 
 /// Total concept count.
@@ -142,14 +395,14 @@ pub const CONCEPT_COUNT: usize = K_TOTAL;
 
 /// Domain boundaries for grouping: (name, start_index, end_index).
 pub const DOMAINS: &[(&str, usize, usize)] = &[
-    ("mode",  0,  4),
-    ("nav",   4,  10),
-    ("plan",  10, 16),
-    ("sens",  16, 24),
-    ("ctrl",  24, 32),
+    ("mode", 0, 4),
+    ("nav", 4, 10),
+    ("plan", 10, 16),
+    ("sens", 16, 24),
+    ("ctrl", 24, 32),
     ("motor", 32, 40),
-    ("proc",  40, 46),
-    ("comm",  46, 52),
+    ("proc", 40, 46),
+    ("comm", 46, 52),
 ];
 
 use rustynum_core::SplitMix64;
@@ -205,12 +458,14 @@ fn generate_tau_basis(tau: u8, d: usize, base: Base) -> Vec<i8> {
     let min_val = base.min_val() as f64;
     let max_val = base.max_val() as f64;
 
-    (0..d).map(|_| {
-        let lo = rng_lo.gen_range_i8(base.min_val(), base.max_val()) as f64;
-        let hi = rng_hi.gen_range_i8(base.min_val(), base.max_val()) as f64;
-        let blended = lo * (1.0 - frac) + hi * frac;
-        blended.round().clamp(min_val, max_val) as i8
-    }).collect()
+    (0..d)
+        .map(|_| {
+            let lo = rng_lo.gen_range_i8(base.min_val(), base.max_val()) as f64;
+            let hi = rng_hi.gen_range_i8(base.min_val(), base.max_val()) as f64;
+            let blended = lo * (1.0 - frac) + hi * frac;
+            blended.round().clamp(min_val, max_val) as i8
+        })
+        .collect()
 }
 
 /// Generate an organic 3-layer template for one concept.
@@ -253,12 +508,14 @@ pub fn generate_organic_template(
     let min_val = base.min_val() as f32;
     let max_val = base.max_val() as f32;
 
-    (0..d).map(|j| {
-        let blended = domain_w * domain_basis[j] as f32
-            + tau_w * tau_basis[j] as f32
-            + indiv_w * individual[j] as f32;
-        blended.round().clamp(min_val, max_val) as i8
-    }).collect()
+    (0..d)
+        .map(|j| {
+            let blended = domain_w * domain_basis[j] as f32
+                + tau_w * tau_basis[j] as f32
+                + indiv_w * individual[j] as f32;
+            blended.round().clamp(min_val, max_val) as i8
+        })
+        .collect()
 }
 
 /// Generate all 52 organic templates.
@@ -268,7 +525,8 @@ pub fn generate_all_organic_templates(
     domain_w: f32,
     tau_w: f32,
 ) -> Vec<Vec<i8>> {
-    CONCEPTS.iter()
+    CONCEPTS
+        .iter()
         .map(|c| generate_organic_template(c, d, base, domain_w, tau_w))
         .collect()
 }
@@ -319,9 +577,7 @@ impl GhostHolograph {
     /// Create with the given dimensionality.
     pub fn new(d: usize) -> Self {
         let base = Base::Signed(7);
-        let templates = generate_all_organic_templates(
-            d, base, DEFAULT_DOMAIN_W, DEFAULT_TAU_W,
-        );
+        let templates = generate_all_organic_templates(d, base, DEFAULT_DOMAIN_W, DEFAULT_TAU_W);
 
         Self {
             d,
@@ -352,22 +608,24 @@ impl GhostHolograph {
 
     /// Read back ALL 52 concepts.
     pub fn read_all(&self) -> Vec<ConceptReadback> {
-        (0..K_TOTAL).map(|idx| {
-            let concept = &CONCEPTS[idx];
-            let was_stored = self.stored_indices.contains(&idx);
-            let readback = self.read_coefficient(&self.templates[idx]);
+        (0..K_TOTAL)
+            .map(|idx| {
+                let concept = &CONCEPTS[idx];
+                let was_stored = self.stored_indices.contains(&idx);
+                let readback = self.read_coefficient(&self.templates[idx]);
 
-            ConceptReadback {
-                index: idx,
-                id: concept.id,
-                name: concept.name,
-                domain: concept.domain,
-                tau: concept.tau,
-                was_stored,
-                original_amplitude: self.amplitudes[idx],
-                readback,
-            }
-        }).collect()
+                ConceptReadback {
+                    index: idx,
+                    id: concept.id,
+                    name: concept.name,
+                    domain: concept.domain,
+                    tau: concept.tau,
+                    was_stored,
+                    original_amplitude: self.amplitudes[idx],
+                    readback,
+                }
+            })
+            .collect()
     }
 
     /// Read a single coefficient: dot(container, template) / ||template||^2.
@@ -378,7 +636,11 @@ impl GhostHolograph {
             dot += self.container[j] as f64 * template[j] as f64;
             norm += template[j] as f64 * template[j] as f64;
         }
-        if norm > 1e-10 { (dot / norm) as f32 } else { 0.0 }
+        if norm > 1e-10 {
+            (dot / norm) as f32
+        } else {
+            0.0
+        }
     }
 }
 
@@ -409,11 +671,11 @@ pub fn scenario_sens_only(d: usize) -> Vec<ConceptReadback> {
 pub fn scenario_navigation(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        1,   // mode.active
-        33,  // motor.rpm
-        19,  // sens.imu
-        6,   // nav.altitude
-        38,  // motor.encoder
+        1,  // mode.active
+        33, // motor.rpm
+        19, // sens.imu
+        6,  // nav.altitude
+        38, // motor.encoder
     ];
     let amplitudes = vec![0.9, 1.0, 0.8, 0.9, 0.7];
     h.store(&indices, &amplitudes);
@@ -431,12 +693,12 @@ pub fn scenario_navigation(d: usize) -> Vec<ConceptReadback> {
 pub fn scenario_conflict(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        2,   // mode.learn
-        18,  // sens.camera
-        15,  // plan.constraint
-        20,  // sens.gps
-        40,  // proc.fft
-        42,  // proc.kalman
+        2,  // mode.learn
+        18, // sens.camera
+        15, // plan.constraint
+        20, // sens.gps
+        40, // proc.fft
+        42, // proc.kalman
     ];
     let amplitudes = vec![1.0, 0.8, 0.9, 0.7, 1.0, 0.8];
     h.store(&indices, &amplitudes);
@@ -454,11 +716,11 @@ pub fn scenario_conflict(d: usize) -> Vec<ConceptReadback> {
 pub fn scenario_adaptation(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        32,  // motor.torque
-        27,  // ctrl.pitch
-        43,  // proc.fusion
-        44,  // proc.detect
-        13,  // plan.deadline
+        32, // motor.torque
+        27, // ctrl.pitch
+        43, // proc.fusion
+        44, // proc.detect
+        13, // plan.deadline
     ];
     let amplitudes = vec![1.0, 0.9, 0.8, 0.7, 0.6];
     h.store(&indices, &amplitudes);
@@ -489,16 +751,14 @@ pub fn scenario_full_load(d: usize) -> Vec<ConceptReadback> {
 ///   recov   = stored, readback near original amplitude
 ///   ampl    = stored, readback > original (boosted by neighbors)
 ///   supp    = stored, readback < original (suppressed by interference)
-pub fn print_ghost_table(
-    scenario_name: &str,
-    results: &[ConceptReadback],
-    ghost_threshold: f32,
-) {
+pub fn print_ghost_table(scenario_name: &str, results: &[ConceptReadback], ghost_threshold: f32) {
     println!("\n{}", "=".repeat(72));
     println!("  GHOST DISCOVERY: {}", scenario_name);
     println!("{}", "=".repeat(72));
-    println!("  {:20} {:6} {:7} {:>4} {:>8} {:>8} {:>8}",
-        "Concept", "Domain", "Stored", "tau", "Ampl", "Read", "Verdict");
+    println!(
+        "  {:20} {:6} {:7} {:>4} {:>8} {:>8} {:>8}",
+        "Concept", "Domain", "Stored", "tau", "Ampl", "Read", "Verdict"
+    );
     println!("{}", "-".repeat(72));
 
     // Sort: ghosts first (by |readback| desc for unstored), then stored (by readback desc)
@@ -509,7 +769,9 @@ pub fn print_ghost_table(
         match (a_ghost, b_ghost) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => b.readback.abs()
+            _ => b
+                .readback
+                .abs()
                 .partial_cmp(&a.readback.abs())
                 .unwrap_or(std::cmp::Ordering::Equal),
         }
@@ -524,38 +786,52 @@ pub fn print_ghost_table(
         };
 
         let verdict = if !r.was_stored && r.readback.abs() > ghost_threshold {
-            if r.readback > 0.0 { "GHOST+" } else { "GHOST-" }
+            if r.readback > 0.0 {
+                "GHOST+"
+            } else {
+                "GHOST-"
+            }
         } else if r.was_stored {
             let ratio = r.readback / r.original_amplitude.max(0.001);
-            if ratio > 1.1 { "ampl" }
-            else if ratio < 0.5 { "supp" }
-            else { "recov" }
+            if ratio > 1.1 {
+                "ampl"
+            } else if ratio < 0.5 {
+                "supp"
+            } else {
+                "recov"
+            }
         } else {
             ""
         };
 
-        println!("  {:20} {:6} {:7} 0x{:02X} {} {:>+8.3} {:>8}",
-            r.name, r.domain, stored_str, r.tau,
-            ampl_str, r.readback, verdict);
+        println!(
+            "  {:20} {:6} {:7} 0x{:02X} {} {:>+8.3} {:>8}",
+            r.name, r.domain, stored_str, r.tau, ampl_str, r.readback, verdict
+        );
     }
 
     println!("{}", "-".repeat(72));
 
     // Summary
-    let ghosts: Vec<&ConceptReadback> = results.iter()
+    let ghosts: Vec<&ConceptReadback> = results
+        .iter()
         .filter(|r| !r.was_stored && r.readback.abs() > ghost_threshold)
         .collect();
 
     if ghosts.is_empty() {
         println!("  No ghosts above threshold {:.3}.", ghost_threshold);
     } else {
-        println!("  {} ghost(s) above |{:.3}|:", ghosts.len(), ghost_threshold);
+        println!(
+            "  {} ghost(s) above |{:.3}|:",
+            ghosts.len(),
+            ghost_threshold
+        );
         for &(domain_name, _, _) in DOMAINS {
-            let domain_ghosts: Vec<&&ConceptReadback> = ghosts.iter()
-                .filter(|g| g.domain == domain_name)
-                .collect();
+            let domain_ghosts: Vec<&&ConceptReadback> =
+                ghosts.iter().filter(|g| g.domain == domain_name).collect();
             if !domain_ghosts.is_empty() {
-                let signals: Vec<String> = domain_ghosts.iter()
+                let signals: Vec<String> = domain_ghosts
+                    .iter()
                     .map(|g| format!("{} ({:+.3})", g.name, g.readback))
                     .collect();
                 println!("    {}: {}", domain_name, signals.join(", "));
@@ -582,10 +858,14 @@ pub fn ghost_matrix(d: usize) -> Vec<Vec<f32>> {
         let results = h.read_all();
 
         for (dst_idx, &(_dst_name, dst_start, dst_end)) in DOMAINS.iter().enumerate() {
-            if src_idx == dst_idx { continue; }
-            let avg: f32 = results[dst_start..dst_end].iter()
+            if src_idx == dst_idx {
+                continue;
+            }
+            let avg: f32 = results[dst_start..dst_end]
+                .iter()
                 .map(|r| r.readback)
-                .sum::<f32>() / (dst_end - dst_start) as f32;
+                .sum::<f32>()
+                / (dst_end - dst_start) as f32;
             matrix[src_idx][dst_idx] = avg;
         }
     }
@@ -628,15 +908,21 @@ pub fn ghost_dimensionality_sweep() {
     let threshold = 0.02;
 
     println!("\n{}", "=".repeat(72));
-    println!("  GHOST COUNT vs DIMENSIONALITY (threshold = {:.3})", threshold);
+    println!(
+        "  GHOST COUNT vs DIMENSIONALITY (threshold = {:.3})",
+        threshold
+    );
     println!("{}", "=".repeat(72));
-    println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full");
+    println!(
+        "  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full"
+    );
     println!("{}", "-".repeat(72));
 
     for &d in &dims {
         let count_ghosts = |results: &[ConceptReadback]| -> usize {
-            results.iter()
+            results
+                .iter()
                 .filter(|r| !r.was_stored && r.readback.abs() > threshold)
                 .count()
         };
@@ -647,13 +933,15 @@ pub fn ghost_dimensionality_sweep() {
         let adapt = scenario_adaptation(d);
         let full = scenario_full_load(d);
 
-        println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+        println!(
+            "  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
             d,
             count_ghosts(&sens),
             count_ghosts(&nav),
             count_ghosts(&conflict),
             count_ghosts(&adapt),
-            count_ghosts(&full));
+            count_ghosts(&full)
+        );
     }
 
     println!("{}", "=".repeat(72));
@@ -662,13 +950,16 @@ pub fn ghost_dimensionality_sweep() {
     println!("\n{}", "=".repeat(72));
     println!("  MAX |GHOST SIGNAL| vs DIMENSIONALITY");
     println!("{}", "=".repeat(72));
-    println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full");
+    println!(
+        "  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full"
+    );
     println!("{}", "-".repeat(72));
 
     for &d in &dims {
         let max_ghost = |results: &[ConceptReadback]| -> f32 {
-            results.iter()
+            results
+                .iter()
                 .filter(|r| !r.was_stored)
                 .map(|r| r.readback.abs())
                 .fold(0.0f32, f32::max)
@@ -680,13 +971,15 @@ pub fn ghost_dimensionality_sweep() {
         let adapt = scenario_adaptation(d);
         let full = scenario_full_load(d);
 
-        println!("  {:>6}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}",
+        println!(
+            "  {:>6}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}",
             d,
             max_ghost(&sens),
             max_ghost(&nav),
             max_ghost(&conflict),
             max_ghost(&adapt),
-            max_ghost(&full));
+            max_ghost(&full)
+        );
     }
     println!("{}", "=".repeat(72));
 }
@@ -701,14 +994,17 @@ pub fn tau_topology_analysis(d: usize) {
     let templates = generate_all_organic_templates(d, base, DEFAULT_DOMAIN_W, DEFAULT_TAU_W);
 
     println!("\n{}", "=".repeat(72));
-    println!("  TAU TOPOLOGY: pairwise correlation vs tau distance (D={})", d);
+    println!(
+        "  TAU TOPOLOGY: pairwise correlation vs tau distance (D={})",
+        d
+    );
     println!("{}", "=".repeat(72));
 
     // Bucket correlations by τ distance
     let mut buckets: Vec<Vec<f32>> = vec![Vec::new(); 16];
 
     for i in 0..K_TOTAL {
-        for j in (i+1)..K_TOTAL {
+        for j in (i + 1)..K_TOTAL {
             let tau_dist = (CONCEPTS[i].tau as i16 - CONCEPTS[j].tau as i16).unsigned_abs();
             let bin_dist = (tau_dist as usize) / TAU_BINS;
             let bin_dist = bin_dist.min(15);
@@ -718,42 +1014,55 @@ pub fn tau_topology_analysis(d: usize) {
         }
     }
 
-    println!("  {:>10}  {:>8}  {:>8}  {:>6}  {:>10}",
-        "tau_dist", "avg_corr", "max_corr", "count", "interpretation");
+    println!(
+        "  {:>10}  {:>8}  {:>8}  {:>6}  {:>10}",
+        "tau_dist", "avg_corr", "max_corr", "count", "interpretation"
+    );
     println!("{}", "-".repeat(72));
 
     for (dist, bucket) in buckets.iter().enumerate() {
-        if bucket.is_empty() { continue; }
+        if bucket.is_empty() {
+            continue;
+        }
         let avg: f32 = bucket.iter().sum::<f32>() / bucket.len() as f32;
         let max: f32 = bucket.iter().cloned().fold(f32::MIN, f32::max);
-        let interp = if avg > 0.3 { "strong link" }
-            else if avg > 0.1 { "weak link" }
-            else if avg > 0.02 { "faint" }
-            else { "orthogonal" };
-        println!("  {:>10}  {:>+8.4}  {:>+8.4}  {:>6}  {:>10}",
+        let interp = if avg > 0.3 {
+            "strong link"
+        } else if avg > 0.1 {
+            "weak link"
+        } else if avg > 0.02 {
+            "faint"
+        } else {
+            "orthogonal"
+        };
+        println!(
+            "  {:>10}  {:>+8.4}  {:>+8.4}  {:>6}  {:>10}",
             format!("{}..{}", dist * TAU_BINS, (dist + 1) * TAU_BINS - 1),
-            avg, max, bucket.len(), interp);
+            avg,
+            max,
+            bucket.len(),
+            interp
+        );
     }
     println!("{}", "=".repeat(72));
 
     // Cross-domain pairs of interest
     println!("\n  Named cross-domain correlations:");
     let pairs = [
-        (32, 24, "motor.torque ↔ ctrl.throttle"),       // tau 0x40 ↔ 0x50
-        (33, 25, "motor.rpm ↔ ctrl.steering"),           // tau 0x41 ↔ 0x51
-        (24, 5,  "ctrl.throttle ↔ nav.heading"),         // tau 0x50 ↔ 0x61
-        (10, 1,  "plan.mission ↔ mode.active"),          // tau 0x70 ↔ 0x83
-        (40, 46, "proc.fft ↔ comm.radio"),               // tau 0x92 ↔ 0xA0
-        (16, 32, "sens.lidar ↔ motor.torque"),           // tau 0xE0 ↔ 0x40 (far!)
-        (17, 40, "sens.radar ↔ proc.fft"),               // tau 0xE8 ↔ 0x92 (far!)
-        (33, 6,  "motor.rpm ↔ nav.altitude"),            // tau 0x41 ↔ 0x62
+        (32, 24, "motor.torque ↔ ctrl.throttle"), // tau 0x40 ↔ 0x50
+        (33, 25, "motor.rpm ↔ ctrl.steering"),    // tau 0x41 ↔ 0x51
+        (24, 5, "ctrl.throttle ↔ nav.heading"),   // tau 0x50 ↔ 0x61
+        (10, 1, "plan.mission ↔ mode.active"),    // tau 0x70 ↔ 0x83
+        (40, 46, "proc.fft ↔ comm.radio"),        // tau 0x92 ↔ 0xA0
+        (16, 32, "sens.lidar ↔ motor.torque"),    // tau 0xE0 ↔ 0x40 (far!)
+        (17, 40, "sens.radar ↔ proc.fft"),        // tau 0xE8 ↔ 0x92 (far!)
+        (33, 6, "motor.rpm ↔ nav.altitude"),      // tau 0x41 ↔ 0x62
     ];
 
     for (i, j, label) in pairs {
         let corr = pearson_correlation(&templates[i], &templates[j]);
         let tau_dist = (CONCEPTS[i].tau as i16 - CONCEPTS[j].tau as i16).unsigned_abs();
-        println!("    {:>+6.3}  tau_dist={:>3}  {}",
-            corr, tau_dist, label);
+        println!("    {:>+6.3}  tau_dist={:>3}  {}", corr, tau_dist, label);
     }
     println!();
 }
@@ -767,9 +1076,12 @@ pub fn run_ghost_discovery() {
     println!("  GHOST DISCOVERY EXPERIMENT");
     println!("  52 signal-processing concepts");
     println!("  Signed(7), organic 3-layer templates at D={}", d);
-    println!("  Weights: domain={:.0}%, tau={:.0}%, individual={:.0}%",
-        DEFAULT_DOMAIN_W * 100.0, DEFAULT_TAU_W * 100.0,
-        (1.0 - DEFAULT_DOMAIN_W - DEFAULT_TAU_W) * 100.0);
+    println!(
+        "  Weights: domain={:.0}%, tau={:.0}%, individual={:.0}%",
+        DEFAULT_DOMAIN_W * 100.0,
+        DEFAULT_TAU_W * 100.0,
+        (1.0 - DEFAULT_DOMAIN_W - DEFAULT_TAU_W) * 100.0
+    );
     println!("{}", "=".repeat(72));
 
     // τ-topology analysis first — verify the template structure
@@ -824,7 +1136,11 @@ fn pearson_correlation(a: &[i8], b: &[i8]) -> f32 {
         var_b += db * db;
     }
     let denom = (var_a * var_b).sqrt();
-    if denom > 1e-10 { (cov / denom) as f32 } else { 0.0 }
+    if denom > 1e-10 {
+        (cov / denom) as f32
+    } else {
+        0.0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -851,8 +1167,11 @@ mod tests {
         let t_lidar = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
         let t_camera = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
         let corr = pearson_correlation(&t_lidar, &t_camera);
-        assert!(corr > 0.15,
-            "Same-domain correlation should be > 0.15, got {}", corr);
+        assert!(
+            corr > 0.15,
+            "Same-domain correlation should be > 0.15, got {}",
+            corr
+        );
     }
 
     #[test]
@@ -868,8 +1187,12 @@ mod tests {
         let t_sens = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
         let corr_far = pearson_correlation(&t_motor, &t_sens);
 
-        assert!(corr_near > corr_far,
-            "Nearby tau should correlate more: near={}, far={}", corr_near, corr_far);
+        assert!(
+            corr_near > corr_far,
+            "Nearby tau should correlate more: near={}, far={}",
+            corr_near,
+            corr_far
+        );
     }
 
     #[test]
@@ -880,8 +1203,11 @@ mod tests {
         let t_sens = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
         let t_proc = generate_organic_template(&CONCEPTS[40], d, base, 0.35, 0.35);
         let corr = pearson_correlation(&t_sens, &t_proc).abs();
-        assert!(corr < 0.10,
-            "Sens-Proc cross-domain should be near zero, got {}", corr);
+        assert!(
+            corr < 0.10,
+            "Sens-Proc cross-domain should be near zero, got {}",
+            corr
+        );
     }
 
     #[test]
@@ -901,8 +1227,11 @@ mod tests {
         let results = h.read_all();
         let r = &results[0];
         assert!(r.was_stored);
-        assert!((r.readback - 1.0).abs() < 0.2,
-            "Recovery should be near 1.0, got {}", r.readback);
+        assert!(
+            (r.readback - 1.0).abs() < 0.2,
+            "Recovery should be near 1.0, got {}",
+            r.readback
+        );
     }
 
     #[test]
@@ -916,8 +1245,12 @@ mod tests {
 
         for &idx in &indices {
             let r = &results[idx];
-            assert!(r.readback > 0.3,
-                "Recovery for {} should be > 0.3, got {}", r.name, r.readback);
+            assert!(
+                r.readback > 0.3,
+                "Recovery for {} should be > 0.3, got {}",
+                r.name,
+                r.readback
+            );
         }
     }
 
@@ -975,8 +1308,12 @@ mod tests {
         let results = scenario_sens_only(4096);
         for r in &results {
             if r.was_stored {
-                assert!(r.readback > 0.0,
-                    "Stored {} should have positive readback, got {}", r.name, r.readback);
+                assert!(
+                    r.readback > 0.0,
+                    "Stored {} should have positive readback, got {}",
+                    r.name,
+                    r.readback
+                );
             }
         }
     }
@@ -988,22 +1325,31 @@ mod tests {
         // Check a concept far in tau-space: motor.torque (tau=0x40, far from sens 0xE0)
         let torque = &results[32];
         assert!(!torque.was_stored);
-        assert!(torque.readback.abs() < 0.15,
-            "Far unstored should be near 0 at D={}, got {}", d, torque.readback);
+        assert!(
+            torque.readback.abs() < 0.15,
+            "Far unstored should be near 0 at D={}, got {}",
+            d,
+            torque.readback
+        );
     }
 
     #[test]
     fn test_ghost_count_decreases_with_d() {
         let threshold = 0.05;
         let count = |d: usize| -> usize {
-            scenario_sens_only(d).iter()
+            scenario_sens_only(d)
+                .iter()
                 .filter(|r| !r.was_stored && r.readback.abs() > threshold)
                 .count()
         };
         let low = count(256);
         let high = count(8192);
-        assert!(low >= high,
-            "Ghost count should decrease with D: low_d={}, high_d={}", low, high);
+        assert!(
+            low >= high,
+            "Ghost count should decrease with D: low_d={}, high_d={}",
+            low,
+            high
+        );
     }
 
     #[test]
@@ -1044,9 +1390,11 @@ mod tests {
     fn test_domain_ranges_consistent() {
         for (name, range) in domain::ALL_DOMAINS {
             for idx in range.clone() {
-                assert_eq!(CONCEPTS[idx].domain, *name,
+                assert_eq!(
+                    CONCEPTS[idx].domain, *name,
                     "CONCEPTS[{}] domain '{}' doesn't match expected '{}'",
-                    idx, CONCEPTS[idx].domain, name);
+                    idx, CONCEPTS[idx].domain, name
+                );
             }
         }
         let total: usize = domain::ALL_DOMAINS.iter().map(|(_, r)| r.len()).sum();

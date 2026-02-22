@@ -28,7 +28,6 @@
 //! LFD quantifies whether the data is locally spread (high LFD → hard to prune)
 //! or locally concentrated (low LFD → easy to prune).
 
-
 // ─────────────────────────────────────────────────────────────────────
 // Distance trait
 // ─────────────────────────────────────────────────────────────────────
@@ -102,7 +101,12 @@ impl Distance for HammingSIMD {
 ///
 /// Computes distances from `query` to each row in a flat database.
 /// 4x unrolled for ILP — processes 4 database rows per outer iteration.
-pub fn hamming_batch_simd(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+pub fn hamming_batch_simd(
+    query: &[u8],
+    database: &[u8],
+    num_rows: usize,
+    row_bytes: usize,
+) -> Vec<u64> {
     rustynum_core::simd::hamming_batch(query, database, num_rows, row_bytes)
 }
 
@@ -324,9 +328,9 @@ impl ClamTree {
             data,
             vec_len,
             &mut indices,
-            0,       // start
-            count,   // end
-            0,       // depth
+            0,     // start
+            count, // end
+            0,     // depth
             config,
             &mut nodes,
             &mut rng,
@@ -552,7 +556,10 @@ impl ClamTree {
         let start = cluster.offset;
         let end = start + cluster.cardinality;
         self.reordered[start..end].iter().map(move |&orig_idx| {
-            (orig_idx, &data[orig_idx * vec_len..(orig_idx + 1) * vec_len])
+            (
+                orig_idx,
+                &data[orig_idx * vec_len..(orig_idx + 1) * vec_len],
+            )
         })
     }
 
@@ -679,12 +686,12 @@ mod tests {
         };
 
         // Query at distance 500 from center
-        assert_eq!(c.delta_plus(500), 600);  // 500 + 100
+        assert_eq!(c.delta_plus(500), 600); // 500 + 100
         assert_eq!(c.delta_minus(500), 400); // 500 - 100
 
         // Query at distance 50 from center (inside cluster)
-        assert_eq!(c.delta_plus(50), 150);   // 50 + 100
-        assert_eq!(c.delta_minus(50), 0);    // max(0, 50 - 100) = 0
+        assert_eq!(c.delta_plus(50), 150); // 50 + 100
+        assert_eq!(c.delta_minus(50), 0); // max(0, 50 - 100) = 0
     }
 
     #[test]
@@ -715,8 +722,12 @@ mod tests {
 
         // Should have leaf nodes
         assert!(tree.num_leaves > 0);
-        println!("Tree: {} nodes, {} leaves, mean leaf radius: {:.1}",
-            tree.nodes.len(), tree.num_leaves, tree.mean_leaf_radius);
+        println!(
+            "Tree: {} nodes, {} leaves, mean leaf radius: {:.1}",
+            tree.nodes.len(),
+            tree.num_leaves,
+            tree.mean_leaf_radius
+        );
     }
 
     #[test]
@@ -730,7 +741,9 @@ mod tests {
         let tree = ClamTree::build(&data, vec_len, count, &config);
 
         // With min_cardinality=1, most leaves should be singletons
-        let singleton_count = tree.nodes.iter()
+        let singleton_count = tree
+            .nodes
+            .iter()
             .filter(|c| c.is_leaf() && c.cardinality == 1)
             .count();
         assert!(singleton_count > 0);
@@ -751,8 +764,10 @@ mod tests {
         let tree = ClamTree::build(&data, vec_len, count, &config);
         let stats = tree.lfd_percentiles();
 
-        println!("LFD stats: min={:.2} p25={:.2} p50={:.2} p75={:.2} max={:.2}",
-            stats.min, stats.p25, stats.p50, stats.p75, stats.max);
+        println!(
+            "LFD stats: min={:.2} p25={:.2} p50={:.2} p75={:.2} max={:.2}",
+            stats.min, stats.p25, stats.p50, stats.p75, stats.max
+        );
 
         // LFD should be non-negative
         assert!(stats.min >= 0.0);
@@ -777,9 +792,12 @@ mod tests {
         assert!(!lfd_depths.is_empty());
 
         for (depth, lfds) in &lfd_depths {
-            println!("Depth {}: {} points, median LFD = {:.2}",
-                depth, lfds.len(),
-                lfds[lfds.len() / 2]);
+            println!(
+                "Depth {}: {} points, median LFD = {:.2}",
+                depth,
+                lfds.len(),
+                lfds[lfds.len() / 2]
+            );
         }
     }
 
@@ -809,8 +827,11 @@ mod tests {
 
         let inline_result = hamming_inline(&a, &b);
         let simd_result = HammingSIMD.distance(&a, &b);
-        assert_eq!(inline_result, simd_result,
-            "SIMD and inline Hamming must agree: inline={} simd={}", inline_result, simd_result);
+        assert_eq!(
+            inline_result, simd_result,
+            "SIMD and inline Hamming must agree: inline={} simd={}",
+            inline_result, simd_result
+        );
     }
 
     #[test]
@@ -821,8 +842,14 @@ mod tests {
             let a = vec![0xFF; size];
             let b = vec![0x00; size];
             let expected = (size * 8) as u64;
-            assert_eq!(dist.distance(&a, &b), expected,
-                "size={}: expected {} got {}", size, expected, dist.distance(&a, &b));
+            assert_eq!(
+                dist.distance(&a, &b),
+                expected,
+                "size={}: expected {} got {}",
+                size,
+                expected,
+                dist.distance(&a, &b)
+            );
         }
     }
 
@@ -836,13 +863,16 @@ mod tests {
         let distances = hamming_batch_simd(query, &data, count, vec_len);
         assert_eq!(distances.len(), count);
         assert_eq!(distances[0], 0); // self-distance = 0
-        // All distances should be non-negative (they're u64, so always true)
-        // And should match inline computation
+                                     // All distances should be non-negative (they're u64, so always true)
+                                     // And should match inline computation
         for i in 0..count {
             let row = &data[i * vec_len..(i + 1) * vec_len];
             let expected = hamming_inline(query, row);
-            assert_eq!(distances[i], expected,
-                "batch distance mismatch at row {}: batch={} inline={}", i, distances[i], expected);
+            assert_eq!(
+                distances[i], expected,
+                "batch distance mismatch at row {}: batch={} inline={}",
+                i, distances[i], expected
+            );
         }
     }
 
@@ -863,9 +893,14 @@ mod tests {
 
         // Distances should be sorted ascending
         for i in 1..k {
-            assert!(distances[i] >= distances[i - 1],
+            assert!(
+                distances[i] >= distances[i - 1],
                 "top-k distances not sorted: d[{}]={} < d[{}]={}",
-                i, distances[i], i - 1, distances[i - 1]);
+                i,
+                distances[i],
+                i - 1,
+                distances[i - 1]
+            );
         }
     }
 }

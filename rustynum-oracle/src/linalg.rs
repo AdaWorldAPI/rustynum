@@ -69,7 +69,11 @@ pub fn condition_number(gram: &[f64], k: usize) -> f64 {
         min_diag = min_diag.min(d);
     }
 
-    if min_diag < 1e-12 { f64::MAX } else { (max_diag / min_diag).powi(2) }
+    if min_diag < 1e-12 {
+        f64::MAX
+    } else {
+        (max_diag / min_diag).powi(2)
+    }
 }
 
 /// Upsample i8 vector to f32 at higher dimensionality.
@@ -121,9 +125,11 @@ pub fn downsample_to_base(v: &[f32], d_warm: usize, base: Base) -> Vec<i8> {
 
 /// Dot products: matrix × vector (templates × holograph).
 pub fn dot_matrix_vector(templates: &[Vec<i8>], v: &[i8]) -> Vec<f64> {
-    templates.iter()
+    templates
+        .iter()
         .map(|t| {
-            t.iter().zip(v.iter())
+            t.iter()
+                .zip(v.iter())
                 .map(|(&a, &b)| a as f64 * b as f64)
                 .sum()
         })
@@ -136,7 +142,8 @@ pub fn gram_matrix(templates: &[Vec<i8>]) -> Vec<f64> {
     let mut gram = vec![0.0f64; k * k];
     for i in 0..k {
         for j in i..k {
-            let dot: f64 = templates[i].iter()
+            let dot: f64 = templates[i]
+                .iter()
                 .zip(templates[j].iter())
                 .map(|(&a, &b)| a as f64 * b as f64)
                 .sum();
@@ -194,10 +201,10 @@ mod tests {
         let v = vec![1.0f32, 1.0, -1.0, -1.0, 2.0, 2.0, 0.0, 0.0];
         let down = downsample_to_base(&v, 4, Base::Signed(5));
         assert_eq!(down.len(), 4);
-        assert_eq!(down[0], 1);  // avg of [1,1]
+        assert_eq!(down[0], 1); // avg of [1,1]
         assert_eq!(down[1], -1); // avg of [-1,-1]
-        assert_eq!(down[2], 2);  // avg of [2,2]
-        assert_eq!(down[3], 0);  // avg of [0,0]
+        assert_eq!(down[2], 2); // avg of [2,2]
+        assert_eq!(down[3], 0); // avg of [0,0]
     }
 
     #[test]
@@ -206,8 +213,13 @@ mod tests {
         let up = upsample_to_f32(&v, 24);
         let down = downsample_to_base(&up, 6, Base::Signed(5));
         for i in 0..v.len() {
-            assert!((v[i] - down[i]).abs() <= 1,
-                "round trip: {} vs {} at {}", v[i], down[i], i);
+            assert!(
+                (v[i] - down[i]).abs() <= 1,
+                "round trip: {} vs {} at {}",
+                v[i],
+                down[i],
+                i
+            );
         }
     }
 

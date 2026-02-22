@@ -41,22 +41,35 @@ impl BF16Weights {
             max_per_elem <= 65535,
             "BF16Weights overflow: sign({}) + 8×exp({}) + 7×man({}) = {} > 65535. \
              The AVX-512 path would silently wrap in u16 lanes.",
-            sign, exponent, mantissa, max_per_elem,
+            sign,
+            exponent,
+            mantissa,
+            max_per_elem,
         );
-        Self { sign, exponent, mantissa }
+        Self {
+            sign,
+            exponent,
+            mantissa,
+        }
     }
 }
 
 impl Default for BF16Weights {
     fn default() -> Self {
         // 256 + 8×16 + 7×1 = 391 — safe
-        Self { sign: 256, exponent: 16, mantissa: 1 }
+        Self {
+            sign: 256,
+            exponent: 16,
+            mantissa: 1,
+        }
     }
 }
 
 impl PartialEq for BF16Weights {
     fn eq(&self, other: &Self) -> bool {
-        self.sign == other.sign && self.exponent == other.exponent && self.mantissa == other.mantissa
+        self.sign == other.sign
+            && self.exponent == other.exponent
+            && self.mantissa == other.mantissa
     }
 }
 
@@ -93,7 +106,10 @@ pub const TRAINING_WEIGHTS: BF16Weights = BF16Weights {
 /// Returns weighted distance.
 pub fn bf16_hamming_scalar(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     assert_eq!(a.len(), b.len());
-    assert!(a.len().is_multiple_of(2), "BF16 data must be even number of bytes");
+    assert!(
+        a.len().is_multiple_of(2),
+        "BF16 data must be even number of bytes"
+    );
 
     let mut total: u64 = 0;
 
@@ -179,25 +195,17 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 
         // Exponent extraction: shift right 7, mask to 0xFF, popcount, weight
         let exp_shifted = _mm512_and_si512(_mm512_srli_epi16(xor, 7), mask_0xff);
-        let exp_popcnt = _mm512_and_si512(
-            _mm512_popcnt_epi8(exp_shifted),
-            mask_0xff,
-        );
+        let exp_popcnt = _mm512_and_si512(_mm512_popcnt_epi8(exp_shifted), mask_0xff);
         let exp_weighted = _mm512_mullo_epi16(exp_popcnt, w_exp);
 
         // Mantissa extraction: mask to 0x7F, popcount, weight
         let man_masked = _mm512_and_si512(xor, mask_0x7f);
-        let man_popcnt = _mm512_and_si512(
-            _mm512_popcnt_epi8(man_masked),
-            mask_0xff,
-        );
+        let man_popcnt = _mm512_and_si512(_mm512_popcnt_epi8(man_masked), mask_0xff);
         let man_weighted = _mm512_mullo_epi16(man_popcnt, w_man);
 
         // Sum per-element: sign + exp + man (u16, max ~391 with default weights)
-        let per_elem = _mm512_add_epi16(
-            _mm512_add_epi16(sign_weighted, exp_weighted),
-            man_weighted,
-        );
+        let per_elem =
+            _mm512_add_epi16(_mm512_add_epi16(sign_weighted, exp_weighted), man_weighted);
 
         // Widen u16 lanes to u32 and accumulate in two halves.
         // BF16 pairs are 2 bytes each so u16 lane boundaries coincide with
@@ -362,7 +370,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Sign flip (1 bit * 256) + exponent same + mantissa same
-        assert!(d >= 256, "Sign flip should contribute at least 256, got {}", d);
+        assert!(
+            d >= 256,
+            "Sign flip should contribute at least 256, got {}",
+            d
+        );
     }
 
     #[test]
@@ -372,7 +384,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Only mantissa bits differ — should be very small
-        assert!(d < 8, "Small float change should be < 8 weighted distance, got {}", d);
+        assert!(
+            d < 8,
+            "Small float change should be < 8 weighted distance, got {}",
+            d
+        );
     }
 
     #[test]
@@ -382,7 +398,11 @@ mod tests {
         let w = BF16Weights::default();
         let d = bf16_hamming_scalar(&a, &b, &w);
         // Exponent changed significantly, no sign flip
-        assert!(d > 16 && d < 256, "Large magnitude should be between exp and sign weight, got {}", d);
+        assert!(
+            d > 16 && d < 256,
+            "Large magnitude should be between exp and sign weight, got {}",
+            d
+        );
     }
 
     #[test]
@@ -393,7 +413,13 @@ mod tests {
         for (o, b) in orig.iter().zip(back.iter()) {
             if o.is_finite() && *o != 0.0 {
                 let rel_err = ((o - b) / o).abs();
-                assert!(rel_err < 0.01, "Roundtrip error too large: {} -> {} (err {})", o, b, rel_err);
+                assert!(
+                    rel_err < 0.01,
+                    "Roundtrip error too large: {} -> {} (err {})",
+                    o,
+                    b,
+                    rel_err
+                );
             }
         }
     }
@@ -437,7 +463,11 @@ mod tests {
         let d = bf16_hamming_scalar(&a_bf16, &b_bf16, &JINA_WEIGHTS);
         // Very similar vectors — distance should be small relative to max
         let max_possible: u64 = 1024 * (256 + 8 * 32 + 7);
-        assert!(d < max_possible / 10, "Similar vectors should be < 10% of max distance, got {}", d);
+        assert!(
+            d < max_possible / 10,
+            "Similar vectors should be < 10% of max distance, got {}",
+            d
+        );
     }
 
     #[test]
@@ -445,7 +475,10 @@ mod tests {
         let a = fp32_to_bf16_bytes(&[1.0]);
         let b = fp32_to_bf16_bytes(&[1.007]);
         let d = bf16_hamming_scalar(&a, &b, &TRAINING_WEIGHTS);
-        assert_eq!(d, 0, "Training weights with mantissa=0 should ignore mantissa-only changes");
+        assert_eq!(
+            d, 0,
+            "Training weights with mantissa=0 should ignore mantissa-only changes"
+        );
     }
 
     #[test]
@@ -463,9 +496,7 @@ mod tests {
     fn test_avx512_matches_scalar() {
         #[cfg(target_arch = "x86_64")]
         {
-            if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512bitalg")
-            {
+            if !is_x86_feature_detected!("avx512bw") || !is_x86_feature_detected!("avx512bitalg") {
                 return;
             }
             // 512 dims = 1024 bytes = 16 full AVX-512 chunks, no tail
@@ -484,9 +515,7 @@ mod tests {
     fn test_avx512_with_tail() {
         #[cfg(target_arch = "x86_64")]
         {
-            if !is_x86_feature_detected!("avx512bw")
-                || !is_x86_feature_detected!("avx512bitalg")
-            {
+            if !is_x86_feature_detected!("avx512bw") || !is_x86_feature_detected!("avx512bitalg") {
                 return;
             }
             // 37 dims = 74 bytes = 1 chunk (64 bytes) + 10 byte tail
@@ -530,8 +559,12 @@ mod tests {
 
         let d_sign = bf16_hamming_scalar(&a, &sign_flip, &w);
         let d_exp = bf16_hamming_scalar(&a, &big_exp, &w);
-        assert!(d_sign > d_exp,
-            "Sign flip ({}) should cost more than exponent shift ({})", d_sign, d_exp);
+        assert!(
+            d_sign > d_exp,
+            "Sign flip ({}) should cost more than exponent shift ({})",
+            d_sign,
+            d_exp
+        );
     }
 
     #[test]

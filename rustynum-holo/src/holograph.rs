@@ -28,8 +28,8 @@
 //! 3D permutations (rotate, diagonal, compose) that move content through
 //! the 8×8×32 volume. Composable and invertible.
 
+use crate::carrier::{carrier_decode, carrier_encode, CarrierBasis, CARRIER_FREQUENCIES};
 use crate::focus::{FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z};
-use crate::carrier::{CARRIER_FREQUENCIES, CarrierBasis, carrier_encode, carrier_decode};
 
 /// A migration entry: (concept_index, old_position, new_position).
 pub type Migration = (usize, (f32, f32, f32), (f32, f32, f32));
@@ -60,7 +60,10 @@ impl GaussianLUT {
                 (envelope * 255.0).round().min(255.0) as u8
             })
             .collect();
-        Self { table, sigma_squared_2: s2 }
+        Self {
+            table,
+            sigma_squared_2: s2,
+        }
     }
 
     /// Get envelope amplitude for squared distance from center.
@@ -104,10 +107,14 @@ impl WaveletTemplate {
                 for z in 0..FOCUS_DIM_Z as i32 {
                     let dz = z - z0 as i32;
                     let d_sq = (dx * dx + dy * dy + dz * dz) as u32;
-                    if d_sq > radius_sq { continue; }
+                    if d_sq > radius_sq {
+                        continue;
+                    }
 
                     let env = lut.amplitude(d_sq);
-                    if env < 1 { continue; }
+                    if env < 1 {
+                        continue;
+                    }
 
                     let idx = x as u16 * 256 + y as u16 * 32 + z as u16;
                     entries.push((idx, env));
@@ -147,7 +154,9 @@ fn carrier_phase_3d(dx: i32, dy: i32, dz: i32, freq: f32, phi: f32) -> f32 {
 pub fn gabor_write(
     container: &mut [i8],
     lut: &GaussianLUT,
-    x0: u8, y0: u8, z0: u8,
+    x0: u8,
+    y0: u8,
+    z0: u8,
     freq: f32,
     phi: f32,
     amplitude: f32,
@@ -162,10 +171,14 @@ pub fn gabor_write(
             for z in 0..FOCUS_DIM_Z as i32 {
                 let dz = z - z0 as i32;
                 let d_sq = (dx * dx + dy * dy + dz * dz) as u32;
-                if d_sq > radius_sq { continue; }
+                if d_sq > radius_sq {
+                    continue;
+                }
 
                 let envelope = lut.amplitude(d_sq) as f32 / 255.0;
-                if envelope < 0.004 { continue; }
+                if envelope < 0.004 {
+                    continue;
+                }
 
                 let phase = carrier_phase_3d(dx, dy, dz, freq, phi);
                 let sample = (amplitude * envelope * phase.cos())
@@ -190,7 +203,9 @@ pub fn gabor_write(
 pub fn gabor_read(
     container: &[i8],
     lut: &GaussianLUT,
-    x0: u8, y0: u8, z0: u8,
+    x0: u8,
+    y0: u8,
+    z0: u8,
     freq: f32,
 ) -> (f32, f32) {
     assert!(container.len() >= 2048);
@@ -206,10 +221,14 @@ pub fn gabor_read(
             for z in 0..FOCUS_DIM_Z as i32 {
                 let dz = z - z0 as i32;
                 let d_sq = (dx * dx + dy * dy + dz * dz) as u32;
-                if d_sq > radius_sq { continue; }
+                if d_sq > radius_sq {
+                    continue;
+                }
 
                 let envelope = lut.amplitude(d_sq) as f64 / 255.0;
-                if envelope < 0.004 { continue; }
+                if envelope < 0.004 {
+                    continue;
+                }
 
                 let phase = carrier_phase_3d(dx, dy, dz, freq, 0.0);
                 let idx = x as usize * 256 + y as usize * 32 + z as usize;
@@ -228,8 +247,7 @@ pub fn gabor_read(
 
     // Fourier sign convention: Σ cos(θ+φ)·sin(θ) = -W·sin(φ)/2
     // Negate sin_sum to recover the correct phase (same fix as carrier.rs).
-    let recovered_phase = ((-sin_sum).atan2(cos_sum) as f32)
-        .rem_euclid(std::f32::consts::TAU);
+    let recovered_phase = ((-sin_sum).atan2(cos_sum) as f32).rem_euclid(std::f32::consts::TAU);
     let recovered_amplitude =
         ((cos_sum * cos_sum + sin_sum * sin_sum).sqrt() * 2.0 / weight_sum) as f32;
 
@@ -265,7 +283,9 @@ pub fn delta_cube_sub(field_a: &[i8], field_b: &[i8], delta: &mut [i8]) {
 pub fn delta_cube_write_gabor(
     delta: &mut [i8],
     lut: &GaussianLUT,
-    x0: u8, y0: u8, z0: u8,
+    x0: u8,
+    y0: u8,
+    z0: u8,
     freq: f32,
     phi: f32,
     amplitude: f32,
@@ -277,7 +297,9 @@ pub fn delta_cube_write_gabor(
 pub fn delta_cube_read_gabor(
     delta: &[i8],
     lut: &GaussianLUT,
-    x0: u8, y0: u8, z0: u8,
+    x0: u8,
+    y0: u8,
+    z0: u8,
     freq: f32,
 ) -> (f32, f32) {
     gabor_read(delta, lut, x0, y0, z0, freq)
@@ -575,7 +597,8 @@ impl Overlay {
     /// Read the full container through the overlay (XOR mode).
     pub fn read_full_xor(&self, container: &[u8]) -> Vec<u8> {
         assert!(container.len() >= 2048);
-        container.iter()
+        container
+            .iter()
             .zip(self.buffer.iter())
             .map(|(&c, &o)| c ^ o)
             .collect()
@@ -584,7 +607,8 @@ impl Overlay {
     /// Read the full container through the overlay (ADD mode).
     pub fn read_full_add(&self, container: &[u8]) -> Vec<u8> {
         assert!(container.len() >= 2048);
-        container.iter()
+        container
+            .iter()
             .zip(self.buffer.iter())
             .map(|(&c, &o)| c.wrapping_add(o))
             .collect()
@@ -593,7 +617,8 @@ impl Overlay {
     /// Read the full container through the overlay (i8 ADD mode, for carrier/Gabor).
     pub fn read_full_add_i8(&self, container: &[i8]) -> Vec<i8> {
         assert!(container.len() >= 2048);
-        container.iter()
+        container
+            .iter()
             .zip(self.buffer.iter())
             .map(|(&c, &o)| c.saturating_add(o as i8))
             .collect()
@@ -671,11 +696,7 @@ pub struct SpectralMap {
 
 impl SpectralMap {
     /// Analyze the full volume at all positions and frequencies.
-    pub fn analyze(
-        container: &[i8],
-        _basis: &CarrierBasis,
-        lut_cache: &[GaussianLUT],
-    ) -> Self {
+    pub fn analyze(container: &[i8], _basis: &CarrierBasis, lut_cache: &[GaussianLUT]) -> Self {
         let n_freqs = 16;
         let total = 2048 * n_freqs;
         let mut amplitude = vec![0.0f32; total];
@@ -687,10 +708,8 @@ impl SpectralMap {
                 for z in 0..32u8 {
                     let pos_idx = x as usize * 256 + y as usize * 32 + z as usize;
                     for f in 0..n_freqs {
-                        let (ph, amp) = gabor_read(
-                            container, lut, x, y, z,
-                            CARRIER_FREQUENCIES[f] as f32,
-                        );
+                        let (ph, amp) =
+                            gabor_read(container, lut, x, y, z, CARRIER_FREQUENCIES[f] as f32);
                         let idx = pos_idx * n_freqs + f;
                         amplitude[idx] = amp;
                         phase[idx] = ph;
@@ -714,7 +733,9 @@ impl SpectralMap {
                     for f in 0..n_freqs {
                         let idx = pos_idx * n_freqs + f;
                         let amp = self.amplitude[idx];
-                        if amp < threshold { continue; }
+                        if amp < threshold {
+                            continue;
+                        }
                         if self.is_local_max_3d(x, y, z, f, amp) {
                             peaks.push((x, y, z, f as u8, amp, self.phase[idx]));
                         }
@@ -731,7 +752,9 @@ impl SpectralMap {
         for dx in -1i32..=1 {
             for dy in -1i32..=1 {
                 for dz in -1i32..=1 {
-                    if dx == 0 && dy == 0 && dz == 0 { continue; }
+                    if dx == 0 && dy == 0 && dz == 0 {
+                        continue;
+                    }
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
                     let nz = z as i32 + dz;
@@ -749,21 +772,21 @@ impl SpectralMap {
     }
 
     /// Resynthesize a clean container from only the significant peaks.
-    pub fn resynthesize(
-        &self,
-        threshold: f32,
-        _lut_cache: &[GaussianLUT],
-        sigma: f32,
-    ) -> Vec<i8> {
+    pub fn resynthesize(&self, threshold: f32, _lut_cache: &[GaussianLUT], sigma: f32) -> Vec<i8> {
         let peaks = self.find_peaks(threshold);
         let mut clean = vec![0i8; 2048];
         let lut = GaussianLUT::new(sigma);
 
         for (x, y, z, f, amp, phi) in peaks {
             gabor_write(
-                &mut clean, &lut, x, y, z,
+                &mut clean,
+                &lut,
+                x,
+                y,
+                z,
                 CARRIER_FREQUENCIES[f as usize] as f32,
-                phi, amp,
+                phi,
+                amp,
             );
         }
 
@@ -827,10 +850,7 @@ pub fn clean_if_needed(
 ///
 /// Projects the container onto the subspace spanned by the known templates
 /// and discards the orthogonal complement (noise, ghosts).
-pub fn orthogonal_project(
-    container: &[i8],
-    templates: &[Vec<i8>],
-) -> Vec<i8> {
+pub fn orthogonal_project(container: &[i8], templates: &[Vec<i8>]) -> Vec<i8> {
     let k = templates.len();
     let n = 2048;
     if k == 0 {
@@ -935,23 +955,25 @@ pub fn hebbian_update(
             for z in 0..32i32 {
                 let idx = x as usize * 256 + y as usize * 32 + z as usize;
 
-                let da_sq = ((x - xa as i32).pow(2) +
-                            (y - ya as i32).pow(2) +
-                            (z - za as i32).pow(2)) as u32;
+                let da_sq = ((x - xa as i32).pow(2)
+                    + (y - ya as i32).pow(2)
+                    + (z - za as i32).pow(2)) as u32;
                 let env_a = lut.amplitude(da_sq) as f32 / 255.0;
-                if env_a < 0.004 { continue; }
-                let phase_a = carrier_phase_3d(
-                    x - xa as i32, y - ya as i32, z - za as i32, fa, 0.0,
-                );
+                if env_a < 0.004 {
+                    continue;
+                }
+                let phase_a =
+                    carrier_phase_3d(x - xa as i32, y - ya as i32, z - za as i32, fa, 0.0);
 
-                let db_sq = ((x - xb as i32).pow(2) +
-                            (y - yb as i32).pow(2) +
-                            (z - zb as i32).pow(2)) as u32;
+                let db_sq = ((x - xb as i32).pow(2)
+                    + (y - yb as i32).pow(2)
+                    + (z - zb as i32).pow(2)) as u32;
                 let env_b = lut.amplitude(db_sq) as f32 / 255.0;
-                if env_b < 0.004 { continue; }
-                let phase_b = carrier_phase_3d(
-                    x - xb as i32, y - yb as i32, z - zb as i32, fb, 0.0,
-                );
+                if env_b < 0.004 {
+                    continue;
+                }
+                let phase_b =
+                    carrier_phase_3d(x - xb as i32, y - yb as i32, z - zb as i32, fb, 0.0);
 
                 let signal_a = env_a * phase_a.cos();
                 let signal_b = env_b * phase_b.cos();
@@ -985,7 +1007,9 @@ pub fn anti_hebbian_update(
 pub fn adapt_sigma(
     container: &[i8],
     lut: &GaussianLUT,
-    x0: u8, y0: u8, z0: u8,
+    x0: u8,
+    y0: u8,
+    z0: u8,
     freq: f32,
     current_sigma: f32,
     learning_rate: f32,
@@ -1040,13 +1064,16 @@ impl FastArchetypeDetector {
             for y in 0..8u8 {
                 for f in 0..16u8 {
                     let (phase, amp) = gabor_read(
-                        container, lut, x, y, self.sample_z,
+                        container,
+                        lut,
+                        x,
+                        y,
+                        self.sample_z,
                         CARRIER_FREQUENCIES[f as usize] as f32,
                     );
-                    if amp > threshold
-                        && self.is_xy_local_max(container, lut, x, y, f, amp) {
-                            peaks.push((x, y, f, amp, phase));
-                        }
+                    if amp > threshold && self.is_xy_local_max(container, lut, x, y, f, amp) {
+                        peaks.push((x, y, f, amp, phase));
+                    }
                 }
             }
         }
@@ -1058,20 +1085,32 @@ impl FastArchetypeDetector {
         &self,
         container: &[i8],
         lut: &GaussianLUT,
-        x: u8, y: u8, f: u8, amp: f32,
+        x: u8,
+        y: u8,
+        f: u8,
+        amp: f32,
     ) -> bool {
         for dx in -1i32..=1 {
             for dy in -1i32..=1 {
-                if dx == 0 && dy == 0 { continue; }
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
                 let nx = x as i32 + dx;
                 let ny = y as i32 + dy;
-                if !(0..8).contains(&nx) || !(0..8).contains(&ny) { continue; }
+                if !(0..8).contains(&nx) || !(0..8).contains(&ny) {
+                    continue;
+                }
                 let (_, neighbor_amp) = gabor_read(
-                    container, lut,
-                    nx as u8, ny as u8, self.sample_z,
+                    container,
+                    lut,
+                    nx as u8,
+                    ny as u8,
+                    self.sample_z,
                     CARRIER_FREQUENCIES[f as usize] as f32,
                 );
-                if neighbor_amp > amp { return false; }
+                if neighbor_amp > amp {
+                    return false;
+                }
             }
         }
         true
@@ -1087,16 +1126,26 @@ pub fn crystallize_archetypes(
 ) {
     for &(x, y, f_idx, amp, phase) in archetypes {
         gabor_write(
-            container, lut_broad, x, y, 16,
+            container,
+            lut_broad,
+            x,
+            y,
+            16,
             CARRIER_FREQUENCIES[f_idx as usize] as f32,
-            phase, -amp,
+            phase,
+            -amp,
         );
     }
     for &(x, y, f_idx, amp, phase) in archetypes {
         gabor_write(
-            container, lut_crystal, x, y, 16,
+            container,
+            lut_crystal,
+            x,
+            y,
+            16,
             CARRIER_FREQUENCIES[f_idx as usize] as f32,
-            phase, amp,
+            phase,
+            amp,
         );
     }
 }
@@ -1172,7 +1221,9 @@ impl GaborBatch {
     pub fn add(
         &mut self,
         lut: &GaussianLUT,
-        x0: u8, y0: u8, z0: u8,
+        x0: u8,
+        y0: u8,
+        z0: u8,
         freq: f32,
         amplitude: f32,
         phase: f32,
@@ -1187,7 +1238,9 @@ impl GaborBatch {
                     let dz = z - z0 as i32;
                     let d_sq = (dx * dx + dy * dy + dz * dz) as u32;
                     let env = lut.amplitude(d_sq) as f32 / 255.0;
-                    if env < 0.004 { continue; }
+                    if env < 0.004 {
+                        continue;
+                    }
                     let carrier = carrier_phase_3d(dx, dy, dz, freq, phase);
                     template[idx] = env * carrier.cos();
                 }
@@ -1292,9 +1345,7 @@ impl CooccurrenceMatrix {
 
 /// Check if enough data for axis crystallization.
 pub fn ready_for_crystallization(matrix: &CooccurrenceMatrix) -> bool {
-    let active_concepts = matrix.totals.iter()
-        .filter(|&&t| t >= 5.0)
-        .count();
+    let active_concepts = matrix.totals.iter().filter(|&&t| t >= 5.0).count();
     active_concepts >= 8
 }
 
@@ -1333,18 +1384,31 @@ impl AxisCrystallizer {
 
         let mut coords = Vec::with_capacity(k);
         for i in 0..k {
-            let x: f32 = axes[0].iter().enumerate()
-                .map(|(j, &a)| a * norm[i][j]).sum();
-            let y: f32 = axes[1].iter().enumerate()
-                .map(|(j, &a)| a * norm[i][j]).sum();
-            let z: f32 = axes[2].iter().enumerate()
-                .map(|(j, &a)| a * norm[i][j]).sum();
+            let x: f32 = axes[0]
+                .iter()
+                .enumerate()
+                .map(|(j, &a)| a * norm[i][j])
+                .sum();
+            let y: f32 = axes[1]
+                .iter()
+                .enumerate()
+                .map(|(j, &a)| a * norm[i][j])
+                .sum();
+            let z: f32 = axes[2]
+                .iter()
+                .enumerate()
+                .map(|(j, &a)| a * norm[i][j])
+                .sum();
             coords.push((x, y, z));
         }
 
         let coords = normalize_to_grid(&coords);
 
-        Self { axes, eigenvalues, coords }
+        Self {
+            axes,
+            eigenvalues,
+            coords,
+        }
     }
 }
 
@@ -1361,7 +1425,9 @@ fn power_iteration(matrix: &[Vec<f32>], k: usize, iterations: usize) -> (Vec<f32
         }
 
         let norm: f32 = w.iter().map(|&x| x * x).sum::<f32>().sqrt();
-        if norm < 1e-10 { break; }
+        if norm < 1e-10 {
+            break;
+        }
 
         for i in 0..k {
             v[i] = w[i] / norm;
@@ -1382,7 +1448,9 @@ fn power_iteration(matrix: &[Vec<f32>], k: usize, iterations: usize) -> (Vec<f32
 
 /// Map continuous coordinates to the 8×8×32 grid.
 fn normalize_to_grid(coords: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
-    if coords.is_empty() { return vec![]; }
+    if coords.is_empty() {
+        return vec![];
+    }
 
     let normalize_axis = |vals: &[f32], max_val: f32| -> Vec<f32> {
         let min = vals.iter().cloned().fold(f32::INFINITY, f32::min);
@@ -1391,7 +1459,9 @@ fn normalize_to_grid(coords: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
         if range < 1e-10 {
             vec![max_val / 2.0; vals.len()]
         } else {
-            vals.iter().map(|&v| ((v - min) / range) * max_val).collect()
+            vals.iter()
+                .map(|&v| ((v - min) / range) * max_val)
+                .collect()
         }
     };
 
@@ -1459,11 +1529,7 @@ pub fn bootstrap_write(
 }
 
 /// Bootstrap mode: read concept back.
-pub fn bootstrap_read(
-    container: &[i8],
-    basis: &CarrierBasis,
-    concept_idx: u8,
-) -> (f32, f32) {
+pub fn bootstrap_read(container: &[i8], basis: &CarrierBasis, concept_idx: u8) -> (f32, f32) {
     carrier_decode(container, basis, concept_idx)
 }
 
@@ -1487,10 +1553,7 @@ pub fn migrate_carrier_to_gabor(
         concepts.push((phase, amplitude));
     }
 
-    let freq_assignments = greedy_frequency_assignment(
-        &crystallizer.coords,
-        2.0,
-    );
+    let freq_assignments = greedy_frequency_assignment(&crystallizer.coords, 2.0);
 
     container.fill(0);
 
@@ -1499,14 +1562,19 @@ pub fn migrate_carrier_to_gabor(
         let (phase, amplitude) = concepts[i];
         let freq = CARRIER_FREQUENCIES[freq_assignments[i]] as f32;
 
-        if amplitude < 0.01 { continue; }
+        if amplitude < 0.01 {
+            continue;
+        }
 
         gabor_write(
-            container, lut,
+            container,
+            lut,
             x.round().clamp(0.0, 7.0) as u8,
             y.round().clamp(0.0, 7.0) as u8,
             z.round().clamp(0.0, 31.0) as u8,
-            freq, phase, amplitude,
+            freq,
+            phase,
+            amplitude,
         );
     }
 
@@ -1518,10 +1586,7 @@ pub fn migrate_carrier_to_gabor(
 }
 
 /// Greedy frequency assignment: minimize interference between nearby concepts.
-fn greedy_frequency_assignment(
-    coords: &[(f32, f32, f32)],
-    sigma: f32,
-) -> Vec<usize> {
+fn greedy_frequency_assignment(coords: &[(f32, f32, f32)], sigma: f32) -> Vec<usize> {
     let k = coords.len();
     let threshold_sq = (2.0 * sigma) * (2.0 * sigma);
     let mut assignments = vec![0usize; k];
@@ -1530,7 +1595,9 @@ fn greedy_frequency_assignment(
     for i in 0..k {
         let mut used_freqs = [false; 16];
         for j in 0..k {
-            if !assigned[j] { continue; }
+            if !assigned[j] {
+                continue;
+            }
             let dx = coords[i].0 - coords[j].0;
             let dy = coords[i].1 - coords[j].1;
             let dz = coords[i].2 - coords[j].2;
@@ -1552,17 +1619,13 @@ fn greedy_frequency_assignment(
 // ============================================================================
 
 /// Discover axes directly from the container's spectral structure.
-pub fn crystallize_from_superposition(
-    container: &[i8],
-    basis: &CarrierBasis,
-) -> AxisCrystallizer {
+pub fn crystallize_from_superposition(container: &[i8], basis: &CarrierBasis) -> AxisCrystallizer {
     let n_freq = 16;
 
     let mut freq_signals = vec![vec![0.0f32; 2048]; n_freq];
     for f in 0..n_freq {
         for j in 0..2048 {
-            freq_signals[f][j] = container[j] as f32 *
-                basis.basis_cos[f][j] as f32;
+            freq_signals[f][j] = container[j] as f32 * basis.basis_cos[f][j] as f32;
         }
     }
 
@@ -1605,11 +1668,14 @@ pub fn incremental_axis_update(
     for d in 0..3 {
         let len = crystallizer.axes[d].len();
         for i in 0..len {
-            crystallizer.axes[d][i] += rotation_rate *
-                (aligned_axes[d][i] - crystallizer.axes[d][i]);
+            crystallizer.axes[d][i] +=
+                rotation_rate * (aligned_axes[d][i] - crystallizer.axes[d][i]);
         }
-        let norm: f32 = crystallizer.axes[d].iter()
-            .map(|&x| x * x).sum::<f32>().sqrt();
+        let norm: f32 = crystallizer.axes[d]
+            .iter()
+            .map(|&x| x * x)
+            .sum::<f32>()
+            .sqrt();
         if norm > 1e-10 {
             for i in 0..len {
                 crystallizer.axes[d][i] /= norm;
@@ -1623,12 +1689,39 @@ pub fn incremental_axis_update(
 
     let mut raw_coords = Vec::with_capacity(k);
     for i in 0..k {
-        let x: f32 = crystallizer.axes[0].iter().enumerate()
-            .map(|(j, &a)| if j < norm[i].len() { a * norm[i][j] } else { 0.0 }).sum();
-        let y: f32 = crystallizer.axes[1].iter().enumerate()
-            .map(|(j, &a)| if j < norm[i].len() { a * norm[i][j] } else { 0.0 }).sum();
-        let z: f32 = crystallizer.axes[2].iter().enumerate()
-            .map(|(j, &a)| if j < norm[i].len() { a * norm[i][j] } else { 0.0 }).sum();
+        let x: f32 = crystallizer.axes[0]
+            .iter()
+            .enumerate()
+            .map(|(j, &a)| {
+                if j < norm[i].len() {
+                    a * norm[i][j]
+                } else {
+                    0.0
+                }
+            })
+            .sum();
+        let y: f32 = crystallizer.axes[1]
+            .iter()
+            .enumerate()
+            .map(|(j, &a)| {
+                if j < norm[i].len() {
+                    a * norm[i][j]
+                } else {
+                    0.0
+                }
+            })
+            .sum();
+        let z: f32 = crystallizer.axes[2]
+            .iter()
+            .enumerate()
+            .map(|(j, &a)| {
+                if j < norm[i].len() {
+                    a * norm[i][j]
+                } else {
+                    0.0
+                }
+            })
+            .sum();
         raw_coords.push((x, y, z));
     }
     crystallizer.coords = normalize_to_grid(&raw_coords);
@@ -1650,8 +1743,7 @@ pub fn incremental_axis_update(
 fn align_eigenvectors(old: &[Vec<f32>; 3], new: &[Vec<f32>; 3]) -> [Vec<f32>; 3] {
     let mut aligned = new.clone();
     for d in 0..3 {
-        let dot: f32 = old[d].iter().zip(new[d].iter())
-            .map(|(&a, &b)| a * b).sum();
+        let dot: f32 = old[d].iter().zip(new[d].iter()).map(|(&a, &b)| a * b).sum();
         if dot < 0.0 {
             for x in aligned[d].iter_mut() {
                 *x = -*x;
@@ -1672,7 +1764,8 @@ pub fn apply_migrations(
         let freq = CARRIER_FREQUENCIES[freq_assignments[concept_idx]] as f32;
 
         let (phase, amplitude) = gabor_read(
-            container, lut,
+            container,
+            lut,
             old_x.round().clamp(0.0, 7.0) as u8,
             old_y.round().clamp(0.0, 7.0) as u8,
             old_z.round().clamp(0.0, 31.0) as u8,
@@ -1680,19 +1773,25 @@ pub fn apply_migrations(
         );
 
         gabor_write(
-            container, lut,
+            container,
+            lut,
             old_x.round().clamp(0.0, 7.0) as u8,
             old_y.round().clamp(0.0, 7.0) as u8,
             old_z.round().clamp(0.0, 31.0) as u8,
-            freq, phase, -amplitude,
+            freq,
+            phase,
+            -amplitude,
         );
 
         gabor_write(
-            container, lut,
+            container,
+            lut,
             new_x.round().clamp(0.0, 7.0) as u8,
             new_y.round().clamp(0.0, 7.0) as u8,
             new_z.round().clamp(0.0, 31.0) as u8,
-            freq, phase, amplitude,
+            freq,
+            phase,
+            amplitude,
         );
     }
 }
@@ -1732,7 +1831,9 @@ mod tests {
             assert!(
                 lut.amplitude(i) <= lut.amplitude(i - 1),
                 "LUT not monotonic at d²={}: {} > {}",
-                i, lut.amplitude(i), lut.amplitude(i - 1)
+                i,
+                lut.amplitude(i),
+                lut.amplitude(i - 1)
             );
         }
     }
@@ -1754,7 +1855,9 @@ mod tests {
         // Center position should be in the template with amplitude 255
         let center_idx = 4u16 * 256 + 4 * 32 + 16;
         assert!(
-            tpl.entries.iter().any(|&(idx, amp)| idx == center_idx && amp == 255),
+            tpl.entries
+                .iter()
+                .any(|&(idx, amp)| idx == center_idx && amp == 255),
             "center should be in template with max amplitude"
         );
     }
@@ -1791,7 +1894,8 @@ mod tests {
         assert!(
             center_val > edge_val,
             "center {} should exceed edge {}",
-            center_val, edge_val
+            center_val,
+            edge_val
         );
     }
 
@@ -1837,9 +1941,15 @@ mod tests {
         assert!(
             phase_error(rec_phase, target_phase) < 0.15,
             "phase recovery: expected {:.4}, got {:.4} (error {:.4})",
-            target_phase, rec_phase, phase_error(rec_phase, target_phase)
+            target_phase,
+            rec_phase,
+            phase_error(rec_phase, target_phase)
         );
-        assert!(rec_amp > 0.5, "amplitude should be significant, got {:.4}", rec_amp);
+        assert!(
+            rec_amp > 0.5,
+            "amplitude should be significant, got {:.4}",
+            rec_amp
+        );
     }
 
     #[test]
@@ -1848,7 +1958,11 @@ mod tests {
         let container = vec![0i8; 2048];
 
         let (_, amp) = gabor_read(&container, &lut, 4, 4, 16, 3.0);
-        assert!(amp < 0.01, "empty container should give near-zero amplitude, got {:.4}", amp);
+        assert!(
+            amp < 0.01,
+            "empty container should give near-zero amplitude, got {:.4}",
+            amp
+        );
     }
 
     #[test]
@@ -1868,12 +1982,14 @@ mod tests {
         assert!(
             phase_error(rec_a, phase_a) < 0.3,
             "freq 2 recovery: expected {:.4}, got {:.4}",
-            phase_a, rec_a
+            phase_a,
+            rec_a
         );
         assert!(
             phase_error(rec_b, phase_b) < 0.3,
             "freq 8 recovery: expected {:.4}, got {:.4}",
-            phase_b, rec_b
+            phase_b,
+            rec_b
         );
     }
 
@@ -1896,12 +2012,14 @@ mod tests {
         assert!(
             phase_error(rec_a, phase_a) < 0.3,
             "pos A recovery: expected {:.4}, got {:.4}",
-            phase_a, rec_a
+            phase_a,
+            rec_a
         );
         assert!(
             phase_error(rec_b, phase_b) < 0.3,
             "pos B recovery: expected {:.4}, got {:.4}",
-            phase_b, rec_b
+            phase_b,
+            rec_b
         );
     }
 
@@ -1918,7 +2036,10 @@ mod tests {
             assert!(
                 phase_error(rec, target) < 0.15,
                 "phase {:.2}: expected {:.4}, got {:.4} (err {:.4})",
-                target, target, rec, phase_error(rec, target)
+                target,
+                target,
+                rec,
+                phase_error(rec, target)
             );
         }
     }
@@ -1990,7 +2111,9 @@ mod tests {
 
         // Content
         let content: Vec<i8> = (0..2048).map(|i| (i as i8).wrapping_mul(11)).collect();
-        let stored: Vec<i8> = delta.iter().zip(content.iter())
+        let stored: Vec<i8> = delta
+            .iter()
+            .zip(content.iter())
             .map(|(&d, &c)| d.wrapping_add(c))
             .collect();
 
@@ -2025,7 +2148,8 @@ mod tests {
         assert!(
             rec_amp > amp_from_a * 2.0 || rec_amp > 0.5,
             "delta should have stronger signal than field_a alone: delta_amp={:.4}, a_amp={:.4}",
-            rec_amp, amp_from_a
+            rec_amp,
+            amp_from_a
         );
     }
 
@@ -2053,7 +2177,11 @@ mod tests {
         let inv = t.inverse();
         let composed = inv.compose(&t);
         for i in 0..2048 {
-            assert_eq!(composed.perm[i], i as u16, "T⁻¹∘T should be identity at {}", i);
+            assert_eq!(
+                composed.perm[i], i as u16,
+                "T⁻¹∘T should be identity at {}",
+                i
+            );
         }
     }
 
@@ -2063,8 +2191,8 @@ mod tests {
         let t2 = SpatialTransform::rotate_y(3);
         let t3 = SpatialTransform::rotate_z(5);
 
-        let left = t1.compose(&t2).compose(&t3);   // (T1∘T2)∘T3
-        let right = t1.compose(&t2.compose(&t3));   // T1∘(T2∘T3)
+        let left = t1.compose(&t2).compose(&t3); // (T1∘T2)∘T3
+        let right = t1.compose(&t2.compose(&t3)); // T1∘(T2∘T3)
 
         for i in 0..2048 {
             assert_eq!(left.perm[i], right.perm[i], "associativity failed at {}", i);
@@ -2078,7 +2206,11 @@ mod tests {
         for i in 0..2048 {
             let target = t.perm[i] as usize;
             assert!(target < 2048, "perm[{}] = {} out of range", i, target);
-            assert!(!seen[target], "perm maps {} and another index both to {}", i, target);
+            assert!(
+                !seen[target],
+                "perm maps {} and another index both to {}",
+                i, target
+            );
             seen[target] = true;
         }
     }
@@ -2121,7 +2253,8 @@ mod tests {
         assert!(
             phase_error(rec, phase) < 0.2,
             "rotated read: expected {:.4}, got {:.4}",
-            phase, rec
+            phase,
+            rec
         );
         assert!(amp > 0.5);
     }
@@ -2159,7 +2292,8 @@ mod tests {
         assert!(
             phase_error(rec_phase, rel_phase) < 0.2,
             "pipeline recovery: expected {:.4}, got {:.4}",
-            rel_phase, rec_phase
+            rel_phase,
+            rec_phase
         );
         assert!(rec_amp > 0.3, "pipeline amplitude too low: {:.4}", rec_amp);
     }
@@ -2170,7 +2304,7 @@ mod tests {
 
         // 3 pairs of fields
         let pairs: Vec<(f32, f32, f32)> = vec![
-            (1.0, 2.0, 0.5),   // (phase_a, phase_b, rel_phase)
+            (1.0, 2.0, 0.5), // (phase_a, phase_b, rel_phase)
             (3.0, 4.0, 2.0),
             (5.0, 0.5, 4.5),
         ];
@@ -2197,7 +2331,9 @@ mod tests {
             assert!(
                 phase_error(rec, rel) < 0.3,
                 "pair {} recovery: expected {:.4}, got {:.4}",
-                i, rel, rec
+                i,
+                rel,
+                rec
             );
         }
     }
@@ -2218,10 +2354,7 @@ mod tests {
 
                 // Write all wavelets at center
                 for i in 0..n as usize {
-                    gabor_write(
-                        &mut container, &lut, 4, 4, 16,
-                        freqs[i], phases[i], 7.0,
-                    );
+                    gabor_write(&mut container, &lut, 4, 4, 16, freqs[i], phases[i], 7.0);
                 }
 
                 // Read each back
@@ -2234,7 +2367,10 @@ mod tests {
 
                 println!(
                     "  σ={:.1} N={:>2}: mean_phase_err={:.4} rad ({:>5.1}°)",
-                    sigma, n, mean_error, mean_error.to_degrees()
+                    sigma,
+                    n,
+                    mean_error,
+                    mean_error.to_degrees()
                 );
             }
             println!();
@@ -2255,11 +2391,7 @@ mod tests {
                 total_err += phase_error(rec, phases[i]);
             }
             let mean = total_err / 4.0;
-            assert!(
-                mean < 0.5,
-                "σ=2 N=4 mean error {:.4} rad too high",
-                mean
-            );
+            assert!(mean < 0.5, "σ=2 N=4 mean error {:.4} rad too high", mean);
         }
     }
 
@@ -2282,10 +2414,7 @@ mod tests {
             let freqs: Vec<f32> = (0..n).map(|i| (i as f32) * 2.0 + 1.0).collect();
 
             for i in 0..n as usize {
-                delta_cube_write_gabor(
-                    &mut delta, &lut, 4, 4, 16,
-                    freqs[i], phases[i], 7.0,
-                );
+                delta_cube_write_gabor(&mut delta, &lut, 4, 4, 16, freqs[i], phases[i], 7.0);
             }
 
             // Recover
@@ -2301,7 +2430,9 @@ mod tests {
 
             println!(
                 "  Delta cube N={:>2}: mean_phase_err={:.4} rad ({:>5.1}°)",
-                n, mean, mean.to_degrees()
+                n,
+                mean,
+                mean.to_degrees()
             );
         }
 
@@ -2411,9 +2542,17 @@ mod tests {
         let (p1, a1) = gabor_read(&combined, &lut, 2, 2, 8, 3.0);
         let (p2, a2) = gabor_read(&combined, &lut, 6, 6, 24, 5.0);
 
-        assert!(phase_error(p1, 1.0) < 0.15, "base concept: {:.4} vs 1.0", p1);
+        assert!(
+            phase_error(p1, 1.0) < 0.15,
+            "base concept: {:.4} vs 1.0",
+            p1
+        );
         assert!(a1 > 0.5);
-        assert!(phase_error(p2, 2.0) < 0.15, "overlay concept: {:.4} vs 2.0", p2);
+        assert!(
+            phase_error(p2, 2.0) < 0.15,
+            "overlay concept: {:.4} vs 2.0",
+            p2
+        );
         assert!(a2 > 0.5);
     }
 
@@ -2455,7 +2594,8 @@ mod tests {
             assert_eq!(
                 container[i],
                 original[i] ^ (i * 17 % 256) as u8,
-                "XOR mismatch at {}", i
+                "XOR mismatch at {}",
+                i
             );
         }
         assert!(overlay.is_clean());
@@ -2477,7 +2617,8 @@ mod tests {
             assert_eq!(
                 container[i],
                 original[i].wrapping_add((i * 7 % 256) as u8),
-                "ADD mismatch at {}", i
+                "ADD mismatch at {}",
+                i
             );
         }
         assert!(overlay.is_clean());
@@ -2640,7 +2781,8 @@ mod tests {
         let (rec_phase, rec_amp) = gabor_read(overlay.as_i8(), &lut, 4, 4, 16, 3.0);
         assert!(
             phase_error(rec_phase, 1.5) < 0.15,
-            "as_i8_mut write: expected 1.5, got {:.4}", rec_phase
+            "as_i8_mut write: expected 1.5, got {:.4}",
+            rec_phase
         );
         assert!(rec_amp > 0.5);
     }
@@ -2660,7 +2802,10 @@ mod tests {
         };
 
         assert_eq!(overlay.read_xor(&container, 42), 0xABu8 ^ 0xCDu8);
-        assert_eq!(overlay.read_add(&container, 42), 0xCDu8.wrapping_add(0xABu8));
+        assert_eq!(
+            overlay.read_add(&container, 42),
+            0xCDu8.wrapping_add(0xABu8)
+        );
     }
 
     #[test]
@@ -2677,7 +2822,8 @@ mod tests {
             assert_eq!(
                 result[i],
                 container[i] ^ overlay.buffer[i],
-                "XOR mismatch at {}", i
+                "XOR mismatch at {}",
+                i
             );
         }
     }
@@ -2713,7 +2859,8 @@ mod tests {
         let (rec, amp) = gabor_read(&content, &lut, 4, 4, 16, 7.0);
         assert!(
             phase_error(rec, 3.5) < 0.2,
-            "overlay delta-cube: expected 3.5, got {:.4}", rec
+            "overlay delta-cube: expected 3.5, got {:.4}",
+            rec
         );
         assert!(amp > 0.3);
     }
@@ -2739,7 +2886,8 @@ mod tests {
         let (rec, amp) = gabor_read(&container, &lut, 6, 4, 16, 3.0);
         assert!(
             phase_error(rec, 1.5) < 0.2,
-            "spatial overlay: expected 1.5, got {:.4}", rec
+            "spatial overlay: expected 1.5, got {:.4}",
+            rec
         );
         assert!(amp > 0.5);
     }
@@ -2764,9 +2912,21 @@ mod tests {
         let (p2, _) = gabor_read(&container, &lut, 4, 4, 16, 5.0);
         let (p3, _) = gabor_read(&container, &lut, 4, 4, 16, 8.0);
 
-        assert!(phase_error(p1, 0.5) < 0.4, "STM→LTM freq 2: {:.4} vs 0.5", p1);
-        assert!(phase_error(p2, 2.5) < 0.4, "STM→LTM freq 5: {:.4} vs 2.5", p2);
-        assert!(phase_error(p3, 4.5) < 0.4, "STM→LTM freq 8: {:.4} vs 4.5", p3);
+        assert!(
+            phase_error(p1, 0.5) < 0.4,
+            "STM→LTM freq 2: {:.4} vs 0.5",
+            p1
+        );
+        assert!(
+            phase_error(p2, 2.5) < 0.4,
+            "STM→LTM freq 5: {:.4} vs 2.5",
+            p2
+        );
+        assert!(
+            phase_error(p3, 4.5) < 0.4,
+            "STM→LTM freq 8: {:.4} vs 4.5",
+            p3
+        );
     }
 
     // ---- SpectralMap tests ----
@@ -2778,7 +2938,11 @@ mod tests {
         let lut = GaussianLUT::new(2.0);
         let spec = SpectralMap::analyze(&container, &basis, &[lut]);
         let max_amp = spec.amplitude.iter().cloned().fold(0.0f32, f32::max);
-        assert!(max_amp < 0.01, "empty container max amplitude: {:.4}", max_amp);
+        assert!(
+            max_amp < 0.01,
+            "empty container max amplitude: {:.4}",
+            max_amp
+        );
     }
 
     #[test]
@@ -2794,11 +2958,16 @@ mod tests {
 
         assert!(!peaks.is_empty(), "should find at least one peak");
         // The strongest peak should be near (4, 4, 16) at freq_idx=2
-        let best = peaks.iter().max_by(|a, b| a.4.partial_cmp(&b.4).unwrap()).unwrap();
+        let best = peaks
+            .iter()
+            .max_by(|a, b| a.4.partial_cmp(&b.4).unwrap())
+            .unwrap();
         assert_eq!(best.3, 2, "peak freq idx should be 2 (freq=3)");
         assert!(
             (best.0 as i32 - 4).abs() <= 1 && (best.1 as i32 - 4).abs() <= 1,
-            "peak position should be near (4,4): got ({}, {})", best.0, best.1
+            "peak position should be near (4,4): got ({}, {})",
+            best.0,
+            best.1
         );
     }
 
@@ -2815,7 +2984,8 @@ mod tests {
         let (rec, amp) = gabor_read(&clean, &lut, 4, 4, 16, 3.0);
         assert!(
             phase_error(rec, 1.5) < 0.3,
-            "resynthesize phase: {:.4} vs 1.5", rec
+            "resynthesize phase: {:.4} vs 1.5",
+            rec
         );
         assert!(amp > 0.3, "resynthesize amplitude: {:.4}", amp);
     }
@@ -2834,7 +3004,11 @@ mod tests {
         let per_byte = energy / 2048.0;
 
         // After subtracting the known signal, residual should be low
-        assert!(per_byte < 5.0, "residual per byte too high: {:.4}", per_byte);
+        assert!(
+            per_byte < 5.0,
+            "residual per byte too high: {:.4}",
+            per_byte
+        );
     }
 
     #[test]
@@ -2857,7 +3031,8 @@ mod tests {
         let (rec, _) = gabor_read(&clean, &lut, 4, 4, 16, 3.0);
         assert!(
             phase_error(rec, 1.5) < 0.2,
-            "ortho project phase: {:.4} vs 1.5", rec
+            "ortho project phase: {:.4} vs 1.5",
+            rec
         );
     }
 
@@ -2875,14 +3050,19 @@ mod tests {
 
         // Hebbian update between two nearby concepts
         hebbian_update(
-            &mut overlay, &container, &lut,
+            &mut overlay,
+            &container,
+            &lut,
             (3, 3, 14, 3.0),
             (5, 5, 18, 5.0),
             0.5,
         );
 
         let after_energy: i64 = overlay.buffer.iter().map(|&b| (b as i64).abs()).sum();
-        assert!(after_energy > 0, "hebbian should create interference pattern");
+        assert!(
+            after_energy > 0,
+            "hebbian should create interference pattern"
+        );
     }
 
     #[test]
@@ -2900,7 +3080,9 @@ mod tests {
         let (_, amp_after) = gabor_read(&container, &lut, 4, 4, 16, 3.0);
         assert!(
             amp_after < amp_before,
-            "anti-hebbian should reduce: {:.4} → {:.4}", amp_before, amp_after
+            "anti-hebbian should reduce: {:.4} → {:.4}",
+            amp_before,
+            amp_after
         );
     }
 
@@ -2912,12 +3094,15 @@ mod tests {
         gabor_write(&mut container, &lut, 4, 4, 16, 3.0, 1.5, 7.0);
 
         let new_sigma = adapt_sigma(
-            &container, &lut, 4, 4, 16, 3.0,
-            2.0,   // current σ
-            0.01,  // learning rate
-            2.0,   // SNR target (expect SNR >> 2 for clean signal)
+            &container, &lut, 4, 4, 16, 3.0, 2.0,  // current σ
+            0.01, // learning rate
+            2.0,  // SNR target (expect SNR >> 2 for clean signal)
         );
-        assert!(new_sigma < 2.0, "high SNR should decrease σ: got {:.4}", new_sigma);
+        assert!(
+            new_sigma < 2.0,
+            "high SNR should decrease σ: got {:.4}",
+            new_sigma
+        );
     }
 
     // ---- Archetype Detection tests ----
@@ -2928,7 +3113,10 @@ mod tests {
         let lut = GaussianLUT::new(2.0);
         let detector = FastArchetypeDetector::new();
         let peaks = detector.detect(&container, &lut, 0.5);
-        assert!(peaks.is_empty(), "empty container should have no archetypes");
+        assert!(
+            peaks.is_empty(),
+            "empty container should have no archetypes"
+        );
     }
 
     #[test]
@@ -2943,7 +3131,10 @@ mod tests {
         assert!(!peaks.is_empty(), "should detect the wavelet as archetype");
 
         // Best peak should be near (4, 4) at freq_idx=2
-        let best = peaks.iter().max_by(|a, b| a.3.partial_cmp(&b.3).unwrap()).unwrap();
+        let best = peaks
+            .iter()
+            .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap())
+            .unwrap();
         assert_eq!(best.2, 2, "archetype freq idx should be 2");
     }
 
@@ -2970,14 +3161,18 @@ mod tests {
         let (bat_p1, _) = gabor_read(&batch_container, &lut, 2, 2, 8, 3.0);
         assert!(
             phase_error(seq_p1, bat_p1) < 0.15,
-            "batch vs seq concept 1: {:.4} vs {:.4}", bat_p1, seq_p1
+            "batch vs seq concept 1: {:.4} vs {:.4}",
+            bat_p1,
+            seq_p1
         );
 
         let (seq_p2, _) = gabor_read(&sequential, &lut, 6, 6, 24, 5.0);
         let (bat_p2, _) = gabor_read(&batch_container, &lut, 6, 6, 24, 5.0);
         assert!(
             phase_error(seq_p2, bat_p2) < 0.15,
-            "batch vs seq concept 2: {:.4} vs {:.4}", bat_p2, seq_p2
+            "batch vs seq concept 2: {:.4} vs {:.4}",
+            bat_p2,
+            seq_p2
         );
     }
 
@@ -3009,9 +3204,17 @@ mod tests {
         let norm = matrix.normalized();
         // Concepts 0 and 1 co-occurred 2 times, each observed 2 times
         // norm[0][1] = 2.0 / sqrt(2.0 * 2.0) = 1.0
-        assert!((norm[0][1] - 1.0).abs() < 0.01, "normalized 0-1: {:.4}", norm[0][1]);
+        assert!(
+            (norm[0][1] - 1.0).abs() < 0.01,
+            "normalized 0-1: {:.4}",
+            norm[0][1]
+        );
         // Concepts 0 and 2 never co-occurred
-        assert!((norm[0][2]).abs() < 0.01, "normalized 0-2: {:.4}", norm[0][2]);
+        assert!(
+            (norm[0][2]).abs() < 0.01,
+            "normalized 0-2: {:.4}",
+            norm[0][2]
+        );
     }
 
     #[test]
@@ -3050,11 +3253,7 @@ mod tests {
 
     #[test]
     fn test_normalize_to_grid() {
-        let coords = vec![
-            (-1.0, 0.0, -2.0),
-            (1.0, 1.0, 2.0),
-            (0.0, 0.5, 0.0),
-        ];
+        let coords = vec![(-1.0, 0.0, -2.0), (1.0, 1.0, 2.0), (0.0, 0.5, 0.0)];
         let normed = normalize_to_grid(&coords);
 
         // First: x=-1 → 0, second: x=1 → 7, third: x=0 → 3.5
@@ -3080,18 +3279,22 @@ mod tests {
         let crystal = AxisCrystallizer::crystallize(&matrix);
 
         // First eigenvector should separate the clusters
-        assert!(crystal.eigenvalues[0] > 0.0, "first eigenvalue should be positive");
+        assert!(
+            crystal.eigenvalues[0] > 0.0,
+            "first eigenvalue should be positive"
+        );
 
         // Concepts in same cluster should be closer than across clusters
         let (x0, y0, z0) = crystal.coords[0];
         let (x1, y1, z1) = crystal.coords[1]; // same cluster
         let (x5, y5, z5) = crystal.coords[5]; // different cluster
-        let dist_same = ((x0-x1).powi(2) + (y0-y1).powi(2) + (z0-z1).powi(2)).sqrt();
-        let dist_diff = ((x0-x5).powi(2) + (y0-y5).powi(2) + (z0-z5).powi(2)).sqrt();
+        let dist_same = ((x0 - x1).powi(2) + (y0 - y1).powi(2) + (z0 - z1).powi(2)).sqrt();
+        let dist_diff = ((x0 - x5).powi(2) + (y0 - y5).powi(2) + (z0 - z5).powi(2)).sqrt();
         assert!(
             dist_same < dist_diff,
             "same cluster dist {:.2} should < cross cluster dist {:.2}",
-            dist_same, dist_diff
+            dist_same,
+            dist_diff
         );
     }
 
@@ -3116,10 +3319,7 @@ mod tests {
     #[test]
     fn test_greedy_frequency_nearby_different() {
         // Two very close concepts should get different frequencies
-        let coords = vec![
-            (3.0, 3.0, 15.0),
-            (3.5, 3.5, 15.5),
-        ];
+        let coords = vec![(3.0, 3.0, 15.0), (3.5, 3.5, 15.5)];
         let assignments = greedy_frequency_assignment(&coords, 2.0);
         assert_ne!(
             assignments[0], assignments[1],
@@ -3160,9 +3360,7 @@ mod tests {
         let crystal = AxisCrystallizer::crystallize(&matrix);
 
         // Migrate
-        let result = migrate_carrier_to_gabor(
-            &mut container, &basis, &crystal, &lut, 2.0,
-        );
+        let result = migrate_carrier_to_gabor(&mut container, &basis, &crystal, &lut, 2.0);
 
         assert_eq!(result.mode, ContainerMode::Gabor);
         assert!(result.concepts_migrated <= 4);
@@ -3172,13 +3370,19 @@ mod tests {
             let (x, y, z) = crystal.coords[i];
             let freq = CARRIER_FREQUENCIES[result.freq_assignments[i]] as f32;
             let (_rec, amp) = gabor_read(
-                &container, &lut,
+                &container,
+                &lut,
                 x.round().clamp(0.0, 7.0) as u8,
                 y.round().clamp(0.0, 7.0) as u8,
                 z.round().clamp(0.0, 31.0) as u8,
                 freq,
             );
-            assert!(amp > 0.1, "concept {} should be readable, amp={:.4}", i, amp);
+            assert!(
+                amp > 0.1,
+                "concept {} should be readable, amp={:.4}",
+                i,
+                amp
+            );
         }
     }
 
@@ -3194,8 +3398,11 @@ mod tests {
 
         let crystal = crystallize_from_superposition(&container, &basis);
         assert_eq!(crystal.coords.len(), 16); // 16 frequencies analyzed
-        // At least the first eigenvalue should be meaningful
-        assert!(crystal.eigenvalues[0] > 0.0, "first eigenvalue should be > 0");
+                                              // At least the first eigenvalue should be meaningful
+        assert!(
+            crystal.eigenvalues[0] > 0.0,
+            "first eigenvalue should be > 0"
+        );
     }
 
     #[test]
@@ -3229,15 +3436,17 @@ mod tests {
         assert_eq!(crystal.coords.len(), 10);
 
         // Phase 4: Migrate
-        let result = migrate_carrier_to_gabor(
-            &mut container, &basis, &crystal, &lut, 2.0,
-        );
+        let result = migrate_carrier_to_gabor(&mut container, &basis, &crystal, &lut, 2.0);
         set_container_mode(&mut meta, ContainerMode::Gabor);
         assert_eq!(get_container_mode(&meta), ContainerMode::Gabor);
         assert!(result.concepts_migrated > 0);
 
         // Container should have non-zero content
         let nonzero = container.iter().filter(|&&b| b != 0).count();
-        assert!(nonzero > 100, "migrated container should have content: {} nonzero", nonzero);
+        assert!(
+            nonzero > 100,
+            "migrated container should have content: {} nonzero",
+            nonzero
+        );
     }
 }

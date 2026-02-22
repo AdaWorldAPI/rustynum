@@ -642,9 +642,11 @@ mod tests {
         assert_eq!(result.shape(), &[3, 3]);
 
         // Check first row values
-        let expected_first_row = [1.0 / 14.0_f32.sqrt(),
+        let expected_first_row = [
+            1.0 / 14.0_f32.sqrt(),
             2.0 / 14.0_f32.sqrt(),
-            3.0 / 14.0_f32.sqrt()];
+            3.0 / 14.0_f32.sqrt(),
+        ];
 
         for i in 0..3 {
             assert!(

@@ -15,9 +15,9 @@ pub mod simd_ops;
 
 pub mod traits;
 
-pub use num_array::{NumArray, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
-pub use num_array::{CogRecord, SweepMode, SweepResult, sweep_cogrecords};
-pub use num_array::{VerbCodebook, encode_edge_explicit, decode_target_explicit};
+pub use num_array::{binding_popcount_3d, find_discriminative_spots, find_holographic_sweet_spot};
+pub use num_array::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
 pub use num_array::{simhash_batch_project, simhash_project};
-pub use num_array::{binding_popcount_3d, find_holographic_sweet_spot, find_discriminative_spots};
+pub use num_array::{sweep_cogrecords, CogRecord, SweepMode, SweepResult};
+pub use num_array::{NumArray, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
 pub use simd_ops::{BitwiseSimdOps, HammingSimdOps, SimdOps};

@@ -108,11 +108,9 @@ fn bench_permute(c: &mut Criterion) {
         let v = NumArrayU8::new(create_random_vector(42, vec_len));
 
         group.throughput(Throughput::Bytes(vec_len as u64));
-        group.bench_with_input(
-            BenchmarkId::new("k=1", vec_len),
-            &vec_len,
-            |bencher, &_| bencher.iter(|| black_box(&v).permute(black_box(1))),
-        );
+        group.bench_with_input(BenchmarkId::new("k=1", vec_len), &vec_len, |bencher, &_| {
+            bencher.iter(|| black_box(&v).permute(black_box(1)))
+        });
     }
 
     group.finish();
@@ -156,8 +154,7 @@ fn bench_bundle(c: &mut Criterion) {
                                 for bit in 0..8u8 {
                                     let mut count = 0u32;
                                     for v in vec_refs.iter() {
-                                        count +=
-                                            ((v.get_data()[byte_idx] >> bit) & 1) as u32;
+                                        count += ((v.get_data()[byte_idx] >> bit) & 1) as u32;
                                     }
                                     if count as usize > threshold {
                                         result_byte |= 1 << bit;
@@ -273,11 +270,9 @@ fn bench_dot_i8(c: &mut Criterion) {
         group.throughput(Throughput::Bytes((dim * 2) as u64));
 
         // SIMD dot_i8 (VNNI-targetable)
-        group.bench_with_input(
-            BenchmarkId::new("dot_i8_simd", dim),
-            &dim,
-            |bencher, &_| bencher.iter(|| black_box(a.dot_i8(&b))),
-        );
+        group.bench_with_input(BenchmarkId::new("dot_i8_simd", dim), &dim, |bencher, &_| {
+            bencher.iter(|| black_box(a.dot_i8(&b)))
+        });
 
         // SIMD cosine_i8
         group.bench_with_input(
@@ -364,18 +359,14 @@ fn bench_adaptive_hamming(c: &mut Criterion) {
 
             // Full scan: compute every distance, filter
             group.bench_with_input(
-                BenchmarkId::new(
-                    format!("full_scan_{}B", vec_len),
-                    db_count,
-                ),
+                BenchmarkId::new(format!("full_scan_{}B", vec_len), db_count),
                 &db_count,
                 |bencher, &count| {
                     bencher.iter(|| {
                         let mut results = Vec::new();
                         for i in 0..count {
-                            let candidate = NumArrayU8::new(
-                                db_data[i * vec_len..(i + 1) * vec_len].to_vec(),
-                            );
+                            let candidate =
+                                NumArrayU8::new(db_data[i * vec_len..(i + 1) * vec_len].to_vec());
                             let d = query.hamming_distance(&candidate);
                             if d <= threshold {
                                 results.push((i, d));
@@ -388,16 +379,11 @@ fn bench_adaptive_hamming(c: &mut Criterion) {
 
             // Adaptive cascade search
             group.bench_with_input(
-                BenchmarkId::new(
-                    format!("adaptive_{}B", vec_len),
-                    db_count,
-                ),
+                BenchmarkId::new(format!("adaptive_{}B", vec_len), db_count),
                 &db_count,
                 |bencher, &_| {
                     bencher.iter(|| {
-                        black_box(
-                            query.hamming_search_adaptive(&db, vec_len, db_count, threshold),
-                        )
+                        black_box(query.hamming_search_adaptive(&db, vec_len, db_count, threshold))
                     })
                 },
             );
@@ -439,18 +425,14 @@ fn bench_adaptive_cosine(c: &mut Criterion) {
 
             // Full scan: compute every cosine
             group.bench_with_input(
-                BenchmarkId::new(
-                    format!("full_scan_{}D", vec_len),
-                    db_count,
-                ),
+                BenchmarkId::new(format!("full_scan_{}D", vec_len), db_count),
                 &db_count,
                 |bencher, &count| {
                     bencher.iter(|| {
                         let mut results = Vec::new();
                         for i in 0..count {
-                            let candidate = NumArrayU8::new(
-                                db_data[i * vec_len..(i + 1) * vec_len].to_vec(),
-                            );
+                            let candidate =
+                                NumArrayU8::new(db_data[i * vec_len..(i + 1) * vec_len].to_vec());
                             let cos = query.cosine_i8(&candidate);
                             if cos >= min_sim {
                                 results.push((i, cos));
@@ -463,16 +445,11 @@ fn bench_adaptive_cosine(c: &mut Criterion) {
 
             // Adaptive cascade
             group.bench_with_input(
-                BenchmarkId::new(
-                    format!("adaptive_{}D", vec_len),
-                    db_count,
-                ),
+                BenchmarkId::new(format!("adaptive_{}D", vec_len), db_count),
                 &db_count,
                 |bencher, &_| {
                     bencher.iter(|| {
-                        black_box(
-                            query.cosine_search_adaptive(&db, vec_len, db_count, min_sim),
-                        )
+                        black_box(query.cosine_search_adaptive(&db, vec_len, db_count, min_sim))
                     })
                 },
             );

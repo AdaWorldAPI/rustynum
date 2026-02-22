@@ -52,7 +52,11 @@ pub fn sdot(n: usize, x: &[f32], incx: usize, y: &[f32], incy: usize) -> f32 {
     {
         return unsafe {
             rustynum_core::mkl_ffi::cblas_sdot(
-                n as i32, x.as_ptr(), incx as i32, y.as_ptr(), incy as i32,
+                n as i32,
+                x.as_ptr(),
+                incx as i32,
+                y.as_ptr(),
+                incy as i32,
             )
         };
     }
@@ -73,7 +77,11 @@ pub fn ddot(n: usize, x: &[f64], incx: usize, y: &[f64], incy: usize) -> f64 {
     {
         return unsafe {
             rustynum_core::mkl_ffi::cblas_ddot(
-                n as i32, x.as_ptr(), incx as i32, y.as_ptr(), incy as i32,
+                n as i32,
+                x.as_ptr(),
+                incx as i32,
+                y.as_ptr(),
+                incy as i32,
             )
         };
     }
@@ -97,7 +105,12 @@ pub fn saxpy(n: usize, alpha: f32, x: &[f32], incx: usize, y: &mut [f32], incy: 
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_saxpy(
-                n as i32, alpha, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                alpha,
+                x.as_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -123,7 +136,12 @@ pub fn daxpy(n: usize, alpha: f64, x: &[f64], incx: usize, y: &mut [f64], incy: 
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_daxpy(
-                n as i32, alpha, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                alpha,
+                x.as_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -193,9 +211,7 @@ pub fn dscal(n: usize, alpha: f64, x: &mut [f64], incx: usize) {
 pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
     #[cfg(feature = "mkl")]
     {
-        return unsafe {
-            rustynum_core::mkl_ffi::cblas_snrm2(n as i32, x.as_ptr(), incx as i32)
-        };
+        return unsafe { rustynum_core::mkl_ffi::cblas_snrm2(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
         simd::nrm2_f32(&x[..n])
@@ -210,9 +226,7 @@ pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
 pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
     #[cfg(feature = "mkl")]
     {
-        return unsafe {
-            rustynum_core::mkl_ffi::cblas_dnrm2(n as i32, x.as_ptr(), incx as i32)
-        };
+        return unsafe { rustynum_core::mkl_ffi::cblas_dnrm2(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
         simd::nrm2_f64(&x[..n])
@@ -231,9 +245,7 @@ pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
 pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
     #[cfg(feature = "mkl")]
     {
-        return unsafe {
-            rustynum_core::mkl_ffi::cblas_sasum(n as i32, x.as_ptr(), incx as i32)
-        };
+        return unsafe { rustynum_core::mkl_ffi::cblas_sasum(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
         simd::asum_f32(&x[..n])
@@ -248,9 +260,7 @@ pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
 pub fn dasum(n: usize, x: &[f64], incx: usize) -> f64 {
     #[cfg(feature = "mkl")]
     {
-        return unsafe {
-            rustynum_core::mkl_ffi::cblas_dasum(n as i32, x.as_ptr(), incx as i32)
-        };
+        return unsafe { rustynum_core::mkl_ffi::cblas_dasum(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
         simd::asum_f64(&x[..n])
@@ -347,7 +357,11 @@ pub fn scopy(n: usize, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_scopy(
-                n as i32, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                x.as_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -368,7 +382,11 @@ pub fn dcopy(n: usize, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dcopy(
-                n as i32, x.as_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                x.as_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -393,7 +411,11 @@ pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_sswap(
-                n as i32, x.as_mut_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                x.as_mut_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;
@@ -414,7 +436,11 @@ pub fn dswap(n: usize, x: &mut [f64], incx: usize, y: &mut [f64], incy: usize) {
     {
         unsafe {
             rustynum_core::mkl_ffi::cblas_dswap(
-                n as i32, x.as_mut_ptr(), incx as i32, y.as_mut_ptr(), incy as i32,
+                n as i32,
+                x.as_mut_ptr(),
+                incx as i32,
+                y.as_mut_ptr(),
+                incy as i32,
             );
         }
         return;

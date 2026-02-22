@@ -129,11 +129,7 @@ pub fn approx_mean_std_f32(data: &[f32]) -> (f32, f32) {
 ///
 /// Usage: compute row norms of A, find rows above threshold,
 /// only multiply those rows in the f32 GEMM.
-pub fn approx_row_norms_f32(
-    data: &[f32],
-    rows: usize,
-    cols: usize,
-) -> Vec<f32> {
+pub fn approx_row_norms_f32(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     assert!(data.len() >= rows * cols);
     let mut norms = Vec::with_capacity(rows);
 
@@ -164,12 +160,7 @@ pub fn approx_row_norms_f32(
 
 /// Select top-k rows by approximate norm (INT8 prefilter).
 /// Returns indices of the top-k rows, sorted descending by norm.
-pub fn top_k_rows_by_norm(
-    data: &[f32],
-    rows: usize,
-    cols: usize,
-    k: usize,
-) -> Vec<usize> {
+pub fn top_k_rows_by_norm(data: &[f32], rows: usize, cols: usize, k: usize) -> Vec<usize> {
     let norms = approx_row_norms_f32(data, rows, cols);
     let mut indices: Vec<usize> = (0..rows).collect();
     indices.sort_unstable_by(|&a, &b| norms[b].total_cmp(&norms[a]));
@@ -196,9 +187,7 @@ pub fn pruned_gemm_rows(
     let threshold = sorted_norms[thresh_idx];
 
     // Select rows above threshold
-    let active_rows: Vec<usize> = (0..m)
-        .filter(|&i| norms[i] >= threshold)
-        .collect();
+    let active_rows: Vec<usize> = (0..m).filter(|&i| norms[i] >= threshold).collect();
 
     let active_m = active_rows.len();
     let mut c = vec![0.0f32; active_m * n];
@@ -261,11 +250,7 @@ pub fn approx_hamming_candidates(
 
 /// INT8 approximate standard deviation per column.
 /// Useful for feature selection: prune low-variance columns before GEMM.
-pub fn approx_column_std(
-    data: &[f32],
-    rows: usize,
-    cols: usize,
-) -> Vec<f32> {
+pub fn approx_column_std(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     let mut stds = Vec::with_capacity(cols);
 
     for j in 0..cols {
@@ -312,26 +297,30 @@ mod tests {
 
         // Exact: mean=49.995, std≈28.87
         let exact_mean: f32 = data.iter().sum::<f32>() / data.len() as f32;
-        let exact_var: f32 = data.iter().map(|&x| (x - exact_mean).powi(2)).sum::<f32>()
-            / data.len() as f32;
+        let exact_var: f32 =
+            data.iter().map(|&x| (x - exact_mean).powi(2)).sum::<f32>() / data.len() as f32;
         let exact_std = exact_var.sqrt();
 
         assert!(
             (mean - exact_mean).abs() < exact_mean.abs() * 0.02,
-            "mean: {} vs exact {}", mean, exact_mean
+            "mean: {} vs exact {}",
+            mean,
+            exact_mean
         );
         assert!(
             (std - exact_std).abs() < exact_std * 0.05,
-            "std: {} vs exact {}", std, exact_std
+            "std: {} vs exact {}",
+            std,
+            exact_std
         );
     }
 
     #[test]
     fn test_approx_row_norms() {
         let data = vec![
-            3.0, 4.0,  // norm = 5
-            0.0, 0.0,  // norm = 0
-            1.0, 0.0,  // norm = 1
+            3.0, 4.0, // norm = 5
+            0.0, 0.0, // norm = 0
+            1.0, 0.0, // norm = 1
         ];
         let norms = approx_row_norms_f32(&data, 3, 2);
         assert!((norms[0] - 5.0).abs() < 0.5);
@@ -342,10 +331,10 @@ mod tests {
     #[test]
     fn test_top_k_rows() {
         let data = vec![
-            1.0, 0.0,  // norm = 1
+            1.0, 0.0, // norm = 1
             10.0, 0.0, // norm = 10
-            5.0, 0.0,  // norm = 5
-            0.1, 0.0,  // norm = 0.1
+            5.0, 0.0, // norm = 5
+            0.1, 0.0, // norm = 0.1
         ];
         let top = top_k_rows_by_norm(&data, 4, 2, 2);
         assert_eq!(top[0], 1); // norm=10
@@ -369,7 +358,7 @@ mod tests {
         let results = approx_hamming_candidates(&query, &db, bytes_per_vec, n_vectors, 3);
         assert_eq!(results[0].0, 42); // exact match = 0 distance
         assert_eq!(results[0].1, 0);
-        assert_eq!(results[1].0, 7);  // 1 bit different
+        assert_eq!(results[1].0, 7); // 1 bit different
         assert_eq!(results[1].1, 1);
     }
 
@@ -377,10 +366,7 @@ mod tests {
     fn test_approx_column_std() {
         // 4 rows, 3 cols
         let data = vec![
-            1.0, 10.0, 0.0,
-            2.0, 20.0, 0.0,
-            3.0, 30.0, 0.0,
-            4.0, 40.0, 0.0,
+            1.0, 10.0, 0.0, 2.0, 20.0, 0.0, 3.0, 30.0, 0.0, 4.0, 40.0, 0.0,
         ];
         let stds = approx_column_std(&data, 4, 3);
         // Col 0: [1,2,3,4] std≈1.12

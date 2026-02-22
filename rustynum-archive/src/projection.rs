@@ -87,8 +87,12 @@ pub fn simhash_batch_project(
     // (n × d) × (d × container_bits) → (n × container_bits)
     let mut projections = vec![0.0f32; n * container_bits];
     gemm_tiled(
-        embeddings, &hyperplanes, &mut projections,
-        n, container_bits, d,
+        embeddings,
+        &hyperplanes,
+        &mut projections,
+        n,
+        container_bits,
+        d,
     );
 
     // Extract sign bits into packed binary containers
@@ -103,11 +107,7 @@ pub fn simhash_batch_project(
 }
 
 /// Single-vector SimHash projection (convenience wrapper).
-pub fn simhash_project(
-    embedding: &[f32],
-    container_bits: usize,
-    seed: u64,
-) -> NumArrayU8 {
+pub fn simhash_project(embedding: &[f32], container_bits: usize, seed: u64) -> NumArrayU8 {
     let mut result = simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed);
     result.pop().unwrap()
 }
@@ -173,11 +173,7 @@ fn pack_sign_bits(projections: &[f32], container_bytes: usize) -> Vec<u8> {
 ///
 /// Avoids f32 intermediate — uses int8 dot products against
 /// random sign hyperplanes for maximum throughput.
-pub fn simhash_int8_project(
-    embedding_i8: &[i8],
-    container_bits: usize,
-    seed: u64,
-) -> NumArrayU8 {
+pub fn simhash_int8_project(embedding_i8: &[i8], container_bits: usize, seed: u64) -> NumArrayU8 {
     let d = embedding_i8.len();
     let container_bytes = container_bits / 8;
 
@@ -232,7 +228,11 @@ mod tests {
         let c2 = simhash_project(&emb2, 8192, 42);
 
         let dist = c1.hamming_distance(&c2);
-        assert!(dist < 1000, "Similar inputs should have low Hamming distance, got {}", dist);
+        assert!(
+            dist < 1000,
+            "Similar inputs should have low Hamming distance, got {}",
+            dist
+        );
     }
 
     #[test]

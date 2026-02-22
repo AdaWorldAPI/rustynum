@@ -172,11 +172,7 @@ pub fn carrier_encode(
 /// Cost: 64 VPDPBUSD instructions (32 per component).
 ///
 /// Returns (phase_offset, amplitude).
-pub fn carrier_decode(
-    container: &[i8],
-    basis: &CarrierBasis,
-    freq_idx: u8,
-) -> (f32, f32) {
+pub fn carrier_decode(container: &[i8], basis: &CarrierBasis, freq_idx: u8) -> (f32, f32) {
     assert_eq!(container.len(), 2048);
     let fi = freq_idx as usize;
 
@@ -346,17 +342,16 @@ impl CarrierRecord {
         assert_eq!(cam.len(), CONTAINER_BYTES);
         assert_eq!(btree.len(), CONTAINER_BYTES);
         assert_eq!(embed.len(), CONTAINER_BYTES);
-        Self { meta, cam, btree, embed }
+        Self {
+            meta,
+            cam,
+            btree,
+            embed,
+        }
     }
 
     /// Encode a concept into the CAM container at a given frequency.
-    pub fn encode_cam(
-        &mut self,
-        basis: &CarrierBasis,
-        freq_idx: u8,
-        phase: f32,
-        amplitude: f32,
-    ) {
+    pub fn encode_cam(&mut self, basis: &CarrierBasis, freq_idx: u8, phase: f32, amplitude: f32) {
         carrier_encode(&mut self.cam, basis, freq_idx, phase, amplitude);
     }
 
@@ -366,13 +361,7 @@ impl CarrierRecord {
     }
 
     /// Encode a concept into the EMBED container at a given frequency.
-    pub fn encode_embed(
-        &mut self,
-        basis: &CarrierBasis,
-        freq_idx: u8,
-        phase: f32,
-        amplitude: f32,
-    ) {
+    pub fn encode_embed(&mut self, basis: &CarrierBasis, freq_idx: u8, phase: f32, amplitude: f32) {
         carrier_encode(&mut self.embed, basis, freq_idx, phase, amplitude);
     }
 
@@ -455,9 +444,7 @@ impl CarrierRecord {
                 .iter()
                 .map(|&v| v as i8)
                 .collect(),
-            btree: NumArrayU8::new(
-                data[CONTAINER_BYTES * 2..CONTAINER_BYTES * 3].to_vec(),
-            ),
+            btree: NumArrayU8::new(data[CONTAINER_BYTES * 2..CONTAINER_BYTES * 3].to_vec()),
             embed: data[CONTAINER_BYTES * 3..CONTAINER_BYTES * 4]
                 .iter()
                 .map(|&v| v as i8)
@@ -555,9 +542,9 @@ mod tests {
         for &fi in &[0, 3, 7, 15] {
             let freq = CARRIER_FREQUENCIES[fi] as f64;
             for &j in &[0, 100, 512, 1024, 2000] {
-                let expected_cos =
-                    (amp * (2.0 * PI * freq * j as f64 / n).cos()).round().clamp(-128.0, 127.0)
-                        as i8;
+                let expected_cos = (amp * (2.0 * PI * freq * j as f64 / n).cos())
+                    .round()
+                    .clamp(-128.0, 127.0) as i8;
                 let actual_cos = basis.basis_cos[fi][j];
                 assert!(
                     (actual_cos as i16 - expected_cos as i16).abs() <= 1,
@@ -1022,11 +1009,7 @@ mod tests {
             let mut carrier_errors = Vec::new();
             let mut carrier_amps = Vec::new();
             for i in 0..n as usize {
-                let (rec_phase, rec_amp) = carrier_decode(
-                    &carrier_waveform,
-                    &basis,
-                    i as u8 % 16,
-                );
+                let (rec_phase, rec_amp) = carrier_decode(&carrier_waveform, &basis, i as u8 % 16);
                 carrier_errors.push(phase_error(rec_phase, phases[i]));
                 carrier_amps.push(rec_amp);
             }
@@ -1040,11 +1023,7 @@ mod tests {
             use crate::phase::{circular_distance_i8, phase_bundle_circular, phase_unbind_i8};
             let mut rng = crate::phase::SplitMix64(42 + n as u64);
             let phase_vecs: Vec<Vec<u8>> = (0..n)
-                .map(|_| {
-                    (0..2048)
-                        .map(|_| (rng.next() % 256) as u8)
-                        .collect()
-                })
+                .map(|_| (0..2048).map(|_| (rng.next() % 256) as u8).collect())
                 .collect();
 
             let refs: Vec<&[u8]> = phase_vecs.iter().map(|v| v.as_slice()).collect();
@@ -1058,10 +1037,8 @@ mod tests {
                 let dist = circular_distance_i8(&recovered, &phase_vecs[0]);
                 phase_errors.push(dist);
             }
-            let phase_self_recovery = circular_distance_i8(
-                &phase_unbind_i8(&bundle, &phase_vecs[0]),
-                &phase_vecs[0],
-            );
+            let phase_self_recovery =
+                circular_distance_i8(&phase_unbind_i8(&bundle, &phase_vecs[0]), &phase_vecs[0]);
 
             println!(
                 "N={:>2}: carrier_err={:.4} rad ({:>5.1}°)  amp={:.2}  |  phase_self_dist={}",
@@ -1102,6 +1079,9 @@ mod tests {
         let u8_carrier = basis.cos_as_u8(0);
         assert_eq!(u8_carrier.len(), 2048);
         // First sample: cos[0][0] = amplitude (7), offset = 7+128 = 135
-        assert_eq!(u8_carrier[0], (CARRIER_AMPLITUDE.round() as u8).wrapping_add(128));
+        assert_eq!(
+            u8_carrier[0],
+            (CARRIER_AMPLITUDE.round() as u8).wrapping_add(128)
+        );
     }
 }

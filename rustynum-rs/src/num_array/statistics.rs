@@ -313,7 +313,10 @@ where
     /// assert!((p50 - 3.0).abs() < 1e-5);
     /// ```
     pub fn percentile(&self, p: T) -> NumArray<T, Ops> {
-        assert!(!self.data.is_empty(), "Cannot compute percentile of empty array.");
+        assert!(
+            !self.data.is_empty(),
+            "Cannot compute percentile of empty array."
+        );
         assert!(
             p >= T::from_u32(0) && p <= T::from_u32(100),
             "Percentile must be between 0 and 100."
@@ -386,8 +389,7 @@ where
                 }
 
                 let reduced_size: usize = reduced_shape.iter().product();
-                let mut accumulator =
-                    vec![T::from_u32(0); total_elements_to_reduce * reduced_size];
+                let mut accumulator = vec![T::from_u32(0); total_elements_to_reduce * reduced_size];
                 let mut acc_slices: Vec<&mut [T]> =
                     accumulator.chunks_mut(total_elements_to_reduce).collect();
                 let mut counts = vec![0usize; reduced_size];

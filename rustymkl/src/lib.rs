@@ -35,6 +35,6 @@
 
 #![feature(portable_simd)]
 
-pub mod lapack;
 pub mod fft;
+pub mod lapack;
 pub mod vml;

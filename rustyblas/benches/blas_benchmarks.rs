@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rustyblas::{level1, level3, Layout, Transpose};
 
 fn bench_sdot(c: &mut Criterion) {
@@ -31,15 +31,27 @@ fn bench_saxpy(c: &mut Criterion) {
 fn bench_sgemm(c: &mut Criterion) {
     let mut group = c.benchmark_group("sgemm");
     for &n in &[32, 64, 128, 256] {
-        let a: Vec<f32> = (0..n*n).map(|i| (i as f32 * 0.001).sin()).collect();
-        let b: Vec<f32> = (0..n*n).map(|i| (i as f32 * 0.002).cos()).collect();
+        let a: Vec<f32> = (0..n * n).map(|i| (i as f32 * 0.001).sin()).collect();
+        let b: Vec<f32> = (0..n * n).map(|i| (i as f32 * 0.002).cos()).collect();
         let mut c_mat = vec![0.0f32; n * n];
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bench, &n| {
             bench.iter(|| {
                 c_mat.fill(0.0);
                 level3::sgemm(
-                    Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
-                    n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c_mat, n,
+                    Layout::RowMajor,
+                    Transpose::NoTrans,
+                    Transpose::NoTrans,
+                    n,
+                    n,
+                    n,
+                    1.0,
+                    &a,
+                    n,
+                    &b,
+                    n,
+                    0.0,
+                    &mut c_mat,
+                    n,
                 );
             });
         });

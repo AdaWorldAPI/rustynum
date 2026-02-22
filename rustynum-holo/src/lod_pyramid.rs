@@ -220,7 +220,10 @@ pub struct LodAnnotation {
 
 impl LodAnnotation {
     /// Build an annotation from a set of fingerprints.
-    pub fn from_fingerprints(fingerprints: impl Iterator<Item = impl AsRef<[u8]>>, vec_bytes: usize) -> Self {
+    pub fn from_fingerprints(
+        fingerprints: impl Iterator<Item = impl AsRef<[u8]>>,
+        vec_bytes: usize,
+    ) -> Self {
         let mut or_mask = vec![0u8; vec_bytes];
         let mut cardinality = 0usize;
 
@@ -261,10 +264,22 @@ mod tests {
     fn test_or_reduce_2x2() {
         // 2×2 grid, 4 bytes per fingerprint
         let data = vec![
-            0b1000_0000, 0, 0, 0, // (0,0)
-            0b0100_0000, 0, 0, 0, // (0,1)
-            0b0010_0000, 0, 0, 0, // (1,0)
-            0b0001_0000, 0, 0, 0, // (1,1)
+            0b1000_0000,
+            0,
+            0,
+            0, // (0,0)
+            0b0100_0000,
+            0,
+            0,
+            0, // (0,1)
+            0b0010_0000,
+            0,
+            0,
+            0, // (1,0)
+            0b0001_0000,
+            0,
+            0,
+            0, // (1,1)
         ];
         let level = LodLevel {
             data,
@@ -281,11 +296,7 @@ mod tests {
     #[test]
     fn test_or_reduce_odd_dims() {
         // 3×3 grid, 1 byte per fingerprint
-        let data = vec![
-            0x01, 0x02, 0x04,
-            0x08, 0x10, 0x20,
-            0x40, 0x80, 0xFF,
-        ];
+        let data = vec![0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xFF];
         let level = LodLevel {
             data,
             rows: 3,
@@ -323,9 +334,9 @@ mod tests {
     #[test]
     fn test_or_mask_lower_bound() {
         let query = vec![0xFF, 0xFF]; // all bits set
-        let mask = vec![0x0F, 0xF0];  // half the bits
-        // Lower bound = popcount(0xFF & ~0x0F, 0xFF & ~0xF0)
-        //             = popcount(0xF0, 0x0F) = 4 + 4 = 8
+        let mask = vec![0x0F, 0xF0]; // half the bits
+                                     // Lower bound = popcount(0xFF & ~0x0F, 0xFF & ~0xF0)
+                                     //             = popcount(0xF0, 0x0F) = 4 + 4 = 8
         assert_eq!(or_mask_lower_bound(&query, &mask), 8);
     }
 
@@ -333,7 +344,7 @@ mod tests {
     fn test_or_mask_lower_bound_exact_match() {
         let query = vec![0xAA, 0x55];
         let mask = vec![0xFF, 0xFF]; // superset
-        // All query bits covered → lower bound = 0
+                                     // All query bits covered → lower bound = 0
         assert_eq!(or_mask_lower_bound(&query, &mask), 0);
     }
 
@@ -352,10 +363,7 @@ mod tests {
 
     #[test]
     fn test_lod_annotation_lower_bound() {
-        let fps: Vec<Vec<u8>> = vec![
-            vec![0x0F],
-            vec![0xF0],
-        ];
+        let fps: Vec<Vec<u8>> = vec![vec![0x0F], vec![0xF0]];
         let ann = LodAnnotation::from_fingerprints(fps.iter(), 1);
         assert_eq!(ann.or_mask, vec![0xFF]);
 

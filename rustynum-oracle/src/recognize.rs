@@ -12,9 +12,7 @@
 //! Novelty detection: if max projection < threshold OR residual energy > threshold,
 //! the query is novel (doesn't match any known class).
 
-use crate::organic::{
-    XTransPattern, OrganicWAL, PlasticityTracker,
-};
+use crate::organic::{OrganicWAL, PlasticityTracker, XTransPattern};
 use crate::sweep::Base;
 use rustynum_core::Blackboard;
 
@@ -111,7 +109,11 @@ impl Projector64K {
             }
         }
 
-        Self { hyperplanes_flat, d, num_planes }
+        Self {
+            hyperplanes_flat,
+            d,
+            num_planes,
+        }
     }
 
     /// Project a float vector to a binary fingerprint packed as bytes.
@@ -166,7 +168,8 @@ impl Projector64K {
     /// without regenerating random numbers (copy from arena, not zero-copy).
     pub fn write_to_blackboard(&self, bb: &mut Blackboard, name: &str) {
         bb.alloc_f32(name, self.hyperplanes_flat.len());
-        let buf = bb.get_f32_mut(name)
+        let buf = bb
+            .get_f32_mut(name)
             .expect("write_to_blackboard: buffer just allocated, should exist");
         buf.copy_from_slice(&self.hyperplanes_flat);
     }
@@ -179,7 +182,12 @@ impl Projector64K {
     /// experiments at the same dimensionality.
     ///
     /// Returns `None` if the buffer doesn't exist, isn't f32, or has wrong length.
-    pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Option<Self> {
+    pub fn from_blackboard(
+        bb: &Blackboard,
+        name: &str,
+        d: usize,
+        num_planes: usize,
+    ) -> Option<Self> {
         assert!(num_planes > 0 && num_planes.is_multiple_of(8));
         let buf = bb.get_f32(name)?;
         if buf.len() != num_planes * d {
@@ -344,13 +352,7 @@ impl Recognizer {
     ///   avg = (count * avg + new) / (count + 1)
     ///
     /// Then the averaged template is quantized and written via the WAL.
-    pub fn learn(
-        &mut self,
-        class_idx: usize,
-        example: &[i8],
-        amplitude: f32,
-        learning_rate: f32,
-    ) {
+    pub fn learn(&mut self, class_idx: usize, example: &[i8], amplitude: f32, learning_rate: f32) {
         let d = self.projector.d();
         assert_eq!(example.len(), d);
 
@@ -404,8 +406,8 @@ impl Recognizer {
         }
 
         let residual = self.compute_residual_energy(query);
-        let is_novel = best_score < NOVELTY_PROJECTION_THRESHOLD
-            || residual > NOVELTY_RESIDUAL_THRESHOLD;
+        let is_novel =
+            best_score < NOVELTY_PROJECTION_THRESHOLD || residual > NOVELTY_RESIDUAL_THRESHOLD;
 
         RecognitionResult {
             best_class: best_idx,
@@ -637,7 +639,16 @@ pub fn run_recognition_experiment(
     noise_level: f32,
     seed: u64,
 ) -> ExperimentResult {
-    run_recognition_experiment_inner(d, base, channels, num_classes, examples_per_class, noise_level, seed, NUM_HYPERPLANES)
+    run_recognition_experiment_inner(
+        d,
+        base,
+        channels,
+        num_classes,
+        examples_per_class,
+        noise_level,
+        seed,
+        NUM_HYPERPLANES,
+    )
 }
 
 /// Inner experiment function with configurable plane count.
@@ -652,7 +663,16 @@ fn run_recognition_experiment_inner(
     num_planes: usize,
 ) -> ExperimentResult {
     let projector = Projector64K::with_planes(d, num_planes, seed ^ 0xCAFE);
-    let (result, _projector) = run_recognition_experiment_with_projector(d, base, channels, num_classes, examples_per_class, noise_level, seed, projector);
+    let (result, _projector) = run_recognition_experiment_with_projector(
+        d,
+        base,
+        channels,
+        num_classes,
+        examples_per_class,
+        noise_level,
+        seed,
+        projector,
+    );
     result
 }
 
@@ -684,9 +704,7 @@ fn run_recognition_experiment_with_projector(
     };
 
     let templates: Vec<Vec<i8>> = (0..num_classes)
-        .map(|_| {
-            (0..d).map(|_| rng.gen_range_i8(min_val, half)).collect()
-        })
+        .map(|_| (0..d).map(|_| rng.gen_range_i8(min_val, half)).collect())
         .collect();
 
     // Create recognizer with shared projector
@@ -816,7 +834,10 @@ fn run_recognition_sweep_with_planes(num_planes: usize) -> Vec<ExperimentResult>
                     let projector = Projector64K::from_blackboard(&bb, &buf_name, d, num_planes)
                         .expect("projector buffer should exist in blackboard");
                     let (result, _) = run_recognition_experiment_with_projector(
-                        d, base, channels, nc,
+                        d,
+                        base,
+                        channels,
+                        nc,
                         3,     // examples_per_class
                         noise, // noise_level
                         42 + d as u64 + nc as u64,
@@ -842,9 +863,18 @@ pub fn print_recognition_results(results: &[ExperimentResult]) {
 
     println!(
         "{:>6} {:>10} {:>4} {:>6} {:>6} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}",
-        "D", "Base", "Ch", "K", "Noise",
-        "Hamming", "Proj", "2-Stage",
-        "H.Score", "P.Score", "Novelty", "Residual"
+        "D",
+        "Base",
+        "Ch",
+        "K",
+        "Noise",
+        "Hamming",
+        "Proj",
+        "2-Stage",
+        "H.Score",
+        "P.Score",
+        "Novelty",
+        "Residual"
     );
     println!("{}", "-".repeat(120));
 
@@ -876,8 +906,11 @@ pub fn print_recognition_results(results: &[ExperimentResult]) {
         results.iter().map(|r| r.projection_accuracy).sum::<f32>() / results.len() as f32;
     let avg_two: f32 =
         results.iter().map(|r| r.two_stage_accuracy).sum::<f32>() / results.len() as f32;
-    let avg_novelty: f32 =
-        results.iter().map(|r| r.novelty_detection_rate).sum::<f32>() / results.len() as f32;
+    let avg_novelty: f32 = results
+        .iter()
+        .map(|r| r.novelty_detection_rate)
+        .sum::<f32>()
+        / results.len() as f32;
 
     println!("  Mean Hamming accuracy:     {:>6.1}%", avg_hamming * 100.0);
     println!("  Mean Projection accuracy:  {:>6.1}%", avg_proj * 100.0);
@@ -925,10 +958,22 @@ pub fn run_recognition() {
         4096,
     );
 
-    println!("  Hamming accuracy:    {:.1}%", quick.hamming_accuracy * 100.0);
-    println!("  Projection accuracy: {:.1}%", quick.projection_accuracy * 100.0);
-    println!("  Two-stage accuracy:  {:.1}%", quick.two_stage_accuracy * 100.0);
-    println!("  Novelty detection:   {:.1}%", quick.novelty_detection_rate * 100.0);
+    println!(
+        "  Hamming accuracy:    {:.1}%",
+        quick.hamming_accuracy * 100.0
+    );
+    println!(
+        "  Projection accuracy: {:.1}%",
+        quick.projection_accuracy * 100.0
+    );
+    println!(
+        "  Two-stage accuracy:  {:.1}%",
+        quick.two_stage_accuracy * 100.0
+    );
+    println!(
+        "  Novelty detection:   {:.1}%",
+        quick.novelty_detection_rate * 100.0
+    );
     println!("  Mean residual:       {:.3}", quick.mean_residual_energy);
     println!();
 
@@ -939,23 +984,25 @@ pub fn run_recognition() {
 
     // --- Plane count comparison: 1K vs 4K vs 16K vs 64K ---
     println!("\n--- Plane count comparison: D=1024, Signed(7), K=8, noise=0.5 ---\n");
-    println!("{:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "Planes", "Hamming", "Proj", "2-Stage", "Novelty", "Residual");
+    println!(
+        "{:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "Planes", "Hamming", "Proj", "2-Stage", "Novelty", "Residual"
+    );
     println!("{}", "-".repeat(68));
     for &planes in &[1024, 4096, 16384, 65536] {
         let t0 = std::time::Instant::now();
-        let r = run_recognition_experiment_inner(
-            1024, Base::Signed(7), 32, 8, 3, 0.5, 42, planes,
-        );
+        let r = run_recognition_experiment_inner(1024, Base::Signed(7), 32, 8, 3, 0.5, 42, planes);
         let elapsed = t0.elapsed();
-        println!("{:>8} {:>9.1}% {:>9.1}% {:>9.1}% {:>9.1}% {:>9.3}  ({:.1}s)",
+        println!(
+            "{:>8} {:>9.1}% {:>9.1}% {:>9.1}% {:>9.1}% {:>9.3}  ({:.1}s)",
             planes,
             r.hamming_accuracy * 100.0,
             r.projection_accuracy * 100.0,
             r.two_stage_accuracy * 100.0,
             r.novelty_detection_rate * 100.0,
             r.mean_residual_energy,
-            elapsed.as_secs_f32());
+            elapsed.as_secs_f32()
+        );
     }
 }
 
@@ -971,7 +1018,10 @@ fn run_timing_benchmarks() {
     let t0 = Instant::now();
     let proj = Projector64K::new(d, 99);
     let proj_create_ms = t0.elapsed().as_millis();
-    println!("  Projector64K::new(D={}, 64K planes):  {}ms", d, proj_create_ms);
+    println!(
+        "  Projector64K::new(D={}, 64K planes):  {}ms",
+        d, proj_create_ms
+    );
 
     // 2. Single projection (64K bits)
     let template: Vec<i8> = (0..d).map(|_| rng.gen_range_i8(-3, 3)).collect();
@@ -982,7 +1032,11 @@ fn run_timing_benchmarks() {
         std::hint::black_box(proj.project(std::hint::black_box(&fv)));
     }
     let proj_us = t0.elapsed().as_micros() as f64 / iters as f64;
-    println!("  Single project (64K bits):             {:.1}us ({:.2}ms)", proj_us, proj_us / 1000.0);
+    println!(
+        "  Single project (64K bits):             {:.1}us ({:.2}ms)",
+        proj_us,
+        proj_us / 1000.0
+    );
 
     // 3. Batch projection (100 templates)
     let templates: Vec<Vec<i8>> = (0..100)
@@ -1017,7 +1071,10 @@ fn run_timing_benchmarks() {
         recognizer.register_class(i as u32, t.clone());
     }
     let reg_ms = t0.elapsed().as_millis();
-    println!("  Recognizer setup ({} classes, 4K):     {}ms", num_classes, reg_ms);
+    println!(
+        "  Recognizer setup ({} classes, 4K):     {}ms",
+        num_classes, reg_ms
+    );
 
     // 6. Single recognize (projection readout, 20 classes)
     let query = &class_templates[0];
@@ -1027,7 +1084,12 @@ fn run_timing_benchmarks() {
         std::hint::black_box(recognizer.recognize_orthogonal(std::hint::black_box(query)));
     }
     let rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
-    println!("  Single recognize ({} classes):         {:.1}us ({:.3}ms)", num_classes, rec_us, rec_us / 1000.0);
+    println!(
+        "  Single recognize ({} classes):         {:.1}us ({:.3}ms)",
+        num_classes,
+        rec_us,
+        rec_us / 1000.0
+    );
 
     // 7. Single recognize_hamming (20 classes)
     let t0 = Instant::now();
@@ -1035,7 +1097,12 @@ fn run_timing_benchmarks() {
         std::hint::black_box(recognizer.recognize_hamming(std::hint::black_box(query)));
     }
     let ham_rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
-    println!("  Single hamming recognize ({} cl):     {:.1}us ({:.3}ms)", num_classes, ham_rec_us, ham_rec_us / 1000.0);
+    println!(
+        "  Single hamming recognize ({} cl):     {:.1}us ({:.3}ms)",
+        num_classes,
+        ham_rec_us,
+        ham_rec_us / 1000.0
+    );
 
     // 8. Single two-stage recognize (20 classes)
     let t0 = Instant::now();
@@ -1043,7 +1110,12 @@ fn run_timing_benchmarks() {
         std::hint::black_box(recognizer.recognize_two_stage(std::hint::black_box(query)));
     }
     let two_rec_us = t0.elapsed().as_micros() as f64 / rec_iters as f64;
-    println!("  Single two-stage ({} classes):        {:.1}us ({:.3}ms)", num_classes, two_rec_us, two_rec_us / 1000.0);
+    println!(
+        "  Single two-stage ({} classes):        {:.1}us ({:.3}ms)",
+        num_classes,
+        two_rec_us,
+        two_rec_us / 1000.0
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,15 +1154,10 @@ mod tests {
         let samples: Vec<f64> = (0..n).map(|_| rng.next_gaussian()).collect();
 
         let mean: f64 = samples.iter().sum::<f64>() / n as f64;
-        let variance: f64 =
-            samples.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
+        let variance: f64 = samples.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
 
         // Mean should be near 0, variance near 1
-        assert!(
-            mean.abs() < 0.1,
-            "Gaussian mean = {}, expected ~0.0",
-            mean
-        );
+        assert!(mean.abs() < 0.1, "Gaussian mean = {}, expected ~0.0", mean);
         assert!(
             (variance - 1.0).abs() < 0.2,
             "Gaussian variance = {}, expected ~1.0",
@@ -1343,12 +1410,17 @@ mod tests {
         }
         let after_accuracy = post_correct as f32 / num_classes as f32;
 
-        assert!(after_accuracy >= before_accuracy,
+        assert!(
+            after_accuracy >= before_accuracy,
             "Learning should not decrease accuracy: before={:.1}%, after={:.1}%",
-            before_accuracy * 100.0, after_accuracy * 100.0);
-        assert!(after_accuracy > 0.5,
+            before_accuracy * 100.0,
+            after_accuracy * 100.0
+        );
+        assert!(
+            after_accuracy > 0.5,
             "Post-learning accuracy {:.1}% should exceed 50%",
-            after_accuracy * 100.0);
+            after_accuracy * 100.0
+        );
     }
 
     #[test]
@@ -1416,7 +1488,11 @@ mod tests {
         let fp2 = proj.project(&v2);
         let sim = hamming_similarity_64k(&fp1, &fp2);
 
-        assert!((0.0..=1.0).contains(&sim), "Similarity {} out of [0,1]", sim);
+        assert!(
+            (0.0..=1.0).contains(&sim),
+            "Similarity {} out of [0,1]",
+            sim
+        );
     }
 
     #[test]
@@ -1513,7 +1589,11 @@ mod tests {
     fn test_projection_batch() {
         let proj = Projector64K::with_planes(128, TEST_PLANES, 42);
         let templates: Vec<Vec<i8>> = (0..4)
-            .map(|i| (0..128).map(|j| ((i * 37 + j * 13) % 7 - 3) as i8).collect())
+            .map(|i| {
+                (0..128)
+                    .map(|j| ((i * 37 + j * 13) % 7 - 3) as i8)
+                    .collect()
+            })
             .collect();
 
         let fps = proj.project_batch(&templates);
