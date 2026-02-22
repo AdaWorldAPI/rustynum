@@ -4,7 +4,6 @@
 //! via the CBLAS-style `Layout` parameter.
 
 use rustynum_core::layout::{Layout, Transpose, Uplo};
-use rustynum_core::parallel::parallel_for_chunks;
 use rustynum_core::simd;
 
 // ============================================================================
@@ -41,7 +40,7 @@ pub fn sgemv(
     y: &mut [f32],
     incy: usize,
 ) {
-    let (rows, cols) = match trans {
+    let (rows, _cols) = match trans {
         Transpose::NoTrans => (m, n),
         _ => (n, m),
     };
@@ -135,7 +134,7 @@ pub fn dgemv(
     y: &mut [f64],
     incy: usize,
 ) {
-    let (rows, cols) = match trans {
+    let (rows, _cols) = match trans {
         Transpose::NoTrans => (m, n),
         _ => (n, m),
     };

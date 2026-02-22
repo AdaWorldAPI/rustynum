@@ -1,4 +1,4 @@
-use crate::num_array::{NumArray, NumArrayF32, NumArrayF64};
+use crate::num_array::NumArray;
 use crate::simd_ops::SimdOps;
 use crate::traits::{FromU32, FromUsize, NumOps};
 use std::fmt::Debug;
@@ -486,6 +486,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::num_array::{NumArrayF32, NumArrayF64};
 
     #[test]
     fn test_mean_f32() {

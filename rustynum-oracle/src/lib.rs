@@ -19,6 +19,7 @@ pub mod oracle;
 pub mod organic;
 pub mod aiwar_ghost;
 pub mod ghost_discovery;
+pub mod recognize;
 
 pub use linalg::{
     cholesky_solve, condition_number,
@@ -54,3 +55,11 @@ pub use organic::{
     ORGANIC_CHANNELS, ORGANIC_PLASTICITY,
 };
 pub use organic::FlushAction as OrganicFlushAction;
+
+pub use recognize::{
+    Projector64K, Recognizer, RecognitionResult, RecognitionMethod,
+    ExperimentResult,
+    hamming_64k, hamming_similarity_64k,
+    run_recognition_experiment, run_recognition_sweep,
+    print_recognition_results, run_recognition,
+};

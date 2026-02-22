@@ -38,6 +38,7 @@
 pub mod phase;
 pub mod cogrecord_v3;
 pub mod carrier;
+pub mod delta_layer;
 pub mod focus;
 pub mod holograph;
 
@@ -77,6 +78,8 @@ pub use focus::{
     focus_xor_auto,
     FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z,
 };
+
+pub use delta_layer::{DeltaLayer, LayerStack};
 
 pub use holograph::{
     // Core Gabor wavelet types and operations

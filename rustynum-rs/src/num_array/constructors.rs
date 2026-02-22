@@ -4,7 +4,6 @@ use crate::simd_ops::SimdOps;
 use crate::traits::{ExpLog, FromU32, FromUsize, NumOps}; // ExpLog might only be for linspace via Neg
 use std::fmt::Debug;
 use std::iter::Sum; // For Sum<T>
-use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Neg, Sub}; // Neg only for linspace via its original impl block
 
 impl<T, Ops> NumArray<T, Ops>

@@ -14,6 +14,7 @@
 
 pub mod blackboard;
 pub mod compute;
+pub mod fingerprint;
 pub mod layout;
 pub mod parallel;
 
@@ -29,5 +30,6 @@ pub mod simd;
 
 pub use blackboard::{Blackboard, BufferHandle};
 pub use compute::{ComputeCaps, ComputeTier, Precision};
+pub use fingerprint::{Fingerprint, Fingerprint2K, Fingerprint1K, Fingerprint64K};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
