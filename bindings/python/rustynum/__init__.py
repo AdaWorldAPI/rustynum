@@ -15,11 +15,24 @@ from .functions import (
     ones,
     sigmoid,
     zeros,
+    # HDC/VSA
+    hamming_distance,
+    hamming_batch,
+    hamming_top_k,
+    bundle_u8,
+    # INT8 GEMM
+    quantize_f32_to_u8,
+    quantize_f32_to_i8,
+    int8_gemm_i32,
+    int8_gemm_f32,
 )
 from .num_array_class import NumArray
+from ._rustynum import PyCogRecord as CogRecord
 
 __all__ = [
     "NumArray",
+    "CogRecord",
+    # existing
     "zeros",
     "ones",
     "arange",
@@ -34,4 +47,14 @@ __all__ = [
     "sigmoid",
     "concatenate",
     "norm",
+    # HDC/VSA
+    "hamming_distance",
+    "hamming_batch",
+    "hamming_top_k",
+    "bundle_u8",
+    # INT8 GEMM
+    "quantize_f32_to_u8",
+    "quantize_f32_to_i8",
+    "int8_gemm_i32",
+    "int8_gemm_f32",
 ]

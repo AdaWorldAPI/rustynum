@@ -119,4 +119,51 @@ impl PyNumArrayU8 {
         self.inner = &self.inner * scalar;
         Ok(())
     }
+
+    // === HDC/VSA Operations ===
+
+    /// XOR bind: a ^ b (element-wise). Self-inverse: bind(bind(a,b), b) == a
+    fn bind(&self, other: PyRef<PyNumArrayU8>) -> PyResult<PyNumArrayU8> {
+        Ok(PyNumArrayU8 { inner: self.inner.bind(&other.inner) })
+    }
+
+    /// Permute: circular bit rotation by k positions.
+    fn permute(&self, k: usize) -> PyResult<PyNumArrayU8> {
+        Ok(PyNumArrayU8 { inner: self.inner.permute(k) })
+    }
+
+    /// Hamming distance (VPOPCNTDQ-accelerated on AVX-512 CPUs).
+    fn hamming_distance(&self, other: PyRef<PyNumArrayU8>) -> PyResult<u64> {
+        Ok(self.inner.hamming_distance(&other.inner))
+    }
+
+    /// Population count: number of set bits.
+    fn popcount(&self) -> PyResult<u64> {
+        Ok(self.inner.popcount())
+    }
+
+    /// Signed dot product (interprets u8 as i8).
+    fn dot_i8(&self, other: PyRef<PyNumArrayU8>) -> PyResult<i64> {
+        Ok(self.inner.dot_i8(&other.inner))
+    }
+
+    /// Cosine similarity (signed i8 interpretation).
+    fn cosine_i8(&self, other: PyRef<PyNumArrayU8>) -> PyResult<f64> {
+        Ok(self.inner.cosine_i8(&other.inner))
+    }
+
+    /// Adaptive Hamming: returns None if distance exceeds threshold (early exit).
+    fn hamming_distance_adaptive(&self, other: PyRef<PyNumArrayU8>, threshold: u64) -> PyResult<Option<u64>> {
+        Ok(self.inner.hamming_distance_adaptive(&other.inner, threshold))
+    }
+
+    /// Adaptive Hamming batch search: returns vec of (index, distance) for matches below threshold.
+    fn hamming_search_adaptive(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, threshold: u64) -> PyResult<Vec<(usize, u64)>> {
+        Ok(self.inner.hamming_search_adaptive(&database.inner, vec_len, count, threshold))
+    }
+
+    /// Adaptive cosine search: returns vec of (index, similarity) for matches above min_similarity.
+    fn cosine_search_adaptive(&self, database: PyRef<PyNumArrayU8>, vec_len: usize, count: usize, min_similarity: f64) -> PyResult<Vec<(usize, f64)>> {
+        Ok(self.inner.cosine_search_adaptive(&database.inner, vec_len, count, min_similarity))
+    }
 }

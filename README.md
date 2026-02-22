@@ -555,6 +555,37 @@ After bundling 512D+ hypervectors, use INT8 prefilter to avoid full-precision se
 - Random number generation (use the `rand` crate)
 - i32/i64 Python bindings (f32, f64, u8 available via PyO3)
 
+### Python API (via PyO3)
+
+```python
+import rustynum as rn
+
+# --- Things numpy can do (but rustynum does them in Rust SIMD) ---
+a = rn.NumArray([1.0, 2.0, 3.0])
+b = a @ a  # GEMM via AVX-512 microkernel
+
+# --- Things numpy CANNOT do ---
+
+# VPOPCNTDQ-accelerated Hamming distance
+dist = rn.hamming_distance(bytes_a, bytes_b)
+indices, dists = rn.hamming_top_k(query, db, n, 2048, k=10)
+
+# HDC/VSA algebra
+bound = u8_arr.bind(other)       # XOR bind
+perm = u8_arr.permute(3)         # circular rotation
+merged = rn.bundle_u8([a, b, c]) # majority vote superposition
+
+# 4-channel CogRecord cascade search
+rec = rn.CogRecord(meta, cam, btree, embed)
+dists = rec.hamming_4ch(other)
+result = rec.sweep_adaptive(other, [100, 200, 200, 300])
+
+# INT8 GEMM with VNNI (64 MACs/instruction on AVX-512)
+qa, scale_a, zp_a = rn.quantize_f32_to_u8(weights)
+qb, scale_b, zp_b = rn.quantize_f32_to_i8(activations)
+result = rn.int8_gemm_f32(qa, qb, m, n, k, scale_a, zp_a, scale_b)
+```
+
 ## Design Principles
 
 1. **No 3rd Party Dependencies:** Pure `std::simd` + `core::arch` — zero external crates.

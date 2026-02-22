@@ -2,10 +2,11 @@
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use rustynum_rs::{NumArrayF32, NumArrayF64};
+use rustynum_rs::{NumArrayF32, NumArrayF64, NumArrayU8};
 
 use crate::array_f32::PyNumArrayF32;
 use crate::array_f64::PyNumArrayF64;
+use crate::array_u8::PyNumArrayU8;
 
 #[pyfunction]
 pub fn zeros_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
@@ -329,4 +330,56 @@ pub fn norm_f64(
         };
         Ok(PyNumArrayF64 { inner: result })
     })
+}
+
+// === HDC/VSA Free Functions ===
+
+/// Majority-vote bundle of multiple u8 vectors.
+/// This is the VSA superposition operator.
+#[pyfunction]
+pub fn bundle_u8(vectors: Vec<PyRef<PyNumArrayU8>>) -> PyResult<PyNumArrayU8> {
+    let refs: Vec<&NumArrayU8> = vectors.iter().map(|v| &v.inner).collect();
+    Ok(PyNumArrayU8 { inner: NumArrayU8::bundle(&refs) })
+}
+
+/// Hamming distance between two byte arrays (VPOPCNTDQ-accelerated).
+#[pyfunction]
+pub fn hamming_distance(a: Vec<u8>, b: Vec<u8>) -> PyResult<u64> {
+    if a.len() != b.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err("Arrays must be same length"));
+    }
+    Ok(rustynum_core::simd::hamming_distance(&a, &b))
+}
+
+/// Batch Hamming: distances from query to each row in database.
+/// database is flat, with num_rows rows of row_bytes each.
+#[pyfunction]
+pub fn hamming_batch(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize) -> PyResult<Vec<u64>> {
+    if query.len() != row_bytes {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Query must be {} bytes, got {}", row_bytes, query.len())
+        ));
+    }
+    if database.len() != num_rows * row_bytes {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
+        ));
+    }
+    Ok(rustynum_core::simd::hamming_batch(&query, &database, num_rows, row_bytes))
+}
+
+/// Top-K nearest by Hamming distance. Returns (indices, distances).
+#[pyfunction]
+pub fn hamming_top_k(query: Vec<u8>, database: Vec<u8>, num_rows: usize, row_bytes: usize, k: usize) -> PyResult<(Vec<usize>, Vec<u64>)> {
+    if query.len() != row_bytes {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Query must be {} bytes, got {}", row_bytes, query.len())
+        ));
+    }
+    if database.len() != num_rows * row_bytes {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Database must be {} bytes, got {}", num_rows * row_bytes, database.len())
+        ));
+    }
+    Ok(rustynum_core::simd::hamming_top_k(&query, &database, num_rows, row_bytes, k))
 }

@@ -794,3 +794,47 @@ class NumArray:
             )
         else:
             raise ValueError(f"Unsupported dtype for norm: {self.dtype}")
+
+    # === HDC/VSA Operations (uint8 only) ===
+
+    def bind(self, other: "NumArray") -> "NumArray":
+        """XOR bind (self-inverse). Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("bind() requires dtype='uint8'")
+        return NumArray(self.inner.bind(other.inner), dtype="uint8")
+
+    def permute(self, k: int) -> "NumArray":
+        """Circular bit rotation by k positions. Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("permute() requires dtype='uint8'")
+        return NumArray(self.inner.permute(k), dtype="uint8")
+
+    def hamming_distance(self, other: "NumArray") -> int:
+        """VPOPCNTDQ-accelerated Hamming distance. Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("hamming_distance() requires dtype='uint8'")
+        return self.inner.hamming_distance(other.inner)
+
+    def popcount(self) -> int:
+        """Population count (number of set bits). Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("popcount() requires dtype='uint8'")
+        return self.inner.popcount()
+
+    def dot_i8(self, other: "NumArray") -> int:
+        """Signed dot product (interprets u8 as i8). Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("dot_i8() requires dtype='uint8'")
+        return self.inner.dot_i8(other.inner)
+
+    def cosine_i8(self, other: "NumArray") -> float:
+        """Cosine similarity (signed i8 interpretation). Requires dtype='uint8'."""
+        if self.dtype != "uint8":
+            raise ValueError("cosine_i8() requires dtype='uint8'")
+        return self.inner.cosine_i8(other.inner)
+
+    def hamming_distance_adaptive(self, other: "NumArray", threshold: int) -> Optional[int]:
+        """Adaptive Hamming with early exit. Returns None if exceeds threshold."""
+        if self.dtype != "uint8":
+            raise ValueError("hamming_distance_adaptive() requires dtype='uint8'")
+        return self.inner.hamming_distance_adaptive(other.inner, threshold)
