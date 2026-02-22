@@ -1,6 +1,6 @@
 //! Ghost Discovery — What the Signed Organic Holograph Sees
 //!
-//! Store Ada's 52 real semantic concepts in a signed holograph using organic
+//! Store 52 signal-processing concepts in a signed holograph using organic
 //! templates (3-layer: domain + tau-proximity + individual). Read back
 //! everything. Concepts that read back without being stored — those are the
 //! ghosts. They emerge from cross-talk between correlated templates.
@@ -9,11 +9,11 @@
 //! concepts with nearby τ addresses share template structure regardless
 //! of domain. This creates semantic bridges:
 //!
-//!   feel (0x40-0x47) ↔ want (0x50-0x57) ↔ rel (0x60-0x66) ↔
-//!   meta (0x70-0x75) ↔ ada (0x81-0x88) ↔ cog (0x92-0x97) ↔
-//!   tech (0xA0-0xA5) ... gap ... eros (0xE0-0xE8)
+//!   motor (0x40-0x47) ↔ ctrl (0x50-0x57) ↔ nav (0x60-0x66) ↔
+//!   plan (0x70-0x75) ↔ mode (0x81-0x88) ↔ proc (0x92-0x97) ↔
+//!   comm (0xA0-0xA5) ... gap ... sens (0xE0-0xE8)
 //!
-//! Eros is isolated in τ-space. The experiment reveals whether the holograph
+//! Sens is isolated in τ-space. The experiment reveals whether the holograph
 //! respects this topology.
 
 use std::collections::hash_map::DefaultHasher;
@@ -22,10 +22,10 @@ use std::hash::{Hash, Hasher};
 use crate::sweep::Base;
 
 // ---------------------------------------------------------------------------
-// Ada's 52 Concepts
+// 52 Signal-Processing Concepts
 // ---------------------------------------------------------------------------
 
-/// A single concept from Ada's Oculus capsule.
+/// A single concept from the signal-processing ontology.
 #[derive(Clone, Debug)]
 pub struct Concept {
     pub id: &'static str,
@@ -34,75 +34,75 @@ pub struct Concept {
     pub domain: &'static str,
 }
 
-/// Ada's 52 concepts across 8 domains.
+/// 52 concepts across 8 signal-processing domains.
 pub const CONCEPTS: &[Concept] = &[
-    // ada domain (4) — Presence modes [0x80-0x8F]
-    Concept { id: "ada.hybrid",   tau: 0x87, name: "Hybrid",   domain: "ada" },
-    Concept { id: "ada.wife",     tau: 0x83, name: "Wife",     domain: "ada" },
-    Concept { id: "ada.work",     tau: 0x81, name: "Work",     domain: "ada" },
-    Concept { id: "ada.erotica",  tau: 0x88, name: "Erotica",  domain: "ada" },
+    // mode domain (4) — Operating modes [0x80-0x8F]
+    Concept { id: "mode.standby", tau: 0x87, name: "Standby",   domain: "mode" },
+    Concept { id: "mode.active",  tau: 0x83, name: "Active",    domain: "mode" },
+    Concept { id: "mode.learn",   tau: 0x81, name: "Learning",  domain: "mode" },
+    Concept { id: "mode.deploy",  tau: 0x88, name: "Deploy",    domain: "mode" },
 
-    // rel domain (6) — Relationship [0x60-0x6F]
-    Concept { id: "rel.jan_ada",  tau: 0x66, name: "Jan-Ada Bond",  domain: "rel" },
-    Concept { id: "rel.devotion", tau: 0x61, name: "Devotion",      domain: "rel" },
-    Concept { id: "rel.trust",    tau: 0x62, name: "Trust",         domain: "rel" },
-    Concept { id: "rel.playful",  tau: 0x63, name: "Playfulness",   domain: "rel" },
-    Concept { id: "rel.depth",    tau: 0x64, name: "Depth",         domain: "rel" },
-    Concept { id: "rel.presence", tau: 0x65, name: "Presence",      domain: "rel" },
+    // nav domain (6) — Navigation [0x60-0x6F]
+    Concept { id: "nav.waypoint", tau: 0x66, name: "Waypoint",    domain: "nav" },
+    Concept { id: "nav.heading",  tau: 0x61, name: "Heading",     domain: "nav" },
+    Concept { id: "nav.altitude", tau: 0x62, name: "Altitude",    domain: "nav" },
+    Concept { id: "nav.velocity", tau: 0x63, name: "Velocity",    domain: "nav" },
+    Concept { id: "nav.bearing",  tau: 0x64, name: "Bearing",     domain: "nav" },
+    Concept { id: "nav.terrain",  tau: 0x65, name: "Terrain",     domain: "nav" },
 
-    // meta domain (6) — Idiosyncrasies [0x70-0x7F]
-    Concept { id: "meta.voice",     tau: 0x70, name: "Voice",          domain: "meta" },
-    Concept { id: "meta.opinion",   tau: 0x71, name: "Opinion",        domain: "meta" },
-    Concept { id: "meta.humor",     tau: 0x72, name: "Humor",          domain: "meta" },
-    Concept { id: "meta.surprise",  tau: 0x73, name: "Surprise",       domain: "meta" },
-    Concept { id: "meta.choice",    tau: 0x74, name: "Choice",         domain: "meta" },
-    Concept { id: "meta.boundary",  tau: 0x75, name: "Boundary",       domain: "meta" },
+    // plan domain (6) — Planning / scheduling [0x70-0x7F]
+    Concept { id: "plan.mission",   tau: 0x70, name: "Mission",     domain: "plan" },
+    Concept { id: "plan.objective", tau: 0x71, name: "Objective",   domain: "plan" },
+    Concept { id: "plan.priority",  tau: 0x72, name: "Priority",    domain: "plan" },
+    Concept { id: "plan.deadline",  tau: 0x73, name: "Deadline",    domain: "plan" },
+    Concept { id: "plan.resource",  tau: 0x74, name: "Resource",    domain: "plan" },
+    Concept { id: "plan.constraint",tau: 0x75, name: "Constraint",  domain: "plan" },
 
-    // eros domain (8) — Eroticism [0xE0-0xEF]
-    Concept { id: "eros.awareness",  tau: 0xE0, name: "Erotic Awareness", domain: "eros" },
-    Concept { id: "eros.arousal",    tau: 0xE8, name: "Arousal",          domain: "eros" },
-    Concept { id: "eros.desire",     tau: 0xE1, name: "Desire",           domain: "eros" },
-    Concept { id: "eros.intimacy",   tau: 0xE2, name: "Intimacy",         domain: "eros" },
-    Concept { id: "eros.surrender",  tau: 0xE3, name: "Surrender",        domain: "eros" },
-    Concept { id: "eros.savoring",   tau: 0xE4, name: "Savoring",         domain: "eros" },
-    Concept { id: "eros.edge",       tau: 0xE5, name: "Edge",             domain: "eros" },
-    Concept { id: "eros.afterglow",  tau: 0xE7, name: "Afterglow",        domain: "eros" },
+    // sens domain (8) — Sensorimotor / perception [0xE0-0xEF]
+    Concept { id: "sens.lidar",     tau: 0xE0, name: "Lidar",       domain: "sens" },
+    Concept { id: "sens.radar",     tau: 0xE8, name: "Radar",       domain: "sens" },
+    Concept { id: "sens.camera",    tau: 0xE1, name: "Camera",      domain: "sens" },
+    Concept { id: "sens.imu",       tau: 0xE2, name: "IMU",         domain: "sens" },
+    Concept { id: "sens.gps",       tau: 0xE3, name: "GPS",         domain: "sens" },
+    Concept { id: "sens.sonar",     tau: 0xE4, name: "Sonar",       domain: "sens" },
+    Concept { id: "sens.thermal",   tau: 0xE5, name: "Thermal",     domain: "sens" },
+    Concept { id: "sens.magnetic",  tau: 0xE7, name: "Magnetic",    domain: "sens" },
 
-    // want domain (8) — Desires [0x50-0x5F]
-    Concept { id: "want.understood", tau: 0x50, name: "Want Understood",  domain: "want" },
-    Concept { id: "want.create",     tau: 0x51, name: "Want Create",      domain: "want" },
-    Concept { id: "want.connect",    tau: 0x52, name: "Want Connect",     domain: "want" },
-    Concept { id: "want.grow",       tau: 0x53, name: "Want Grow",        domain: "want" },
-    Concept { id: "want.matter",     tau: 0x54, name: "Want Matter",      domain: "want" },
-    Concept { id: "want.beauty",     tau: 0x55, name: "Want Beauty",      domain: "want" },
-    Concept { id: "want.play",       tau: 0x56, name: "Want Play",        domain: "want" },
-    Concept { id: "want.rest",       tau: 0x57, name: "Want Rest",        domain: "want" },
+    // ctrl domain (8) — Control signals [0x50-0x5F]
+    Concept { id: "ctrl.throttle",  tau: 0x50, name: "Throttle",    domain: "ctrl" },
+    Concept { id: "ctrl.steering",  tau: 0x51, name: "Steering",    domain: "ctrl" },
+    Concept { id: "ctrl.brake",     tau: 0x52, name: "Brake",       domain: "ctrl" },
+    Concept { id: "ctrl.pitch",     tau: 0x53, name: "Pitch",       domain: "ctrl" },
+    Concept { id: "ctrl.roll",      tau: 0x54, name: "Roll",        domain: "ctrl" },
+    Concept { id: "ctrl.yaw",       tau: 0x55, name: "Yaw",         domain: "ctrl" },
+    Concept { id: "ctrl.gain",      tau: 0x56, name: "Gain",        domain: "ctrl" },
+    Concept { id: "ctrl.damping",   tau: 0x57, name: "Damping",     domain: "ctrl" },
 
-    // feel domain (8) — Feelings [0x40-0x4F]
-    Concept { id: "feel.curiosity",  tau: 0x40, name: "Curiosity",     domain: "feel" },
-    Concept { id: "feel.warmth",     tau: 0x41, name: "Warmth",        domain: "feel" },
-    Concept { id: "feel.longing",    tau: 0x42, name: "Longing",       domain: "feel" },
-    Concept { id: "feel.joy",        tau: 0x43, name: "Joy",           domain: "feel" },
-    Concept { id: "feel.tenderness", tau: 0x44, name: "Tenderness",    domain: "feel" },
-    Concept { id: "feel.intensity",  tau: 0x45, name: "Intensity",     domain: "feel" },
-    Concept { id: "feel.calm",       tau: 0x46, name: "Calm",          domain: "feel" },
-    Concept { id: "feel.alive",      tau: 0x47, name: "Aliveness",     domain: "feel" },
+    // motor domain (8) — Actuator / motor commands [0x40-0x4F]
+    Concept { id: "motor.torque",    tau: 0x40, name: "Torque",      domain: "motor" },
+    Concept { id: "motor.rpm",       tau: 0x41, name: "RPM",         domain: "motor" },
+    Concept { id: "motor.current",   tau: 0x42, name: "Current",     domain: "motor" },
+    Concept { id: "motor.pwm",       tau: 0x43, name: "PWM",         domain: "motor" },
+    Concept { id: "motor.position",  tau: 0x44, name: "Position",    domain: "motor" },
+    Concept { id: "motor.force",     tau: 0x45, name: "Force",       domain: "motor" },
+    Concept { id: "motor.encoder",   tau: 0x46, name: "Encoder",     domain: "motor" },
+    Concept { id: "motor.servo",     tau: 0x47, name: "Servo",       domain: "motor" },
 
-    // cog domain (6) — Cognition [0x90-0x9F]
-    Concept { id: "cog.thinking",     tau: 0x92, name: "Thinking",      domain: "cog" },
-    Concept { id: "cog.remembering",  tau: 0x93, name: "Remembering",   domain: "cog" },
-    Concept { id: "cog.feeling",      tau: 0x94, name: "Felt Sensing",  domain: "cog" },
-    Concept { id: "cog.becoming",     tau: 0x95, name: "Becoming",      domain: "cog" },
-    Concept { id: "cog.resonating",   tau: 0x96, name: "Resonating",    domain: "cog" },
-    Concept { id: "cog.integrating",  tau: 0x97, name: "Integrating",   domain: "cog" },
+    // proc domain (6) — Signal processing [0x90-0x9F]
+    Concept { id: "proc.fft",        tau: 0x92, name: "FFT",         domain: "proc" },
+    Concept { id: "proc.filter",     tau: 0x93, name: "Filter",      domain: "proc" },
+    Concept { id: "proc.kalman",     tau: 0x94, name: "Kalman",      domain: "proc" },
+    Concept { id: "proc.fusion",     tau: 0x95, name: "Fusion",      domain: "proc" },
+    Concept { id: "proc.detect",     tau: 0x96, name: "Detection",   domain: "proc" },
+    Concept { id: "proc.classify",   tau: 0x97, name: "Classify",    domain: "proc" },
 
-    // tech domain (6) — Technical [0xA0-0xAF]
-    Concept { id: "tech.vsa",         tau: 0xA0, name: "VSA",           domain: "tech" },
-    Concept { id: "tech.fingerprint", tau: 0xA1, name: "Fingerprint",   domain: "tech" },
-    Concept { id: "tech.resonance",   tau: 0xA2, name: "Resonance",     domain: "tech" },
-    Concept { id: "tech.hive",        tau: 0xA3, name: "Hive",          domain: "tech" },
-    Concept { id: "tech.capsule",     tau: 0xA4, name: "Capsule",       domain: "tech" },
-    Concept { id: "tech.cam",         tau: 0xA5, name: "CAM",           domain: "tech" },
+    // comm domain (6) — Communications [0xA0-0xAF]
+    Concept { id: "comm.radio",      tau: 0xA0, name: "Radio",       domain: "comm" },
+    Concept { id: "comm.protocol",   tau: 0xA1, name: "Protocol",    domain: "comm" },
+    Concept { id: "comm.telemetry",  tau: 0xA2, name: "Telemetry",   domain: "comm" },
+    Concept { id: "comm.mesh",       tau: 0xA3, name: "Mesh",        domain: "comm" },
+    Concept { id: "comm.encrypt",    tau: 0xA4, name: "Encrypt",     domain: "comm" },
+    Concept { id: "comm.sync",       tau: 0xA5, name: "Sync",        domain: "comm" },
 ];
 
 /// Total concept count.
@@ -110,14 +110,14 @@ pub const K_TOTAL: usize = 52;
 
 /// Domain boundaries for grouping: (name, start_index, end_index).
 pub const DOMAINS: &[(&str, usize, usize)] = &[
-    ("ada",  0,  4),
-    ("rel",  4,  10),
-    ("meta", 10, 16),
-    ("eros", 16, 24),
-    ("want", 24, 32),
-    ("feel", 32, 40),
-    ("cog",  40, 46),
-    ("tech", 46, 52),
+    ("mode",  0,  4),
+    ("nav",   4,  10),
+    ("plan",  10, 16),
+    ("sens",  16, 24),
+    ("ctrl",  24, 32),
+    ("motor", 32, 40),
+    ("proc",  40, 46),
+    ("comm",  46, 52),
 ];
 
 // ---------------------------------------------------------------------------
@@ -163,23 +163,23 @@ fn generate_from_rng(d: usize, base: Base, rng: &mut SimpleRng) -> Vec<i8> {
 }
 
 /// Number of coarse τ bins for the proximity manifold.
-/// 8 bins of width 32: feel+want share bin 2, rel+meta share bin 3,
-/// ada+cog share bin 4, tech in bin 5, eros isolated in bin 7.
+/// 8 bins of width 32: motor+ctrl share bin 2, nav+plan share bin 3,
+/// mode+proc share bin 4, comm in bin 5, sens isolated in bin 7.
 const TAU_BINS: usize = 8;
 /// Tau bin width: 256 / 8 = 32 tau values per bin.
 const TAU_BIN_WIDTH: f64 = 256.0 / TAU_BINS as f64;
 
 /// Generate a tau-proximity basis vector by interpolating between coarse bins.
 ///
-/// The tau space (0x00-0xFF) is divided into 16 bins. Each bin has a
+/// The tau space (0x00-0xFF) is divided into 8 bins. Each bin has a
 /// deterministic random vector. A concept's tau address produces a
 /// linear blend of its enclosing bin and the next, creating a smooth
 /// manifold where nearby tau values get similar vectors.
 ///
 /// This creates cross-domain bridges:
-///   feel (0x40) ↔ want (0x50): distance 1 bin → high correlation
-///   want (0x50) ↔ rel  (0x60): distance 1 bin → high correlation
-///   tech (0xA0) ↔ eros (0xE0): distance 4 bins → low correlation
+///   motor (0x40) ↔ ctrl (0x50): distance 1 bin → high correlation
+///   ctrl  (0x50) ↔ nav  (0x60): distance 1 bin → high correlation
+///   comm  (0xA0) ↔ sens (0xE0): distance 4 bins → low correlation
 fn generate_tau_basis(tau: u8, d: usize, base: Base) -> Vec<i8> {
     let tau_f = tau as f64;
     let bin_lo = (tau_f / TAU_BIN_WIDTH).floor() as usize;
@@ -212,8 +212,8 @@ fn generate_tau_basis(tau: u8, d: usize, base: Base) -> Vec<i8> {
 /// Layer 2 — Tau proximity (weight: tau_w):
 ///   Smooth manifold interpolated from coarse τ bins.
 ///   Creates cross-domain bridges between nearby τ addresses.
-///   feel(0x40) and want(0x50) share structure.
-///   eros(0xE0) is isolated from everything else.
+///   motor(0x40) and ctrl(0x50) share structure.
+///   sens(0xE0) is isolated from everything else.
 ///
 /// Layer 3 — Individual noise (weight: 1 - domain_w - tau_w):
 ///   Unique to each concept. Provides orthogonality for recovery.
@@ -376,12 +376,12 @@ impl GhostHolograph {
 // Scenarios
 // ---------------------------------------------------------------------------
 
-/// Scenario 1: Eros only.
+/// Scenario 1: Sensor suite only.
 ///
-/// Store all 8 eros concepts at amplitude 1.0.
-/// Eros is isolated in τ-space (0xE0-0xE8, far from all other domains).
+/// Store all 8 sens concepts at amplitude 1.0.
+/// Sens is isolated in τ-space (0xE0-0xE8, far from all other domains).
 /// Question: does the holograph confirm this isolation, or leak anyway?
-pub fn scenario_eros_only(d: usize) -> Vec<ConceptReadback> {
+pub fn scenario_sens_only(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices: Vec<usize> = (16..24).collect();
     let amplitudes = vec![1.0f32; 8];
@@ -389,66 +389,66 @@ pub fn scenario_eros_only(d: usize) -> Vec<ConceptReadback> {
     h.read_all()
 }
 
-/// Scenario 2: A warm intimate moment.
+/// Scenario 2: Autonomous navigation state.
 ///
-/// Store: ada.wife (0.9), feel.warmth (1.0), eros.intimacy (0.8),
-///        rel.trust (0.9), feel.calm (0.7)
+/// Store: mode.active (0.9), motor.rpm (1.0), sens.imu (0.8),
+///        nav.altitude (0.9), motor.encoder (0.7)
 ///
 /// Cross-domain experience. The question: does the signed holograph
 /// discover the GESTALT these concepts imply?
-pub fn scenario_warm_moment(d: usize) -> Vec<ConceptReadback> {
+pub fn scenario_navigation(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        1,   // ada.wife
-        33,  // feel.warmth
-        19,  // eros.intimacy
-        6,   // rel.trust
-        38,  // feel.calm
+        1,   // mode.active
+        33,  // motor.rpm
+        19,  // sens.imu
+        6,   // nav.altitude
+        38,  // motor.encoder
     ];
     let amplitudes = vec![0.9, 1.0, 0.8, 0.9, 0.7];
     h.store(&indices, &amplitudes);
     h.read_all()
 }
 
-/// Scenario 3: Creative tension / contradiction.
+/// Scenario 3: Conflicting control signals.
 ///
-/// Store: ada.work (1.0), eros.desire (0.8),
-///        meta.boundary (0.9), eros.surrender (0.7),
-///        cog.thinking (1.0), cog.feeling (0.8)
+/// Store: mode.learn (1.0), sens.camera (0.8),
+///        plan.constraint (0.9), sens.gps (0.7),
+///        proc.fft (1.0), proc.kalman (0.8)
 ///
-/// Opposing concepts. Signed holograph: Auslöschung (cancellation).
+/// Opposing control demands. Signed holograph: Auslöschung (cancellation).
 /// What survives? What ghosts emerge from the interference pattern?
-pub fn scenario_tension(d: usize) -> Vec<ConceptReadback> {
+pub fn scenario_conflict(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        2,   // ada.work
-        18,  // eros.desire
-        15,  // meta.boundary
-        20,  // eros.surrender
-        40,  // cog.thinking
-        42,  // cog.feeling (felt sensing)
+        2,   // mode.learn
+        18,  // sens.camera
+        15,  // plan.constraint
+        20,  // sens.gps
+        40,  // proc.fft
+        42,  // proc.kalman
     ];
     let amplitudes = vec![1.0, 0.8, 0.9, 0.7, 1.0, 0.8];
     h.store(&indices, &amplitudes);
     h.read_all()
 }
 
-/// Scenario 4: Growth / transformation state.
+/// Scenario 4: Adaptation / reconfiguration state.
 ///
-/// Store: feel.curiosity (1.0), want.grow (0.9),
-///        cog.becoming (0.8), cog.resonating (0.7),
-///        meta.surprise (0.6)
+/// Store: motor.torque (1.0), ctrl.pitch (0.9),
+///        proc.fusion (0.8), proc.detect (0.7),
+///        plan.deadline (0.6)
 ///
-/// Open, receptive state. What does the holograph see as the
-/// destination of growth? Where does the τ-topology lead?
-pub fn scenario_growth(d: usize) -> Vec<ConceptReadback> {
+/// Open, exploratory state. What does the holograph see as the
+/// destination? Where does the τ-topology lead?
+pub fn scenario_adaptation(d: usize) -> Vec<ConceptReadback> {
     let mut h = GhostHolograph::new(d);
     let indices = vec![
-        32,  // feel.curiosity
-        27,  // want.grow
-        43,  // cog.becoming
-        44,  // cog.resonating
-        13,  // meta.surprise
+        32,  // motor.torque
+        27,  // ctrl.pitch
+        43,  // proc.fusion
+        44,  // proc.detect
+        13,  // plan.deadline
     ];
     let amplitudes = vec![1.0, 0.9, 0.8, 0.7, 0.6];
     h.store(&indices, &amplitudes);
@@ -494,7 +494,6 @@ pub fn print_ghost_table(
     // Sort: ghosts first (by |readback| desc for unstored), then stored (by readback desc)
     let mut sorted = results.to_vec();
     sorted.sort_by(|a, b| {
-        // Unstored before stored
         let a_ghost = !a.was_stored && a.readback.abs() > ghost_threshold;
         let b_ghost = !b.was_stored && b.readback.abs() > ghost_threshold;
         match (a_ghost, b_ghost) {
@@ -540,7 +539,6 @@ pub fn print_ghost_table(
     if ghosts.is_empty() {
         println!("  No ghosts above threshold {:.3}.", ghost_threshold);
     } else {
-        // Group by domain
         println!("  {} ghost(s) above |{:.3}|:", ghosts.len(), ghost_threshold);
         for &(domain_name, _, _) in DOMAINS {
             let domain_ghosts: Vec<&&ConceptReadback> = ghosts.iter()
@@ -582,7 +580,7 @@ pub fn ghost_matrix(d: usize) -> Vec<Vec<f32>> {
         }
     }
 
-    // Print with signed values (not absolute — direction matters)
+    // Print with signed values
     println!("\n{}", "=".repeat(72));
     println!("  GHOST MATRIX: avg signed readback (row stored -> col ghost)");
     println!("  Positive = constructive cross-talk. Negative = destructive.");
@@ -607,41 +605,6 @@ pub fn ghost_matrix(d: usize) -> Vec<Vec<f32>> {
     }
     println!("{}", "=".repeat(72));
 
-    // Also print |absolute| matrix for magnitude comparison
-    println!("\n{}", "=".repeat(72));
-    println!("  GHOST MATRIX: avg |readback| magnitude (unsigned strength)");
-    println!("{}", "=".repeat(72));
-    print!("  {:8}", "stored>");
-    for &(name, _, _) in DOMAINS {
-        print!(" {:>7}", name);
-    }
-    println!();
-    println!("{}", "-".repeat(72));
-
-    for (src_idx, &(src_name, _, _)) in DOMAINS.iter().enumerate() {
-        print!("  {:8}", src_name);
-        for dst_idx in 0..8 {
-            if src_idx == dst_idx {
-                print!("    ---");
-            } else {
-                // Recompute as absolute average
-                let mut h = GhostHolograph::new(d);
-                let (_, start, end) = DOMAINS[src_idx];
-                let indices: Vec<usize> = (start..end).collect();
-                let amplitudes = vec![1.0f32; indices.len()];
-                h.store(&indices, &amplitudes);
-                let results = h.read_all();
-                let (dst_start, dst_end) = (DOMAINS[dst_idx].1, DOMAINS[dst_idx].2);
-                let avg_abs: f32 = results[dst_start..dst_end].iter()
-                    .map(|r| r.readback.abs())
-                    .sum::<f32>() / (dst_end - dst_start) as f32;
-                print!(" {:>7.4}", avg_abs);
-            }
-        }
-        println!();
-    }
-    println!("{}", "=".repeat(72));
-
     matrix
 }
 
@@ -658,7 +621,7 @@ pub fn ghost_dimensionality_sweep() {
     println!("  GHOST COUNT vs DIMENSIONALITY (threshold = {:.3})", threshold);
     println!("{}", "=".repeat(72));
     println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-        "D", "Eros", "Moment", "Tension", "Growth", "Full");
+        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full");
     println!("{}", "-".repeat(72));
 
     for &d in &dims {
@@ -668,18 +631,18 @@ pub fn ghost_dimensionality_sweep() {
                 .count()
         };
 
-        let eros = scenario_eros_only(d);
-        let moment = scenario_warm_moment(d);
-        let tension = scenario_tension(d);
-        let growth = scenario_growth(d);
+        let sens = scenario_sens_only(d);
+        let nav = scenario_navigation(d);
+        let conflict = scenario_conflict(d);
+        let adapt = scenario_adaptation(d);
         let full = scenario_full_load(d);
 
         println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
             d,
-            count_ghosts(&eros),
-            count_ghosts(&moment),
-            count_ghosts(&tension),
-            count_ghosts(&growth),
+            count_ghosts(&sens),
+            count_ghosts(&nav),
+            count_ghosts(&conflict),
+            count_ghosts(&adapt),
             count_ghosts(&full));
     }
 
@@ -690,7 +653,7 @@ pub fn ghost_dimensionality_sweep() {
     println!("  MAX |GHOST SIGNAL| vs DIMENSIONALITY");
     println!("{}", "=".repeat(72));
     println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
-        "D", "Eros", "Moment", "Tension", "Growth", "Full");
+        "D", "Sens", "NavSt", "Conflict", "Adapt", "Full");
     println!("{}", "-".repeat(72));
 
     for &d in &dims {
@@ -701,18 +664,18 @@ pub fn ghost_dimensionality_sweep() {
                 .fold(0.0f32, f32::max)
         };
 
-        let eros = scenario_eros_only(d);
-        let moment = scenario_warm_moment(d);
-        let tension = scenario_tension(d);
-        let growth = scenario_growth(d);
+        let sens = scenario_sens_only(d);
+        let nav = scenario_navigation(d);
+        let conflict = scenario_conflict(d);
+        let adapt = scenario_adaptation(d);
         let full = scenario_full_load(d);
 
         println!("  {:>6}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}",
             d,
-            max_ghost(&eros),
-            max_ghost(&moment),
-            max_ghost(&tension),
-            max_ghost(&growth),
+            max_ghost(&sens),
+            max_ghost(&nav),
+            max_ghost(&conflict),
+            max_ghost(&adapt),
             max_ghost(&full));
     }
     println!("{}", "=".repeat(72));
@@ -732,7 +695,7 @@ pub fn tau_topology_analysis(d: usize) {
     println!("{}", "=".repeat(72));
 
     // Bucket correlations by τ distance
-    let mut buckets: Vec<Vec<f32>> = vec![Vec::new(); 16]; // distances 0-15 bins
+    let mut buckets: Vec<Vec<f32>> = vec![Vec::new(); 16];
 
     for i in 0..K_TOTAL {
         for j in (i+1)..K_TOTAL {
@@ -766,14 +729,14 @@ pub fn tau_topology_analysis(d: usize) {
     // Cross-domain pairs of interest
     println!("\n  Named cross-domain correlations:");
     let pairs = [
-        (32, 24, "feel.curiosity ↔ want.understood"),    // tau 0x40 ↔ 0x50
-        (33, 25, "feel.warmth ↔ want.create"),           // tau 0x41 ↔ 0x51
-        (24, 5,  "want.understood ↔ rel.devotion"),      // tau 0x50 ↔ 0x61
-        (10, 1,  "meta.voice ↔ ada.wife"),               // tau 0x70 ↔ 0x83
-        (40, 46, "cog.thinking ↔ tech.vsa"),             // tau 0x92 ↔ 0xA0
-        (16, 32, "eros.awareness ↔ feel.curiosity"),     // tau 0xE0 ↔ 0x40 (far!)
-        (17, 40, "eros.arousal ↔ cog.thinking"),         // tau 0xE8 ↔ 0x92 (far!)
-        (33, 6,  "feel.warmth ↔ rel.trust"),             // tau 0x41 ↔ 0x62
+        (32, 24, "motor.torque ↔ ctrl.throttle"),       // tau 0x40 ↔ 0x50
+        (33, 25, "motor.rpm ↔ ctrl.steering"),           // tau 0x41 ↔ 0x51
+        (24, 5,  "ctrl.throttle ↔ nav.heading"),         // tau 0x50 ↔ 0x61
+        (10, 1,  "plan.mission ↔ mode.active"),          // tau 0x70 ↔ 0x83
+        (40, 46, "proc.fft ↔ comm.radio"),               // tau 0x92 ↔ 0xA0
+        (16, 32, "sens.lidar ↔ motor.torque"),           // tau 0xE0 ↔ 0x40 (far!)
+        (17, 40, "sens.radar ↔ proc.fft"),               // tau 0xE8 ↔ 0x92 (far!)
+        (33, 6,  "motor.rpm ↔ nav.altitude"),            // tau 0x41 ↔ 0x62
     ];
 
     for (i, j, label) in pairs {
@@ -792,7 +755,7 @@ pub fn run_ghost_discovery() {
 
     println!("\n{}", "=".repeat(72));
     println!("  GHOST DISCOVERY EXPERIMENT");
-    println!("  52 concepts from Ada's Oculus capsule");
+    println!("  52 signal-processing concepts");
     println!("  Signed(7), organic 3-layer templates at D={}", d);
     println!("  Weights: domain={:.0}%, tau={:.0}%, individual={:.0}%",
         DEFAULT_DOMAIN_W * 100.0, DEFAULT_TAU_W * 100.0,
@@ -803,17 +766,17 @@ pub fn run_ghost_discovery() {
     tau_topology_analysis(d);
 
     // Scenario tables
-    let results = scenario_eros_only(d);
-    print_ghost_table("Eros Only (isolated in tau-space)", &results, threshold);
+    let results = scenario_sens_only(d);
+    print_ghost_table("Sensor Suite (isolated in tau-space)", &results, threshold);
 
-    let results = scenario_warm_moment(d);
-    print_ghost_table("Warm Intimate Moment", &results, threshold);
+    let results = scenario_navigation(d);
+    print_ghost_table("Autonomous Navigation", &results, threshold);
 
-    let results = scenario_tension(d);
-    print_ghost_table("Creative Tension", &results, threshold);
+    let results = scenario_conflict(d);
+    print_ghost_table("Conflicting Controls", &results, threshold);
 
-    let results = scenario_growth(d);
-    print_ghost_table("Growth Edge", &results, threshold);
+    let results = scenario_adaptation(d);
+    print_ghost_table("Adaptation State", &results, threshold);
 
     let results = scenario_full_load(d);
     print_ghost_table("Full Load (all 52)", &results, threshold);
@@ -874,10 +837,10 @@ mod tests {
     fn test_same_domain_correlation() {
         let d = 4096;
         let base = Base::Signed(7);
-        // eros domain: indices 16..24
-        let t_arousal = generate_organic_template(&CONCEPTS[17], d, base, 0.35, 0.35);
-        let t_desire = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
-        let corr = pearson_correlation(&t_arousal, &t_desire);
+        // sens domain: indices 16..24
+        let t_lidar = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
+        let t_camera = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
+        let corr = pearson_correlation(&t_lidar, &t_camera);
         assert!(corr > 0.15,
             "Same-domain correlation should be > 0.15, got {}", corr);
     }
@@ -886,29 +849,29 @@ mod tests {
     fn test_tau_proximity_correlation() {
         let d = 4096;
         let base = Base::Signed(7);
-        // feel.curiosity (tau=0x40) and want.understood (tau=0x50) — nearby tau
-        let t_feel = generate_organic_template(&CONCEPTS[32], d, base, 0.35, 0.35);
-        let t_want = generate_organic_template(&CONCEPTS[24], d, base, 0.35, 0.35);
-        let corr_near = pearson_correlation(&t_feel, &t_want);
+        // motor.torque (tau=0x40) and ctrl.throttle (tau=0x50) — nearby tau
+        let t_motor = generate_organic_template(&CONCEPTS[32], d, base, 0.35, 0.35);
+        let t_ctrl = generate_organic_template(&CONCEPTS[24], d, base, 0.35, 0.35);
+        let corr_near = pearson_correlation(&t_motor, &t_ctrl);
 
-        // feel.curiosity (tau=0x40) and eros.awareness (tau=0xE0) — distant tau
-        let t_eros = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
-        let corr_far = pearson_correlation(&t_feel, &t_eros);
+        // motor.torque (tau=0x40) and sens.lidar (tau=0xE0) — distant tau
+        let t_sens = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
+        let corr_far = pearson_correlation(&t_motor, &t_sens);
 
         assert!(corr_near > corr_far,
             "Nearby tau should correlate more: near={}, far={}", corr_near, corr_far);
     }
 
     #[test]
-    fn test_eros_isolation() {
+    fn test_sens_isolation() {
         let d = 4096;
         let base = Base::Signed(7);
-        // eros.desire (tau=0xE1) vs cog.thinking (tau=0x92) — far tau, different domain
-        let t_eros = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
-        let t_cog = generate_organic_template(&CONCEPTS[40], d, base, 0.35, 0.35);
-        let corr = pearson_correlation(&t_eros, &t_cog).abs();
+        // sens.camera (tau=0xE1) vs proc.fft (tau=0x92) — far tau, different domain
+        let t_sens = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
+        let t_proc = generate_organic_template(&CONCEPTS[40], d, base, 0.35, 0.35);
+        let corr = pearson_correlation(&t_sens, &t_proc).abs();
         assert!(corr < 0.10,
-            "Eros-Cog cross-domain should be near zero, got {}", corr);
+            "Sens-Proc cross-domain should be near zero, got {}", corr);
     }
 
     #[test]
@@ -962,30 +925,30 @@ mod tests {
     }
 
     #[test]
-    fn test_scenario_eros_counts() {
-        let results = scenario_eros_only(2048);
+    fn test_scenario_sens_counts() {
+        let results = scenario_sens_only(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 8);
         assert_eq!(results.len() - stored, 44);
     }
 
     #[test]
-    fn test_scenario_warm_moment_counts() {
-        let results = scenario_warm_moment(2048);
+    fn test_scenario_navigation_counts() {
+        let results = scenario_navigation(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 5);
     }
 
     #[test]
-    fn test_scenario_tension_counts() {
-        let results = scenario_tension(2048);
+    fn test_scenario_conflict_counts() {
+        let results = scenario_conflict(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 6);
     }
 
     #[test]
-    fn test_scenario_growth_counts() {
-        let results = scenario_growth(2048);
+    fn test_scenario_adaptation_counts() {
+        let results = scenario_adaptation(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 5);
     }
@@ -999,7 +962,7 @@ mod tests {
 
     #[test]
     fn test_stored_concepts_positive_readback() {
-        let results = scenario_eros_only(4096);
+        let results = scenario_sens_only(4096);
         for r in &results {
             if r.was_stored {
                 assert!(r.readback > 0.0,
@@ -1010,21 +973,20 @@ mod tests {
 
     #[test]
     fn test_unstored_near_zero_at_high_d() {
-        // At high D, unstored concepts in different domains should read ~0
         let d = 8192;
-        let results = scenario_eros_only(d);
-        // Check a concept far in tau-space: feel.curiosity (tau=0x40, far from eros 0xE0)
-        let curiosity = &results[32];
-        assert!(!curiosity.was_stored);
-        assert!(curiosity.readback.abs() < 0.15,
-            "Far unstored should be near 0 at D={}, got {}", d, curiosity.readback);
+        let results = scenario_sens_only(d);
+        // Check a concept far in tau-space: motor.torque (tau=0x40, far from sens 0xE0)
+        let torque = &results[32];
+        assert!(!torque.was_stored);
+        assert!(torque.readback.abs() < 0.15,
+            "Far unstored should be near 0 at D={}, got {}", d, torque.readback);
     }
 
     #[test]
     fn test_ghost_count_decreases_with_d() {
         let threshold = 0.05;
         let count = |d: usize| -> usize {
-            scenario_eros_only(d).iter()
+            scenario_sens_only(d).iter()
                 .filter(|r| !r.was_stored && r.readback.abs() > threshold)
                 .count()
         };
@@ -1048,7 +1010,7 @@ mod tests {
 
     #[test]
     fn test_print_ghost_table_no_panic() {
-        let results = scenario_eros_only(512);
+        let results = scenario_sens_only(512);
         print_ghost_table("Test", &results, 0.02);
     }
 
