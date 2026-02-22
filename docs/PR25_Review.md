@@ -6,9 +6,9 @@
 
 ---
 
-## Verdict: Strong on Debt Cleanup, Mixed on New Module — Approve with Notes
+## Verdict: Strong on Debt Cleanup, Two Issues in New Code — Approve with Notes
 
-The PRNG consolidation and WAL encapsulation are clean and complete. The NARS module is architecturally sound but has a sign convention bug in the Granger docs and leaves "Wait — let me clarify" debug thinking in production code.
+The PRNG consolidation and WAL encapsulation are clean and complete. The NARS module is architecturally sound but has a sign convention bug in the Granger docs and a 16KB stack copy regression in the `hamming_64k` delegation path. "Wait — let me clarify" debug thinking leaked into production doc comments.
 
 ---
 
@@ -52,15 +52,31 @@ No remaining inline `splitmix64` or `SimpleRng` in either crate — grep confirm
 
 ---
 
-## Part 3: hamming_64k → Fingerprint64K Delegation (N6 partial) — ✅ Correct
+## Part 3: hamming_64k → Fingerprint64K Delegation (N6 partial) — 🟡 Correct Intent, Performance Regression
 
-`recognize.rs::hamming_64k()` now delegates to `Fingerprint64K::hamming_distance()` for the common 1024-word case, falling back to inline popcount for other sizes. This addresses the `u64`-word vs `Fingerprint` type duplication for the dominant path.
+`recognize.rs::hamming_64k()` now delegates to `Fingerprint64K::hamming_distance()` for the common 1024-word case, falling back to inline popcount for other sizes.
 
 New `Fingerprint<N>` constructors `from_words()` and `from_word_slice()` enable the delegation. `from_word_slice` copies data (no aliasing), panics on size mismatch.
 
-**Note**: This delegates at the Fingerprint level, not the SIMD level. `Fingerprint::hamming_distance()` still uses `u64::count_ones()` per-word — it doesn't reach `rustynum_core::simd::hamming_distance(&[u8])`. Full SIMD acceleration of Fingerprint would require a `&[u8]` adapter, which this PR correctly doesn't attempt.
+**🔴 Performance regression (N12)**: The delegation path copies 16KB onto the stack per call:
 
-**Debt status**: N6 partially addressed — type unification done, SIMD acceleration for Fingerprint deferred.
+```rust
+let fa = rustynum_core::Fingerprint64K::from_word_slice(a);  // 8KB memcpy
+let fb = rustynum_core::Fingerprint64K::from_word_slice(b);  // 8KB memcpy
+return fa.hamming_distance(&fb);  // same (a^b).count_ones() loop as before
+```
+
+`from_word_slice` does `words.copy_from_slice(slice)` into a `[u64; 1024]` stack array. Then `hamming_distance()` runs the identical `(self.words[i] ^ other.words[i]).count_ones()` loop that the original inline code ran directly on the borrowed slices. Same algorithm, extra 16KB of memcpy. This is a net regression — `hamming_64k` is called per comparison in recognition.
+
+**Fix options**:
+1. Revert to the inline loop (simplest, zero regression)
+2. Add `Fingerprint::hamming_distance_slices(a: &[u64], b: &[u64]) → u32` that works on borrows
+
+Option 2 is better — type unification benefit without the copy cost, reusable by any caller with `&[u64]`.
+
+**Note**: Neither path reaches `rustynum_core::simd::hamming_distance(&[u8])`. Full SIMD acceleration of Fingerprint would require a `&[u8]` adapter, which this PR correctly doesn't attempt.
+
+**Debt status**: N6 partially addressed (type unification intent correct, execution regresses). N12 opened.
 
 ---
 
@@ -123,9 +139,11 @@ Then `granger_scan()` has the *corrected* convention but prefaced with debug thi
 
 **Naming issue**: The struct is called `Contradiction` but it only finds structurally similar pairs — it doesn't check truth values. The name overpromises. `SimilarPair` would be more accurate, with `Contradiction` reserved for when truth values are integrated.
 
-### 4.5 `hamming_i8` — Symbol Distance, Not Bit Distance
+### 4.5 `hamming_i8` — Symbol Distance, Not Bit Distance (N10)
 
-The NARS module uses `hamming_i8()` which counts differing i8 positions (symbol-level), not `hamming_inline()` which counts differing bits. This is correct for the sweep module's i8 holographic vectors but conceptually different from rustynum-clam's bit-level Hamming. Worth a doc note to prevent confusion.
+The NARS module uses `hamming_i8()` which counts differing i8 positions (symbol-level), not `hamming_inline()` which counts differing bits. This is correct for the sweep module's i8 holographic vectors but the name actively misleads — every other `hamming_*` in the codebase is bit-level.
+
+**Rename to `symbol_distance_i8` or `disagreement_count`.** The function is private to nars.rs so this won't break any external API. When performance matters, SIMD acceleration is possible via VPCMPB → KMOV → POPCNT.
 
 ### 4.6 Test Quality — ✅ Good
 
@@ -165,15 +183,18 @@ The noise floor test (`test_reverse_trace_stops_at_noise`) is particularly well-
 | N2 (recognize.rs ≠ Fingerprint<1024>) | 🟡 Partially addressed — `hamming_64k` delegates for 1024-word case |
 | N3 (pub(crate) fields) | ✅ **CLOSED** |
 | N5 (debug_assert in HammingSIMD) | ⬜ Still open — not in scope |
-| N6 (3 Hamming type signatures) | 🟡 Partially addressed — type unification, not SIMD |
+| N6 (3 Hamming type signatures) | 🟡 Partially addressed — type unification intent, but delegation introduces copy regression |
 
 ### New Items Introduced
 
 | # | Issue | Severity | Description |
 |---|---|---|---|
-| N7 | Granger sign convention contradiction | 🔴 Correctness | `granger_signal()` doc says G > 0 = A predicts B. Code + test prove G < 0 = A predicts B. `granger_scan()` doc has the correct convention but includes "Wait — let me clarify" debug thinking. |
+| N7 | Granger sign convention contradiction | 🔴 Correctness | `granger_signal()` doc says G > 0 = A predicts B. Code + test prove G < 0 = A predicts B. `granger_scan()` doc has correct convention but prefixed with "Wait — let me clarify" debug thinking. 3 lines to fix. |
 | N8 | `Contradiction` overpromises | 🟢 Naming | Struct checks structural similarity only, not truth-value conflict. Should be `SimilarPair` until NARS truth values are integrated. |
-| N9 | Flat confidence threshold | 🟢 Improvement | `reverse_trace()` uses 0.35 flat threshold, not CRP-calibrated. Fine for now, should wire to `ClusterDistribution.p95` when available. |
+| N9 | Flat confidence threshold | 🟢 Improvement | `reverse_trace()` uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. |
+| N10 | `hamming_i8` misleading name | 🟡 Naming | Symbol-level distance (`a[i] != b[i]`), not bit-level Hamming. Every other `hamming_*` in codebase is bit-level. Rename to `symbol_distance_i8`. |
+| N11 | Clone-per-hop in `reverse_trace()` | 🟢 Latent perf | 16KB clone per hop × depth. Fine for research. Rewrite with pre-allocated buffers if it enters a hot loop. |
+| N12 | `hamming_64k` 16KB stack copy regression | 🟡 Performance | Two `from_word_slice` calls copy 2×8KB onto stack to run the same `(a^b).count_ones()` loop the inline code did directly on borrows. Fix: add `hamming_distance_slices(&[u64], &[u64])` or revert. |
 
 ---
 
@@ -183,10 +204,15 @@ The noise floor test (`test_reverse_trace_stops_at_noise`) is particularly well-
 |---|---|
 | PRNG consolidation | ✅ Complete — all 5 copies replaced, zero remaining |
 | WAL encapsulation | ✅ Complete — proper accessors, atomic update |
-| Fingerprint delegation | ✅ Correct — type unification, SIMD deferred |
+| Fingerprint delegation | 🟡 16KB stack copy regression — same algorithm, extra 2×8KB memcpy (N12) |
 | NARS unbind algebra | ✅ Correct — all 3 bases |
 | NARS reverse trace | ✅ Correct — brute-force, documented for CAKES upgrade |
-| NARS Granger signal | 🔴 Doc bug — code is correct, doc comments contradict test |
-| NARS contradiction detection | 🟡 Functional but misnamed |
+| NARS Granger signal | 🔴 Doc bug — code is correct, docs contradict in 3 locations (N7) |
+| NARS `hamming_i8` naming | 🟡 Symbol-level distance named like bit-level Hamming (N10) |
+| NARS contradiction detection | 🟡 Functional but misnamed (N8) |
 | Test coverage | ✅ Good — 12 tests, noise floor validation |
-| Debt impact | ✅ Net positive — N1, N3 closed, N7 introduced (doc-only fix) |
+| Debt impact | Net positive — N1, N3 closed; N7-N12 opened (1 red, 2 yellow, 3 green) |
+
+**Priority fixes**:
+1. **(N7)** Fix Granger doc: swap G>0/G<0 in module header + `granger_signal()`, remove debug text from `granger_scan()` — 3 lines, 5 min
+2. **(N12)** Fix `hamming_64k` regression: add `hamming_distance_slices(&[u64], &[u64])` or revert to inline loop — 15 min
