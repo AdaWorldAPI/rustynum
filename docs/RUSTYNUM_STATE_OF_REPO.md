@@ -119,24 +119,6 @@ The scalar fallback logic, hamming_batch unrolling, and hamming_top_k partial-so
 
 Not urgent — the feature gates prevent both from compiling simultaneously — but any new SIMD function must be added in two places.
 
-### 🟡 Build: CLAM's Silent Feature Dependency
-
-`rustynum-clam/Cargo.toml` depends on `rustynum-core` without `default-features = false`:
-
-```toml
-rustynum-core = { path = "../rustynum-core" }
-```
-
-This silently inherits `default = ["avx512"]`, so CLAM always gets the simd module. But CLAM directly calls `rustynum_core::simd::hamming_distance` in `HammingSIMD::distance()` without any `#[cfg]` guard. If someone builds CLAM with `--no-default-features`, the simd module doesn't exist and compilation fails.
-
-Compare with oracle, which does it correctly:
-```toml
-rustynum-core = { path = "../rustynum-core", default-features = false }
-avx512 = ["rustynum-core/avx512"]
-```
-
-**Fix**: Either add `default-features = false` + explicit feature forwarding to CLAM's Cargo.toml (like oracle does), or add `#[cfg]` guards around the SIMD calls. 10-minute fix.
-
 ### 🟡 Dead Code: `Fingerprint::from_words()` and `from_word_slice()`
 
 PR #25 added these constructors to enable the `hamming_64k` → `Fingerprint64K` delegation. PR #26 reverted that delegation (16KB copy regression). Now both constructors have zero callers outside tests.
@@ -180,18 +162,16 @@ The active codebase (14K lines) is well-structured research code. Specifics wort
 
 ### This week
 
-2. **CLAM feature gates**: Add `default-features = false` + feature forwarding to `rustynum-clam/Cargo.toml`. 10 minutes. Prevents compilation failure on non-default feature sets.
-
-3. **Decide on dead Fingerprint constructors**: Either find a use for `from_words`/`from_word_slice` or remove them. 5 minutes either way.
+2. **Decide on dead Fingerprint constructors**: Either find a use for `from_words`/`from_word_slice` or remove them. 5 minutes either way.
 
 ### Next sprint
 
-4. **Deduplicate carrier/focus/phase/cogrecord**: Extract shared code to a common crate. Eliminates 5,343 duplicated lines. One afternoon.
+3. **Deduplicate carrier/focus/phase/cogrecord**: Extract shared code to a common crate. Eliminates 5,343 duplicated lines. One afternoon.
 
-5. **CLAM completeness** (from debt ledger): BFS Sieve, improved child pruning, recursive decompression chain walk, CompressedSearch adapter. 4-5 days.
+4. **CLAM completeness** (from debt ledger): BFS Sieve, improved child pruning, recursive decompression chain walk, CompressedSearch adapter. 4-5 days.
 
 ### Eventually
 
-6. **SIMD module unification**: Extract common scalar/batch/top-k logic from simd.rs and simd_avx2.rs into a shared core, keeping only the intrinsic inner loops in the feature-gated files. Eliminates ~300 lines of structural duplication.
+5. **SIMD module unification**: Extract common scalar/batch/top-k logic from simd.rs and simd_avx2.rs into a shared core, keeping only the intrinsic inner loops in the feature-gated files. Eliminates ~300 lines of structural duplication.
 
-7. **Workspace cleanup**: Consider whether holo/carrier/focus/archive-v3 should be active workspace members or moved to an `archive/` directory outside the workspace.
+6. **Workspace cleanup**: Consider whether holo/carrier/focus/archive-v3 should be active workspace members or moved to an `archive/` directory outside the workspace.
