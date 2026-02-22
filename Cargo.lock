@@ -4897,6 +4897,7 @@ dependencies = [
 name = "rustynum-holo"
 version = "0.1.0"
 dependencies = [
+ "rustynum-clam",
  "rustynum-core",
  "rustynum-rs",
 ]
