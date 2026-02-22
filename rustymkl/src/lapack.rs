@@ -12,6 +12,16 @@
 //! All operations work on flat row-major or column-major arrays.
 //! Uses rustyblas Level 1/2/3 primitives internally.
 
+// TODO(simd): REFACTOR — all LAPACK routines are fully scalar.
+// - sgetrf/dgetrf: trailing submatrix update (rank-1) is scalar — can use BLAS sger/dger.
+//   Pivot search is scalar argmax — can use isamax/idamax.
+// - sgetrs/dgetrs: forward/back substitution is scalar — can use BLAS strsm.
+// - spotrf/dpotrf: inner products are scalar — can use BLAS sdot/ddot for column norms.
+// - spotrs/dpotrs: triangular solves are scalar — can use BLAS strsm.
+// - sgeqrf/dgeqrf: Householder reflector application is scalar — can use BLAS sger/dger.
+// Many have sequential data dependencies (k-loop), but inner j-loops are parallelizable.
+// Fix: delegate inner loops to BLAS Level 1/2 routines which already have SIMD paths.
+
 use rustynum_core::layout::Layout;
 
 // ============================================================================

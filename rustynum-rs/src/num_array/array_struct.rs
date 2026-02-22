@@ -480,6 +480,7 @@ where
     /// let exp_array = array.exp();
     /// assert_eq!(exp_array.get_data(), &[1.0, 2.7182817, 7.389056]);
     /// ```
+    // TODO(simd): REFACTOR — exp() is scalar iter().map(). Route through VML vsexp/vdexp.
     pub fn exp(&self) -> Self {
         let exp_data = self.data.iter().map(|&x| x.exp()).collect::<Vec<T>>();
         Self::new_with_shape(exp_data, self.shape.clone())
@@ -510,6 +511,7 @@ where
             );
         }
 
+        // TODO(simd): REFACTOR — log() is scalar iter().map(). Route through VML vsln/vdln.
         let log_data = self.data.iter().map(|&x| x.log()).collect::<Vec<T>>();
         Self::new_with_shape(log_data, self.shape.clone())
     }
@@ -532,6 +534,7 @@ where
     ///     assert!((computed - exp_val).abs() < 1e-5, "Expected {}, got {}", exp_val, computed);
     /// }
     /// ```
+    // TODO(simd): REFACTOR — sigmoid is scalar iter().map(). SIMD: 1/(1+exp(-x)) via VML exp + SIMD div.
     pub fn sigmoid(&self) -> Self {
         let sigmoid_data = self
             .data
@@ -736,6 +739,8 @@ where
     /// let sum: f32 = sm.get_data().iter().sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
+    // TODO(simd): REFACTOR — softmax uses scalar exp/divide. Route exp through VML,
+    // sub/div through SIMD element-wise ops. Both 1D and N-D paths are scalar.
     pub fn softmax(&self) -> Self {
         if self.shape.len() <= 1 {
             // 1D case
@@ -778,6 +783,7 @@ where
     /// let sum: f32 = lsm.get_data().iter().map(|&x| x.exp()).sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
+    // TODO(simd): REFACTOR — log_softmax uses scalar sub/exp/log. Same fix as softmax.
     pub fn log_softmax(&self) -> Self {
         if self.shape.len() <= 1 {
             let max_val = Ops::max_simd(&self.data);
@@ -950,6 +956,8 @@ where
 /// Started using Macros to reduce the code
 /// Macro to implement binary operations (`Add`, `Sub`, `Mul`, `Div`) for NumArray types.
 /// It implements both scalar and array operations (with and without passing references).
+// TODO(simd): REFACTOR — impl_binary_op! macro uses scalar iter().map() for u8/i32/i64 types.
+// These should route through SimdOps::{add,sub,mul,div}_{scalar,array} like f32/f64 ops do.
 macro_rules! impl_binary_op {
     ($trait:ident, $method:ident, $num_array_type:ty, $scalar_type:ty, $wrapping_fn:ident) => {
         impl std::ops::$trait<$scalar_type> for $num_array_type {

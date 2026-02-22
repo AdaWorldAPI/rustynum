@@ -1,3 +1,4 @@
+// TODO(simd): REFACTOR — matrix_stats uses scalar iter().map() for mean/var/min/max.
 //! 3D XYZ Binding Popcount Spatial Matrix — spectral analysis of HDC binding space.
 //!
 //! For three 16384-bit containers (X, Y, Z), constructs a 3D scalar field where
@@ -66,9 +67,15 @@ pub fn binding_popcount_3d(
         for j in 0..resolution {
             // XOR x_i with y_j once, reuse for all k
             let xy = x_perms[i].bind(&y_perms[j]);
+            let xy_data = xy.get_data();
+
             for k in 0..resolution {
-                let xyz = xy.bind(&z_perms[k]);
-                let popcnt = xyz.popcount();
+                // Fused XOR+VPOPCNTDQ: popcount(xy XOR z_k) = hamming_distance(xy, z_k)
+                // Single pass, zero allocation — 32 VPOPCNTDQ iterations for 2KB containers
+                let popcnt = rustynum_core::simd::hamming_distance(
+                    xy_data,
+                    z_perms[k].get_data(),
+                );
                 matrix[i * resolution * resolution + j * resolution + k] = popcnt as u32;
             }
         }

@@ -12,8 +12,13 @@
 //!
 //! Complex numbers are stored as interleaved (re, im, re, im, ...).
 
-// FFT is currently scalar (Cooley-Tukey butterfly).
-// SIMD acceleration can be added for large butterfly stages in the future.
+// TODO(simd): REFACTOR — entire FFT is scalar (Cooley-Tukey butterfly).
+// All butterfly stages (fft_f32, fft_f64) use scalar twiddle multiply.
+// ifft_f32/ifft_f64 conjugate+scale loops are scalar element-wise ops.
+// rfft_f32 packing loop is scalar memcpy (acceptable).
+// Fix: vectorize butterfly pairs (process multiple j in parallel),
+// pre-compute twiddle table, use SIMD complex multiply for butterfly stages.
+// ifft conjugate/scale loops → SIMD negate + SIMD scale.
 
 // ============================================================================
 // Complex FFT (radix-2 Cooley-Tukey, in-place, decimation-in-time)
