@@ -1,3 +1,15 @@
+// TODO(simd): REFACTOR — bf16_gemm is entirely scalar:
+// - f32_to_bf16_slice/f32_to_bf16_rounded: scalar per-element conversion loops.
+//   Fix: AVX-512 VCVTNEPS2BF16 converts f32x16 → bf16x16 in one instruction.
+// - bf16_to_f32_slice: scalar per-element widening.
+//   Fix: just shift left 16 bits on u16x32 → f32x16.
+// - bf16_gemm_simple: scalar triple loop with per-element to_f32() conversion.
+//   Fix: use VDPBF16PS (dot product of BF16 pairs → f32 accumulate), or at minimum
+//   batch-convert to f32 and use f32 SIMD microkernel.
+// - bf16_gemm_blocked: converts tiles to f32 then scalar triple loop.
+//   Fix: skip f32 conversion, use VDPBF16PS directly on BF16 tiles.
+// - mixed_precision_gemm: allocates + converts entire matrices — wasteful.
+//   Fix: fuse conversion into the tiled GEMM, convert per-tile in L1.
 //! BF16 (Brain Float 16) GEMM for ML inference workloads.
 //!
 //! BFloat16 uses 8-bit exponent (same range as f32) + 7-bit mantissa.
