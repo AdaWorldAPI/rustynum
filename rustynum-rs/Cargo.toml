@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 
 [dependencies]
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 
 [dev-dependencies]
 criterion = "0.3"

@@ -249,35 +249,11 @@ pub fn sweep_cogrecords(
     results
 }
 
-/// Raw Hamming distance between two byte slices.
-///
-/// Uses scalar POPCNT on u64 chunks for speed.
-/// For VPOPCNTDQ acceleration, use rustynum_core::simd::hamming_distance directly.
+/// Hamming distance between two byte slices.
+/// Routes to rustynum_core for VPOPCNTDQ acceleration on AVX-512 CPUs.
 #[inline]
 fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    debug_assert_eq!(a.len(), b.len());
-    let len = a.len();
-    let u64_chunks = len / 8;
-    let mut sum: u64 = 0;
-
-    for i in 0..u64_chunks {
-        let base = i * 8;
-        let a_u64 = u64::from_le_bytes([
-            a[base], a[base+1], a[base+2], a[base+3],
-            a[base+4], a[base+5], a[base+6], a[base+7],
-        ]);
-        let b_u64 = u64::from_le_bytes([
-            b[base], b[base+1], b[base+2], b[base+3],
-            b[base+4], b[base+5], b[base+6], b[base+7],
-        ]);
-        sum += (a_u64 ^ b_u64).count_ones() as u64;
-    }
-
-    for i in (u64_chunks * 8)..len {
-        sum += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    sum
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
 #[cfg(test)]

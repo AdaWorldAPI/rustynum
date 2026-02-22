@@ -120,43 +120,11 @@ pub fn hamming_top_k_simd(
     rustynum_core::simd::hamming_top_k(query, database, num_rows, row_bytes, k)
 }
 
-/// Inline XOR+POPCNT, same algorithm as hdc.rs::hamming_chunk_inline.
-/// 4× u64 unrolled for VPOPCNTDQ auto-vectorization.
+/// Hamming distance with 3-tier SIMD dispatch via rustynum_core.
+/// Dispatch: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
 #[inline(always)]
 pub(crate) fn hamming_inline(a: &[u8], b: &[u8]) -> u64 {
-    let len = a.len();
-    let u64_chunks = len / 8;
-    let full_quads = u64_chunks / 4;
-    let mut total: u64 = 0;
-
-    for q in 0..full_quads {
-        let base = q * 32;
-        let w0 = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        let w1 = u64::from_ne_bytes(a[base + 8..base + 16].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 8..base + 16].try_into().unwrap());
-        let w2 = u64::from_ne_bytes(a[base + 16..base + 24].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 16..base + 24].try_into().unwrap());
-        let w3 = u64::from_ne_bytes(a[base + 24..base + 32].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base + 24..base + 32].try_into().unwrap());
-        total += w0.count_ones() as u64
-            + w1.count_ones() as u64
-            + w2.count_ones() as u64
-            + w3.count_ones() as u64;
-    }
-
-    for i in full_quads * 4..u64_chunks {
-        let base = i * 8;
-        let w = u64::from_ne_bytes(a[base..base + 8].try_into().unwrap())
-            ^ u64::from_ne_bytes(b[base..base + 8].try_into().unwrap());
-        total += w.count_ones() as u64;
-    }
-
-    for i in u64_chunks * 8..len {
-        total += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    total
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
 // ─────────────────────────────────────────────────────────────────────

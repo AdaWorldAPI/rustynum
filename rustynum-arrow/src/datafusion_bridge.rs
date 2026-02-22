@@ -117,25 +117,11 @@ pub fn cascade_scan_4ch(
 }
 
 /// Inline Hamming distance via u64 popcount.
-/// Processes 8 bytes at a time for throughput.
+/// Hamming distance between two byte slices.
+/// Routes to rustynum_core for VPOPCNTDQ acceleration on AVX-512 CPUs.
 #[inline]
 fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    let len = a.len().min(b.len());
-    let chunks = len / 8;
-    let mut sum: u64 = 0;
-
-    for i in 0..chunks {
-        let base = i * 8;
-        let av = u64::from_le_bytes(a[base..base + 8].try_into().unwrap());
-        let bv = u64::from_le_bytes(b[base..base + 8].try_into().unwrap());
-        sum += (av ^ bv).count_ones() as u64;
-    }
-
-    for i in (chunks * 8)..len {
-        sum += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    sum
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
 // ---------------------------------------------------------------------------

@@ -8,5 +8,6 @@ description = "Archive of CogRecord v1 binary-only model: HDC primitives, VerbCo
 
 [dependencies]
 rustynum-rs = { path = "../rustynum-rs" }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 
 [dev-dependencies]

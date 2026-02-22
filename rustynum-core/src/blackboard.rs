@@ -99,6 +99,10 @@ impl Drop for BufferMeta {
 /// `UnsafeCell` wrapping opts into interior mutability, making the
 /// `&self` → `&mut [T]` pattern sound under Rust's stacked borrows model.
 /// Runtime assertions prevent borrowing the same buffer twice.
+// TODO(refactor): UnsafeCell is now unnecessary since all borrow_*_mut take &mut self.
+// Replace HashMap<String, UnsafeCell<BufferMeta>> with HashMap<String, BufferMeta>
+// and return &mut through regular &mut self borrows.
+// Or better: GemmBuffers typed struct (no HashMap, compiler-proven non-aliasing).
 pub struct Blackboard {
     buffers: HashMap<String, UnsafeCell<BufferMeta>>,
     next_handle: u32,

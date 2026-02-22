@@ -220,25 +220,11 @@ impl CogRecordV3 {
     }
 }
 
-/// Inline Hamming distance via u64 popcount.
+/// Hamming distance with 3-tier SIMD dispatch via rustynum_core.
+/// Dispatch: VPOPCNTDQ (AVX-512) → Harley-Seal (AVX2) → scalar POPCNT.
 #[inline]
 fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    let len = a.len().min(b.len());
-    let chunks = len / 8;
-    let mut sum: u64 = 0;
-
-    for i in 0..chunks {
-        let base = i * 8;
-        let av = u64::from_le_bytes(a[base..base + 8].try_into().unwrap());
-        let bv = u64::from_le_bytes(b[base..base + 8].try_into().unwrap());
-        sum += (av ^ bv).count_ones() as u64;
-    }
-
-    for i in (chunks * 8)..len {
-        sum += (a[i] ^ b[i]).count_ones() as u64;
-    }
-
-    sum
+    rustynum_core::simd::hamming_distance(a, b)
 }
 
 // -------------------------------------------------------------------------

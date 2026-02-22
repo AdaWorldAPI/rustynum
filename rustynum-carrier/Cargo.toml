@@ -5,12 +5,12 @@ edition = "2021"
 description = "Archive of CogRecordV3 + carrier waveform model (pre-focus): 8 phase operations, 5 carrier operations, CogRecordV3 + CarrierRecord. Frozen snapshot before focus-of-attention gating extension."
 
 [features]
-default = ["avx512"]
+default = []
 avx512 = ["rustynum-core/avx512"]
 avx2 = ["rustynum-core/avx2"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core", default-features = false }
+rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 rustynum-rs = { path = "../rustynum-rs" }
 
 [dev-dependencies]

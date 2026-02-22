@@ -1,3 +1,7 @@
+// TODO(refactor): Extract trait bounds into NumElement supertrait.
+// Current: 12+ bounds copy-pasted on every function, FromUsize duplicated.
+// Fix: trait NumElement: Copy + Mul<Output=Self> + Add<Output=Self> + ... {}
+//
 //! # Linear Algebra Operations
 //!
 //! Provides operations such as matrix-vector multiplication using NumArray data structures.
