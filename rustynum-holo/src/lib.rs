@@ -41,6 +41,8 @@ pub mod carrier;
 pub mod delta_layer;
 pub mod focus;
 pub mod holograph;
+pub mod lod_pyramid;
+pub mod holo_search;
 
 pub use phase::{
     phase_bind_i8, phase_bind_i8_inplace, phase_inverse_i8,
@@ -80,6 +82,16 @@ pub use focus::{
 };
 
 pub use delta_layer::{DeltaLayer, LayerStack};
+
+pub use lod_pyramid::{
+    LodLevel, LodPyramid, LodAnnotation,
+    or_reduce_2d, or_mask_lower_bound,
+};
+
+pub use holo_search::{
+    LodIndex, LodSearchResult, LodSearchStats,
+    lod_knn_search, lod_knn_search_oneshot, annotate_tree_with_lod,
+};
 
 pub use holograph::{
     // Core Gabor wavelet types and operations

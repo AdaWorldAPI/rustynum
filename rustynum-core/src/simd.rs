@@ -17,10 +17,6 @@ pub const F32_LANES: usize = 16;
 pub const F64_LANES: usize = 8;
 /// u8 lanes per AVX-512 register (512 / 8 = 64).
 pub const U8_LANES: usize = 64;
-/// i32 lanes per AVX-512 register (512 / 32 = 16).
-pub const I32_LANES: usize = 16;
-/// i64 lanes per AVX-512 register (512 / 64 = 8).
-pub const I64_LANES: usize = 8;
 
 // ============================================================================
 // GEMM microkernel tile sizes (for cache-blocked GEMM)
@@ -1190,7 +1186,7 @@ pub struct HdrResult {
 /// | F32  | f32 embedding → u8 | hamming on u8 | dequant → f32 dot | Jina embed |
 /// | BF16 | f32 embedding → u8 | hamming on u8 | dequant → bf16 dot | large embed db |
 /// | DeltaXor | 3D + INT8 delta | XOR delta popcount | INT8 residual dot | DeltaLayer |
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum PreciseMode {
     /// No precision tier — return Hamming distances only.
     Off,
@@ -1218,6 +1214,24 @@ pub enum PreciseMode {
     /// `delta_weight` controls blend: distance = hamming * (1-w) + residual_dot * w
     DeltaXor { delta_weight: f32 },
 }
+
+impl PartialEq for PreciseMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Off, Self::Off) => true,
+            (Self::Vnni, Self::Vnni) => true,
+            (Self::F32 { scale: s1, zero_point: z1 }, Self::F32 { scale: s2, zero_point: z2 }) =>
+                s1.to_bits() == s2.to_bits() && z1 == z2,
+            (Self::BF16 { scale: s1, zero_point: z1 }, Self::BF16 { scale: s2, zero_point: z2 }) =>
+                s1.to_bits() == s2.to_bits() && z1 == z2,
+            (Self::DeltaXor { delta_weight: w1 }, Self::DeltaXor { delta_weight: w2 }) =>
+                w1.to_bits() == w2.to_bits(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PreciseMode {}
 
 /// 3-Stroke Adaptive HDR Cascade Search.
 ///
@@ -1268,7 +1282,7 @@ pub fn hdr_cascade_search(
     let hamming_fn = select_hamming_fn();
 
     // ─── Configuration ───
-    let s1_bytes = (vec_bytes / 16).max(64).min(vec_bytes); // At least 64 bytes (1 VPOPCNTDQ)
+    let s1_bytes = (((vec_bytes / 16).max(64) + 63) & !63).min(vec_bytes); // 64-byte aligned for VPOPCNTDQ
     let scale1 = (vec_bytes as f64) / (s1_bytes as f64);
     let warmup_n = 128.min(num_vectors);
 
@@ -1435,7 +1449,8 @@ fn apply_precision_tier(
             //
             // For ~200 finalists × 2KB = 400KB temporary — fits L2.
 
-            // Dequantize query once
+            // Scalar dequantize: ~200 finalists × 2048 ops = 400K ops, dominated by dot_f32 that follows.
+            // SIMD widening (VPMOVZXBD + VCVTDQ2PS) would save ~3× here but total search is <1% affected.
             let mut query_f32 = vec![0.0f32; vec_bytes];
             for i in 0..vec_bytes {
                 query_f32[i] = scale * (query[i] as i32 - zero_point) as f32;

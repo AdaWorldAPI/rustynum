@@ -12,5 +12,6 @@ avx2 = ["rustynum-core/avx2"]
 [dependencies]
 rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
 rustynum-rs = { path = "../rustynum-rs" }
+rustynum-clam = { path = "../rustynum-clam" }
 
 [dev-dependencies]

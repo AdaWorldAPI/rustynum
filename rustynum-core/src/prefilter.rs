@@ -21,8 +21,6 @@
 //! 4. **Nearest-neighbor search**: INT8 approximate distances for top-k
 //!    candidate selection, then exact f32 distances on candidates.
 
-use std::simd::u8x64;
-
 // ============================================================================
 // INT8 approximate statistics
 // ============================================================================
@@ -242,33 +240,12 @@ pub fn approx_hamming_candidates(
     assert!(database.len() >= n_vectors * bytes_per_vec);
     assert!(query.len() >= bytes_per_vec);
 
+    let hamming_fn = crate::simd::select_hamming_fn();
     let mut distances: Vec<(usize, u32)> = Vec::with_capacity(n_vectors);
 
-    let chunks = bytes_per_vec / 64;
-
     for v in 0..n_vectors {
-        let vec_data = &database[v * bytes_per_vec..];
-        let mut dist: u32 = 0;
-
-        // SIMD XOR + popcount using u8x64
-        for c in 0..chunks {
-            let base = c * 64;
-            let q = u8x64::from_slice(&query[base..]);
-            let d = u8x64::from_slice(&vec_data[base..]);
-            let xor = q ^ d;
-
-            // Count bits: sum popcount of each byte
-            let arr = xor.to_array();
-            for byte in arr {
-                dist += byte.count_ones();
-            }
-        }
-
-        // Scalar tail
-        for i in chunks * 64..bytes_per_vec {
-            dist += (query[i] ^ vec_data[i]).count_ones();
-        }
-
+        let vec_data = &database[v * bytes_per_vec..v * bytes_per_vec + bytes_per_vec];
+        let dist = hamming_fn(&query[..bytes_per_vec], vec_data) as u32;
         distances.push((v, dist));
     }
 

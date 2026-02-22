@@ -294,22 +294,22 @@ pub fn sweep_cogrecords(
         // Inline the adaptive sweep to avoid constructing CogRecord
         // Stage 1: META
         let meta_slice = &record_bytes[0..CONTAINER_BYTES];
-        let d0 = hamming_slice(query.meta.get_data(), meta_slice);
+        let d0 = rustynum_core::simd::hamming_distance(query.meta.get_data(), meta_slice);
         if d0 > thresholds[META] { continue; }
 
         // Stage 2: CAM
         let cam_slice = &record_bytes[CONTAINER_BYTES..2 * CONTAINER_BYTES];
-        let d1 = hamming_slice(query.cam.get_data(), cam_slice);
+        let d1 = rustynum_core::simd::hamming_distance(query.cam.get_data(), cam_slice);
         if d1 > thresholds[CAM] { continue; }
 
         // Stage 3: BTREE
         let btree_slice = &record_bytes[2 * CONTAINER_BYTES..3 * CONTAINER_BYTES];
-        let d2 = hamming_slice(query.btree.get_data(), btree_slice);
+        let d2 = rustynum_core::simd::hamming_distance(query.btree.get_data(), btree_slice);
         if d2 > thresholds[BTREE] { continue; }
 
         // Stage 4: EMBED
         let embed_slice = &record_bytes[3 * CONTAINER_BYTES..4 * CONTAINER_BYTES];
-        let d3 = hamming_slice(query.embed.get_data(), embed_slice);
+        let d3 = rustynum_core::simd::hamming_distance(query.embed.get_data(), embed_slice);
         if d3 > thresholds[EMBED] { continue; }
 
         results.push(SweepResult {
@@ -321,12 +321,6 @@ pub fn sweep_cogrecords(
     results
 }
 
-/// Hamming distance between two byte slices.
-/// Routes to rustynum_core for VPOPCNTDQ acceleration on AVX-512 CPUs.
-#[inline]
-fn hamming_slice(a: &[u8], b: &[u8]) -> u64 {
-    rustynum_core::simd::hamming_distance(a, b)
-}
 
 #[cfg(test)]
 mod tests {

@@ -21,7 +21,8 @@ pub async fn write_cogrecords(
     uri: &str,
     records: &[CogRecord],
 ) -> Result<Dataset, lance::Error> {
-    let batch = cogrecords_to_record_batch(records);
+    let batch = cogrecords_to_record_batch(records)
+        .expect("CogRecord data must be 2048 bytes per channel");
     let schema = Arc::new(cogrecord_schema());
     let reader = RecordBatchIterator::new(
         vec![Ok(batch)],
@@ -37,7 +38,8 @@ pub async fn append_cogrecords(
     uri: &str,
     records: &[CogRecord],
 ) -> Result<Dataset, lance::Error> {
-    let batch = cogrecords_to_record_batch(records);
+    let batch = cogrecords_to_record_batch(records)
+        .expect("CogRecord data must be 2048 bytes per channel");
     let schema = Arc::new(cogrecord_schema());
     let reader = RecordBatchIterator::new(
         vec![Ok(batch)],

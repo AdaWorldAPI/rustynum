@@ -25,9 +25,6 @@ use rustynum_core::Blackboard;
 /// Number of random hyperplanes for LSH projection.
 const NUM_HYPERPLANES: usize = 65536;
 
-/// Bits per u64 word.
-const BITS_PER_WORD: usize = 64;
-
 /// Novelty threshold: max projection below this → novel.
 const NOVELTY_PROJECTION_THRESHOLD: f32 = 0.15;
 
@@ -89,10 +86,8 @@ pub struct Projector64K {
     hyperplanes_flat: Vec<f32>,
     /// Dimensionality of input vectors.
     d: usize,
-    /// Number of hyperplanes (bits in fingerprint). Must be multiple of 64.
+    /// Number of hyperplanes (bits in fingerprint). Must be multiple of 8.
     num_planes: usize,
-    /// Number of u64 words in fingerprint.
-    num_words: usize,
 }
 
 impl Projector64K {
@@ -105,12 +100,10 @@ impl Projector64K {
     }
 
     /// Create a projector with a custom number of hyperplanes.
-    /// `num_planes` must be a multiple of 64.
+    /// `num_planes` must be a multiple of 8.
     pub fn with_planes(d: usize, num_planes: usize, seed: u64) -> Self {
-        assert!(num_planes > 0 && num_planes % BITS_PER_WORD == 0);
+        assert!(num_planes > 0 && num_planes % 8 == 0);
         let mut rng = SplitMix64::new(seed);
-        let num_words = num_planes / BITS_PER_WORD;
-
         // Single contiguous allocation for cache-friendly access.
         // Layout: hyperplanes_flat[plane * d + dim]
         let mut hyperplanes_flat = vec![0.0f32; num_planes * d];
@@ -128,72 +121,40 @@ impl Projector64K {
             }
         }
 
-        Self { hyperplanes_flat, d, num_planes, num_words }
+        Self { hyperplanes_flat, d, num_planes }
     }
 
-    /// Project a float vector to a binary fingerprint.
+    /// Project a float vector to a binary fingerprint packed as bytes.
     ///
     /// Each bit = sign(dot(vector, hyperplane_i)).
-    /// Hot path: processes 64 hyperplanes per iteration to build one u64 word.
-    pub fn project(&self, vector: &[f32]) -> Vec<u64> {
+    /// Hot path: SIMD dot product via `dot_f32` (AVX-512 FMA when available).
+    pub fn project(&self, vector: &[f32]) -> Vec<u8> {
         assert_eq!(vector.len(), self.d);
-        let mut bits = vec![0u64; self.num_words];
+        let num_bytes = self.num_planes / 8;
+        let mut bytes = vec![0u8; num_bytes];
         let d = self.d;
 
-        for word_idx in 0..self.num_words {
-            let mut word = 0u64;
-            let base_plane = word_idx * BITS_PER_WORD;
-
-            for bit in 0..BITS_PER_WORD {
-                let plane = base_plane + bit;
-                let hp = &self.hyperplanes_flat[plane * d..(plane + 1) * d];
-                let mut dot = 0.0f32;
-                // Inner dot product — sequential memory access on hp.
-                for j in 0..d {
-                    dot += vector[j] * hp[j];
-                }
-                if dot >= 0.0 {
-                    word |= 1u64 << bit;
-                }
+        for i in 0..self.num_planes {
+            let hp = &self.hyperplanes_flat[i * d..(i + 1) * d];
+            let dot = rustynum_core::simd::dot_f32(vector, hp);
+            if dot >= 0.0 {
+                bytes[i / 8] |= 1 << (7 - (i % 8));
             }
-            bits[word_idx] = word;
         }
 
-        bits
+        bytes
     }
 
     /// Project an i8 template to a binary fingerprint.
     ///
-    /// Avoids f32 conversion allocation: accumulates dot product directly
-    /// with i8→f32 conversion per element.
-    pub fn project_signed(&self, template: &[i8]) -> Vec<u64> {
-        assert_eq!(template.len(), self.d);
-        let mut bits = vec![0u64; self.num_words];
-        let d = self.d;
-
-        for word_idx in 0..self.num_words {
-            let mut word = 0u64;
-            let base_plane = word_idx * BITS_PER_WORD;
-
-            for bit in 0..BITS_PER_WORD {
-                let plane = base_plane + bit;
-                let hp = &self.hyperplanes_flat[plane * d..(plane + 1) * d];
-                let mut dot = 0.0f32;
-                for j in 0..d {
-                    dot += template[j] as f32 * hp[j];
-                }
-                if dot >= 0.0 {
-                    word |= 1u64 << bit;
-                }
-            }
-            bits[word_idx] = word;
-        }
-
-        bits
+    /// Converts template to f32 once, then uses SIMD `dot_f32` for all planes.
+    pub fn project_signed(&self, template: &[i8]) -> Vec<u8> {
+        let fv: Vec<f32> = template.iter().map(|&v| v as f32).collect();
+        self.project(&fv)
     }
 
     /// Project a batch of i8 templates, returning their fingerprints.
-    pub fn project_batch(&self, templates: &[Vec<i8>]) -> Vec<Vec<u64>> {
+    pub fn project_batch(&self, templates: &[Vec<i8>]) -> Vec<Vec<u8>> {
         templates.iter().map(|t| self.project_signed(t)).collect()
     }
 
@@ -207,38 +168,32 @@ impl Projector64K {
         self.num_planes
     }
 
-    /// Number of u64 words in fingerprint.
-    pub fn num_words(&self) -> usize {
-        self.num_words
-    }
-
     /// Populate a Blackboard buffer with this projector's hyperplane data.
     ///
     /// Writes the flat hyperplane matrix into buffer `name` on the blackboard.
     /// The buffer is allocated (or reallocated) to the correct size.
     /// After this call, `from_blackboard()` can reconstruct the projector
-    /// without regenerating random numbers — zero-copy from the arena.
+    /// without regenerating random numbers (copy from arena, not zero-copy).
     pub fn write_to_blackboard(&self, bb: &mut Blackboard, name: &str) {
         bb.alloc_f32(name, self.hyperplanes_flat.len());
         let buf = bb.get_f32_mut(name);
         buf.copy_from_slice(&self.hyperplanes_flat);
     }
 
-    /// Reconstruct a projector from a Blackboard buffer (zero-copy read).
+    /// Reconstruct a projector from a Blackboard buffer (copy, no RNG).
     ///
     /// The hyperplane data is copied from the blackboard into the projector's
-    /// owned buffer. Use this when the same hyperplanes need to be reused
-    /// across multiple experiments at the same dimensionality.
+    /// owned buffer — avoids regenerating random numbers, not zero-copy.
+    /// Use this when the same hyperplanes need to be reused across multiple
+    /// experiments at the same dimensionality.
     pub fn from_blackboard(bb: &Blackboard, name: &str, d: usize, num_planes: usize) -> Self {
-        assert!(num_planes > 0 && num_planes % BITS_PER_WORD == 0);
+        assert!(num_planes > 0 && num_planes % 8 == 0);
         let buf = bb.get_f32(name);
         assert_eq!(buf.len(), num_planes * d);
-        let num_words = num_planes / BITS_PER_WORD;
         Self {
             hyperplanes_flat: buf.to_vec(),
             d,
             num_planes,
-            num_words,
         }
     }
 }
@@ -247,24 +202,19 @@ impl Projector64K {
 // Part 2: Hamming Distance on 64K-bit Fingerprints
 // ---------------------------------------------------------------------------
 
-/// Hamming distance between two binary fingerprints stored as `u64` slices.
+/// Hamming distance between two binary fingerprints stored as `u8` slices.
 ///
-/// Uses the same XOR + popcount loop as `Fingerprint::hamming_distance`,
-/// but works directly on borrowed slices (no copy).
-pub fn hamming_64k(a: &[u64], b: &[u64]) -> u32 {
-    assert_eq!(a.len(), b.len());
-    let mut dist = 0u32;
-    for i in 0..a.len() {
-        dist += (a[i] ^ b[i]).count_ones();
-    }
-    dist
+/// Delegates to `rustynum_core::simd::hamming_distance` which uses
+/// VPOPCNTDQ (AVX-512) or AVX2 when available.
+pub fn hamming_64k(a: &[u8], b: &[u8]) -> u32 {
+    rustynum_core::simd::hamming_distance(a, b) as u32
 }
 
 /// Hamming similarity: 1.0 - (hamming_distance / num_bits).
 ///
 /// 1.0 = identical, 0.5 = random/uncorrelated, 0.0 = anti-correlated.
-pub fn hamming_similarity_64k(a: &[u64], b: &[u64]) -> f32 {
-    let total_bits = a.len() * BITS_PER_WORD;
+pub fn hamming_similarity_64k(a: &[u8], b: &[u8]) -> f32 {
+    let total_bits = a.len() * 8;
     1.0 - hamming_64k(a, b) as f32 / total_bits as f32
 }
 
@@ -320,7 +270,7 @@ pub struct Recognizer {
     /// 64K-bit projector.
     pub projector: Projector64K,
     /// Fingerprints for each registered class.
-    pub fingerprints: Vec<Vec<u64>>,
+    pub fingerprints: Vec<Vec<u8>>,
     /// Running average templates (f32) for incremental learning.
     class_averages: Vec<Vec<f32>>,
     /// Number of examples seen per class.
@@ -1152,7 +1102,7 @@ mod tests {
         let proj = Projector64K::with_planes(128, TEST_PLANES, 42);
         let v: Vec<f32> = (0..128).map(|i| (i as f32).sin()).collect();
         let fp = proj.project(&v);
-        assert_eq!(fp.len(), TEST_PLANES / 64);
+        assert_eq!(fp.len(), TEST_PLANES / 8);
     }
 
     #[test]
@@ -1227,21 +1177,21 @@ mod tests {
 
     #[test]
     fn test_hamming_zero_distance() {
-        let a = vec![0xFFu64; 16];
+        let a = vec![0xFFu8; 128];
         assert_eq!(hamming_64k(&a, &a), 0);
     }
 
     #[test]
     fn test_hamming_max_distance() {
-        let a = vec![0u64; 16];
-        let b = vec![u64::MAX; 16];
-        assert_eq!(hamming_64k(&a, &b), (16 * 64) as u32);
+        let a = vec![0u8; 128];
+        let b = vec![0xFFu8; 128];
+        assert_eq!(hamming_64k(&a, &b), (128 * 8) as u32);
     }
 
     #[test]
     fn test_hamming_single_bit() {
-        let a = vec![0u64; 16];
-        let mut b = vec![0u64; 16];
+        let a = vec![0u8; 128];
+        let mut b = vec![0u8; 128];
         b[0] = 1; // one bit different
         assert_eq!(hamming_64k(&a, &b), 1);
     }
@@ -1355,6 +1305,18 @@ mod tests {
             recognizer.register_class(i as u32, t.clone());
         }
 
+        // Measure accuracy BEFORE learning
+        let mut before_correct = 0u32;
+        let mut rng_before = SplitMix64::new(999);
+        for (i, t) in templates.iter().enumerate() {
+            let noisy = perturb(t, 1.0, &mut rng_before);
+            let result = recognizer.recognize_orthogonal(&noisy);
+            if result.best_class == i {
+                before_correct += 1;
+            }
+        }
+        let before_accuracy = before_correct as f32 / num_classes as f32;
+
         // Learn with multiple noisy examples
         for _ in 0..5 {
             for (i, t) in templates.iter().enumerate() {
@@ -1363,21 +1325,24 @@ mod tests {
             }
         }
 
-        // Test after learning — system should still recognize classes
-        let mut post_correct = 0;
+        // Measure accuracy AFTER learning
+        let mut rng_after = SplitMix64::new(999);
+        let mut post_correct = 0u32;
         for (i, t) in templates.iter().enumerate() {
-            let noisy = perturb(t, 1.0, &mut rng);
+            let noisy = perturb(t, 1.0, &mut rng_after);
             let result = recognizer.recognize_orthogonal(&noisy);
             if result.best_class == i {
                 post_correct += 1;
             }
         }
+        let after_accuracy = post_correct as f32 / num_classes as f32;
 
-        // Just ensure the system still works after learning
-        assert!(
-            post_correct >= 0,
-            "Learning completely broke recognition"
-        );
+        assert!(after_accuracy >= before_accuracy,
+            "Learning should not decrease accuracy: before={:.1}%, after={:.1}%",
+            before_accuracy * 100.0, after_accuracy * 100.0);
+        assert!(after_accuracy > 0.5,
+            "Post-learning accuracy {:.1}% should exceed 50%",
+            after_accuracy * 100.0);
     }
 
     #[test]

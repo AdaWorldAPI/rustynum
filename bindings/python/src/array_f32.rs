@@ -30,86 +30,66 @@ impl PyNumArrayF32 {
 
     // Implement addition with a scalar value
     fn add_scalar(&self, scalar: f32) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner + scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner + scalar; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     // Implement addition with another NumArray
     fn add_array(&self, other: PyRef<PyNumArrayF32>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner + &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner + &other.inner; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn sub_scalar(&self, scalar: f32) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner - scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner - scalar; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn sub_array(&self, other: PyRef<PyNumArrayF32>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner - &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner - &other.inner; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn mul_scalar(&self, scalar: f32) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner * scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner * scalar; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn mul_array(&self, other: PyRef<PyNumArrayF32>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner * &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner * &other.inner; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn div_scalar(&self, scalar: f32) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner / scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner / scalar; // Leveraging Rust's Add implementation
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn div_array(&self, other: PyRef<PyNumArrayF32>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = &self.inner / &other.inner;
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = &self.inner / &other.inner;
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn mean_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
-                    self.inner.mean_axis(Some(&axis_vec)) // Now correctly passing a slice wrapped in Some
-                }
-                None => self.inner.mean_axis(None),
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
+                self.inner.mean_axis(Some(&axis_vec)) // Now correctly passing a slice wrapped in Some
+            }
+            None => self.inner.mean_axis(None),
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn median_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.median_axis(Some(&axis_vec))
-                }
-                None => self.inner.median_axis(None),
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.median_axis(Some(&axis_vec))
+            }
+            None => self.inner.median_axis(None),
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn norm(
@@ -118,16 +98,14 @@ impl PyNumArrayF32 {
         axis: Option<&PyList>,
         keepdims: Option<bool>,
     ) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.norm(p, Some(&axis_vec), keepdims)
-                }
-                None => self.inner.norm(p, None, keepdims),
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.norm(p, Some(&axis_vec), keepdims)
+            }
+            None => self.inner.norm(p, None, keepdims),
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn tolist(&self, py: Python) -> PyObject {
@@ -141,11 +119,9 @@ impl PyNumArrayF32 {
         })
     }
 
-    fn shape(&self) -> PyResult<PyObject> {
-        Python::with_gil(|py| {
-            let shape_vec = self.inner.shape();
-            Ok(PyTuple::new(py, shape_vec.iter()).to_object(py))
-        })
+    fn shape(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let shape_vec = self.inner.shape();
+        Ok(PyTuple::new(py, shape_vec.iter()).to_object(py))
     }
 
     fn reshape(&self, shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
@@ -155,18 +131,16 @@ impl PyNumArrayF32 {
     }
 
     fn flip_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let axis_vec: Vec<usize> = match axis {
-                Some(list) => list.extract()?,
-                None => vec![],
-            };
-            let result = if axis_vec.is_empty() {
-                self.inner.clone()
-            } else {
-                self.inner.flip_axis(axis_vec)
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let axis_vec: Vec<usize> = match axis {
+            Some(list) => list.extract()?,
+            None => vec![],
+        };
+        let result = if axis_vec.is_empty() {
+            self.inner.clone()
+        } else {
+            self.inner.flip_axis(axis_vec)
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn exp(&self) -> PyNumArrayF32 {
@@ -188,28 +162,24 @@ impl PyNumArrayF32 {
     }
 
     fn min_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.min_axis(Some(&axis_vec))
-                }
-                None => self.inner.min_axis(None),
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.min_axis(Some(&axis_vec))
+            }
+            None => self.inner.min_axis(None),
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 
     fn max_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-        Python::with_gil(|py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.max_axis(Some(&axis_vec))
-                }
-                None => self.inner.max_axis(None),
-            };
-            Ok(PyNumArrayF32 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.max_axis(Some(&axis_vec))
+            }
+            None => self.inner.max_axis(None),
+        };
+        Ok(PyNumArrayF32 { inner: result })
     }
 }

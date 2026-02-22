@@ -82,7 +82,7 @@ pub fn cogrecord_schema() -> Schema {
 }
 
 /// Convert a slice of CogRecords into an Arrow RecordBatch.
-pub fn cogrecords_to_record_batch(records: &[CogRecord]) -> RecordBatch {
+pub fn cogrecords_to_record_batch(records: &[CogRecord]) -> Result<RecordBatch, arrow::error::ArrowError> {
     let schema = Arc::new(cogrecord_schema());
     let n = records.len();
 
@@ -92,18 +92,10 @@ pub fn cogrecords_to_record_batch(records: &[CogRecord]) -> RecordBatch {
     let mut embed_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES);
 
     for rec in records {
-        meta_builder
-            .append_value(rec.meta.data_slice())
-            .expect("meta append");
-        cam_builder
-            .append_value(rec.cam.data_slice())
-            .expect("cam append");
-        btree_builder
-            .append_value(rec.btree.data_slice())
-            .expect("btree append");
-        embed_builder
-            .append_value(rec.embed.data_slice())
-            .expect("embed append");
+        meta_builder.append_value(rec.meta.data_slice())?;
+        cam_builder.append_value(rec.cam.data_slice())?;
+        btree_builder.append_value(rec.btree.data_slice())?;
+        embed_builder.append_value(rec.embed.data_slice())?;
     }
 
     RecordBatch::try_new(
@@ -115,7 +107,6 @@ pub fn cogrecords_to_record_batch(records: &[CogRecord]) -> RecordBatch {
             Arc::new(embed_builder.finish()) as ArrayRef,
         ],
     )
-    .expect("RecordBatch construction")
 }
 
 /// Convert an Arrow RecordBatch (matching `cogrecord_schema()`) back to CogRecords.
@@ -224,7 +215,7 @@ mod tests {
             })
             .collect();
 
-        let batch = cogrecords_to_record_batch(&records);
+        let batch = cogrecords_to_record_batch(&records).unwrap();
         assert_eq!(batch.num_rows(), 10);
         assert_eq!(batch.num_columns(), 4);
 
