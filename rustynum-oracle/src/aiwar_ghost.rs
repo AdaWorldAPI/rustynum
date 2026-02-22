@@ -494,6 +494,46 @@ fn amplitude_for_edge(etype: &EdgeType) -> f32 {
     }
 }
 
+/// Encode edges via raw signed accumulation (no WAL, no orthogonalization).
+///
+/// Simple approach: for each edge, bind(src, tgt) and accumulate into container.
+/// This is the baseline — no Gram-Schmidt, no plasticity, no channel isolation.
+pub fn encode_edges_signed_raw(
+    graph: &AiWarGraph,
+    templates: &[Vec<i8>],
+    d: usize,
+    base: Base,
+) -> Vec<i8> {
+    let mut accum = vec![0.0f32; d];
+    let s_min = base.min_val() as f32;
+    let s_max = base.max_val() as f32;
+
+    let mut encoded = 0usize;
+    for edge in &graph.edges {
+        let src_idx = match graph.id_to_index.get(&edge.source_id) {
+            Some(&i) => i,
+            None => continue,
+        };
+        let tgt_idx = match graph.id_to_index.get(&edge.target_id) {
+            Some(&i) => i,
+            None => continue,
+        };
+
+        let amp = amplitude_for_edge(&edge.edge_type);
+        let bound = bind(&templates[src_idx], &templates[tgt_idx], base);
+        for j in 0..d {
+            accum[j] += amp * bound[j] as f32;
+        }
+        encoded += 1;
+    }
+
+    eprintln!("  Encoded {} edges via raw accumulation (D={}, {})", encoded, d, base.name());
+
+    accum.iter()
+        .map(|&v| v.round().clamp(s_min, s_max) as i8)
+        .collect()
+}
+
 /// Encode all graph edges into an organic container using WAL + plasticity.
 ///
 /// Each edge becomes a "concept" in the WAL: bind(src_template, tgt_template).
@@ -785,6 +825,159 @@ fn probe_pair_ghosts(
 }
 
 // ---------------------------------------------------------------------------
+// Part 7b: Dual-Method Ghost Probing (Signed Raw + Organic Residual)
+// ---------------------------------------------------------------------------
+
+/// Ghost connection with both signed raw and organic residual signals.
+#[derive(Clone, Debug)]
+pub struct DualGhost {
+    pub entity_a: usize,
+    pub entity_b: usize,
+    pub name_a: String,
+    pub name_b: String,
+    pub type_a: EntityType,
+    pub type_b: EntityType,
+    /// Cosine similarity against raw signed accumulation container.
+    pub signed_strength: f32,
+    /// Cosine similarity against organic WAL container.
+    pub organic_direct: f32,
+    /// Cosine similarity against organic residual.
+    pub organic_residual: f32,
+}
+
+fn probe_dual_entity(
+    graph: &AiWarGraph,
+    target_idx: usize,
+    signed_container: &[i8],
+    organic_container: &[i8],
+    organic_residual: &[f32],
+    templates: &[Vec<i8>],
+    base: Base,
+    filter_indices: Option<&[usize]>,
+    top_k: usize,
+) -> Vec<DualGhost> {
+    let target = &graph.entities[target_idx];
+    let existing_neighbors: HashSet<String> = graph.edges_of(&target.id)
+        .iter()
+        .map(|e| {
+            if e.source_id == target.id { e.target_id.clone() }
+            else { e.source_id.clone() }
+        })
+        .collect();
+
+    let candidates: Vec<usize> = match filter_indices {
+        Some(indices) => indices.to_vec(),
+        None => (0..graph.entity_count()).collect(),
+    };
+
+    let mut ghosts = Vec::new();
+    for &idx in &candidates {
+        if idx == target_idx { continue; }
+        if existing_neighbors.contains(&graph.entities[idx].id) { continue; }
+
+        let probe = bind(&templates[target_idx], &templates[idx], base);
+        let signed_strength = cosine_similarity_i8(&probe, signed_container);
+        let organic_direct = cosine_similarity_i8(&probe, organic_container);
+        let organic_residual_s = cosine_similarity_mixed(&probe, organic_residual);
+
+        ghosts.push(DualGhost {
+            entity_a: target_idx,
+            entity_b: idx,
+            name_a: target.name.clone(),
+            name_b: graph.entities[idx].name.clone(),
+            type_a: target.entity_type.clone(),
+            type_b: graph.entities[idx].entity_type.clone(),
+            signed_strength,
+            organic_direct,
+            organic_residual: organic_residual_s,
+        });
+    }
+
+    // Sort by signed strength (absolute) for primary ranking
+    ghosts.sort_by(|a, b| b.signed_strength.abs()
+        .partial_cmp(&a.signed_strength.abs())
+        .unwrap_or(std::cmp::Ordering::Equal));
+
+    ghosts.truncate(top_k);
+    ghosts
+}
+
+fn probe_dual_pairs(
+    graph: &AiWarGraph,
+    set_a: &[usize],
+    set_b: &[usize],
+    signed_container: &[i8],
+    organic_container: &[i8],
+    organic_residual: &[f32],
+    templates: &[Vec<i8>],
+    base: Base,
+    top_k: usize,
+) -> Vec<DualGhost> {
+    let mut existing: HashSet<(usize, usize)> = HashSet::new();
+    for edge in &graph.edges {
+        if let (Some(&s), Some(&t)) = (
+            graph.id_to_index.get(&edge.source_id),
+            graph.id_to_index.get(&edge.target_id),
+        ) {
+            existing.insert((s, t));
+            existing.insert((t, s));
+        }
+    }
+
+    let mut ghosts = Vec::new();
+    for &i in set_a {
+        for &j in set_b {
+            if i == j { continue; }
+            if existing.contains(&(i, j)) { continue; }
+
+            let probe = bind(&templates[i], &templates[j], base);
+            let signed_strength = cosine_similarity_i8(&probe, signed_container);
+            let organic_direct = cosine_similarity_i8(&probe, organic_container);
+            let organic_residual_s = cosine_similarity_mixed(&probe, organic_residual);
+
+            ghosts.push(DualGhost {
+                entity_a: i,
+                entity_b: j,
+                name_a: graph.entities[i].name.clone(),
+                name_b: graph.entities[j].name.clone(),
+                type_a: graph.entities[i].entity_type.clone(),
+                type_b: graph.entities[j].entity_type.clone(),
+                signed_strength,
+                organic_direct,
+                organic_residual: organic_residual_s,
+            });
+        }
+    }
+
+    ghosts.sort_by(|a, b| b.signed_strength.abs()
+        .partial_cmp(&a.signed_strength.abs())
+        .unwrap_or(std::cmp::Ordering::Equal));
+
+    ghosts.truncate(top_k);
+    ghosts
+}
+
+fn print_dual_ghosts(title: &str, ghosts: &[DualGhost], max_rows: usize) {
+    println!("{}", "=".repeat(100));
+    println!("  {}", title);
+    println!("{}", "=".repeat(100));
+    println!("  {:25} {:25} {:>9} {:>9} {:>9}",
+        "Entity A", "Entity B", "Signed", "OrgDirect", "OrgResid");
+    println!("{}", "-".repeat(100));
+
+    for g in ghosts.iter().take(max_rows) {
+        println!("  {} {} {:>+9.4} {:>+9.4} {:>+9.4}",
+            truncate_str(&g.name_a, 25),
+            truncate_str(&g.name_b, 25),
+            g.signed_strength,
+            g.organic_direct,
+            g.organic_residual);
+    }
+
+    println!("{}", "=".repeat(100));
+}
+
+// ---------------------------------------------------------------------------
 // Part 8: Output Formatting
 // ---------------------------------------------------------------------------
 
@@ -854,47 +1047,49 @@ pub fn ghost_type_summary(ghosts: &[GhostConnection]) {
 // Part 9: Focused Scenarios
 // ---------------------------------------------------------------------------
 
-pub fn run_focused_scenarios(
+/// Run all 4 scenarios with dual-method comparison (signed raw + organic residual).
+pub fn run_dual_scenarios(
     graph: &AiWarGraph,
-    container: &[i8],
-    residual: &[f32],
+    signed_container: &[i8],
+    organic_container: &[i8],
+    organic_residual: &[f32],
     templates: &[Vec<i8>],
     base: Base,
 ) {
-    // -- Scenario A: Ghost developers for key systems --
-    let key_systems = ["Lavender", "Pegasus", "Clearview", "Gotham", "Hivemind"];
-    for sys_name in &key_systems {
-        let sys = graph.entities.iter()
-            .find(|e| e.name == *sys_name);
-        if let Some(sys) = sys {
-            let ghosts = probe_entity_ghosts(
-                graph, sys.index,
-                container, residual, templates, base,
-                None, 15,
-            );
-            print_ghost_connections(
-                &format!("SCENARIO A: Ghost connections for '{}'", sys_name),
-                &ghosts, 15,
-            );
-        } else {
-            println!("  System '{}' not found in graph, skipping", sys_name);
-        }
+    // -- Scenario A: Ghost connections for Lavender only (focus entity) --
+    println!();
+    let lavender = graph.entities.iter().find(|e| e.name == "Lavender");
+    if let Some(sys) = lavender {
+        let ghosts = probe_dual_entity(
+            graph, sys.index,
+            signed_container, organic_container, organic_residual,
+            templates, base, None, 20,
+        );
+        print_dual_ghosts(
+            "SCENARIO A: Ghost connections for 'Lavender' (Signed vs Organic)",
+            &ghosts, 20,
+        );
     }
 
     // -- Scenario B: Person-to-person ghost connections --
+    println!();
     let person_indices: Vec<usize> = graph.entities.iter()
         .filter(|e| e.entity_type == EntityType::Person)
         .map(|e| e.index)
         .collect();
 
-    let person_ghosts = probe_pair_ghosts(
+    let person_ghosts = probe_dual_pairs(
         graph, &person_indices, &person_indices,
-        container, residual, templates, base, 30,
+        signed_container, organic_container, organic_residual,
+        templates, base, 30,
     );
-    println!();
-    print_ghost_connections("SCENARIO B: Person <-> Person Ghost Network", &person_ghosts, 30);
+    print_dual_ghosts(
+        "SCENARIO B: Person <-> Person Ghost Network (Signed vs Organic)",
+        &person_ghosts, 30,
+    );
 
     // -- Scenario C: System-to-nation ghost deployments --
+    println!();
     let nations: Vec<usize> = graph.entities.iter()
         .filter(|e| e.axes.stakeholder_type.as_deref() == Some("Nation"))
         .map(|e| e.index)
@@ -904,14 +1099,18 @@ pub fn run_focused_scenarios(
         .map(|e| e.index)
         .collect();
 
-    let deploy_ghosts = probe_pair_ghosts(
+    let deploy_ghosts = probe_dual_pairs(
         graph, &systems, &nations,
-        container, residual, templates, base, 30,
+        signed_container, organic_container, organic_residual,
+        templates, base, 30,
     );
-    println!();
-    print_ghost_connections("SCENARIO C: Ghost Deployments — System -> Nation", &deploy_ghosts, 30);
+    print_dual_ghosts(
+        "SCENARIO C: Ghost Deployments — System -> Nation (Signed vs Organic)",
+        &deploy_ghosts, 30,
+    );
 
     // -- Scenario D: Civilian-military convergence --
+    println!();
     let civic: Vec<usize> = graph.entities.iter()
         .filter(|e| e.entity_type == EntityType::CivicSystem)
         .map(|e| e.index)
@@ -921,12 +1120,15 @@ pub fn run_focused_scenarios(
         .map(|e| e.index)
         .collect();
 
-    let convergence_ghosts = probe_pair_ghosts(
+    let convergence_ghosts = probe_dual_pairs(
         graph, &civic, &military,
-        container, residual, templates, base, 30,
+        signed_container, organic_container, organic_residual,
+        templates, base, 30,
     );
-    println!();
-    print_ghost_connections("SCENARIO D: Civic <-> Military Ghost Convergence", &convergence_ghosts, 30);
+    print_dual_ghosts(
+        "SCENARIO D: Civic <-> Military Ghost Convergence (Signed vs Organic)",
+        &convergence_ghosts, 30,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,12 +1285,13 @@ fn quick_base_summary(
 
 pub fn run_aiwar_ghost_oracle(graph_path: &str) {
     println!();
-    println!("{}", "=".repeat(90));
-    println!("  AI WAR GHOST ORACLE — Organic Residual Edition");
+    println!("{}", "=".repeat(100));
+    println!("  AI WAR GHOST ORACLE — Signed vs Organic Dual Comparison");
     println!("  221 entities, 356 edges from Sarah Ciston's 'AI War Cloud'");
-    println!("  OrganicWAL + base-aware plasticity + surgical extraction");
-    println!("  Ghost signal = residual correlation (what's NOT explained by known edges)");
-    println!("{}", "=".repeat(90));
+    println!("  Method 1: Raw signed accumulation (baseline)");
+    println!("  Method 2: OrganicWAL + base-aware plasticity + surgical residual");
+    println!("  Each scenario shows both methods side-by-side");
+    println!("{}", "=".repeat(100));
     println!();
 
     let d = 16384;
@@ -1125,16 +1328,16 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
     }
     println!("\n");
 
-    // ── Multi-base comparison ──
-    println!("{}", "=".repeat(90));
+    // ── Multi-base comparison (organic only, to pick best base) ──
+    println!("{}", "=".repeat(100));
     println!("  MULTI-BASE COMPARISON: Signed(5) vs Signed(7) vs Signed(9)");
     println!("  All with base-aware plasticity, D={}, C={}", d, channels);
-    println!("{}", "=".repeat(90));
+    println!("{}", "=".repeat(100));
 
     let bases = [Base::Signed(5), Base::Signed(7), Base::Signed(9)];
     println!("  {:>12} {:>8} {:>8} {:>10} {:>10} {:>10} {:>10} {:>8}",
         "Base", "AbsAvg", "AbsMin", "ResEnergy", "KnownDir", "KnownRes", "TopGhost", "|G|>0.03");
-    println!("{}", "-".repeat(90));
+    println!("{}", "-".repeat(100));
 
     let mut best_base = Base::Signed(7);
     let mut best_ghost_count = 0usize;
@@ -1150,59 +1353,84 @@ pub fn run_aiwar_ghost_oracle(graph_path: &str) {
             best_base = base;
         }
     }
-    println!("{}", "=".repeat(90));
+    println!("{}", "=".repeat(100));
     println!("  Best ghost discrimination: {}\n", best_base.name());
 
-    // ── Full analysis with best base ──
+    // ── Full dual analysis ──
     let analysis_base = best_base;
     println!("Generating templates for {} (D={}, overlap={})...", analysis_base.name(), d, overlap_per_axis);
     let templates = generate_entity_templates(&graph, d, analysis_base, overlap_per_axis);
     println!("  {} templates generated\n", templates.len());
 
-    println!("Encoding edges via OrganicWAL...");
+    // Encode: raw signed accumulation
+    println!("Encoding edges (raw signed accumulation)...");
+    let signed_container = encode_edges_signed_raw(&graph, &templates, d, analysis_base);
+    println!();
+
+    // Encode: organic WAL
+    println!("Encoding edges (OrganicWAL + base-aware plasticity)...");
     let enc = encode_edges_organic(&graph, &templates, d, analysis_base, channels);
     println!();
 
-    // Validate known edges
+    // Validate known edges (organic)
     validate_known_edges(
         &graph,
         &enc.container, &enc.residual,
         &templates, analysis_base,
         &enc.edge_coefficients,
     );
+
+    // Also validate known edges against raw signed container
+    println!();
+    {
+        let mut signed_strengths = Vec::new();
+        for edge in &graph.edges {
+            let src_idx = match graph.id_to_index.get(&edge.source_id) {
+                Some(&i) => i,
+                None => continue,
+            };
+            let tgt_idx = match graph.id_to_index.get(&edge.target_id) {
+                Some(&i) => i,
+                None => continue,
+            };
+            let probe = bind(&templates[src_idx], &templates[tgt_idx], analysis_base);
+            signed_strengths.push(cosine_similarity_i8(&probe, &signed_container));
+        }
+        let mean_s = signed_strengths.iter().sum::<f32>() / signed_strengths.len().max(1) as f32;
+        let min_s = signed_strengths.iter().cloned().fold(f32::MAX, f32::min);
+        let max_s = signed_strengths.iter().cloned().fold(f32::MIN, f32::max);
+        println!("{}", "=".repeat(66));
+        println!("  KNOWN EDGE VALIDATION (Raw Signed)");
+        println!("{}", "=".repeat(66));
+        println!("  {} edges validated", signed_strengths.len());
+        println!("  Raw signed: mean={:>+.4}, min={:>+.4}, max={:>+.4}", mean_s, min_s, max_s);
+        println!("{}", "=".repeat(66));
+    }
     println!();
 
-    // Global ghost probe (top 50)
-    println!("Probing ~24K non-edge pairs for ghost connections...");
-    let all_ghosts = probe_ghost_connections(
-        &graph,
-        &enc.container, &enc.residual,
-        &templates, analysis_base, 50,
-    );
-    println!();
-    print_ghost_connections(
-        &format!("GLOBAL TOP 50 GHOST CONNECTIONS ({})", analysis_base.name()),
-        &all_ghosts, 50,
-    );
-    println!();
-    ghost_type_summary(&all_ghosts);
-    println!();
+    // ── Run all 4 scenarios with dual method ──
+    println!("{}", "=".repeat(100));
+    println!("  DUAL-METHOD SCENARIOS: Signed (raw) vs Organic (WAL + residual)");
+    println!("  Columns: Signed = raw accumulation cosine");
+    println!("           OrgDirect = organic container cosine");
+    println!("           OrgResid = organic residual cosine (after surgical extraction)");
+    println!("  Sorted by |Signed| to show raw accumulation ranking");
+    println!("{}", "=".repeat(100));
 
-    // Focused scenarios
-    run_focused_scenarios(
+    run_dual_scenarios(
         &graph,
+        &signed_container,
         &enc.container, &enc.residual,
         &templates, analysis_base,
     );
 
     println!();
-    println!("{}", "=".repeat(90));
-    println!("  END OF AI WAR GHOST ORACLE (Organic Residual Edition)");
-    println!("  Base: {}  |  Absorption: avg={:.4} min={:.4}  |  Residual energy: {:.4}",
-        analysis_base.name(), enc.absorption_avg, enc.absorption_min, enc.residual_energy);
-    println!("  {} edges encoded  |  {} ghosts above threshold",
-        enc.edges_encoded, all_ghosts.iter().filter(|g| g.ghost_signal.abs() > 0.03).count());
-    println!("{}", "=".repeat(90));
+    println!("{}", "=".repeat(100));
+    println!("  END OF AI WAR GHOST ORACLE (Signed vs Organic Dual Comparison)");
+    println!("  Base: {}  |  Organic absorption: avg={:.4} min={:.4}",
+        analysis_base.name(), enc.absorption_avg, enc.absorption_min);
+    println!("  Residual energy: {:.4}  |  {} edges encoded", enc.residual_energy, enc.edges_encoded);
+    println!("{}", "=".repeat(100));
     println!();
 }
 
