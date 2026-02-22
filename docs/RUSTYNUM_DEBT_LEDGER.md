@@ -85,11 +85,14 @@ PR #24 (`claude/review-rustynum-8yz8o`, merged same day, +135/-1, 4 files):
 
 | # | Item | Severity | Fix Estimate | Recommendation |
 |---|---|---|---|---|
-| **N1** | 5× PRNG copies | 🟡 | 1 hour | Extract `rustynum_core::rng::SplitMix64` with `next_u64()`, `next_f64()`, `next_gaussian()`. Replace all 5 sites: search.rs, compress.rs, tree.rs (splitmix64) + recognize.rs, ghost_discovery.rs (SimpleRng/xorshift). |
+| **N1** | ~~5× PRNG copies~~ | ✅ CLOSED | — | Consolidated into `rustynum_core::rng::SplitMix64` by PR #25. All 5 sites replaced. |
 | **N2** | recognize.rs ≠ Fingerprint\<1024\> | 🟡 | 2 hours | Refactor `Projector64K.project()` → `Fingerprint<1024>`, use `Fingerprint::hamming_distance()` |
-| **N3** | pub(crate) field escalation | 🟢 | 30 min | `known_templates` and `template_norms` promoted to `pub(crate)` so recognize.rs can read them. Add `OrganicWAL::template_for(idx)` and `template_norm(idx)` accessors instead. |
+| **N3** | ~~pub(crate) field escalation~~ | ✅ CLOSED | — | Fields now private with `template()`, `template_norm()`, `update_template()` accessors. PR #25. |
 | **N5** | `debug_assert_eq!` in HammingSIMD | 🟡 Safety | 5 min | `HammingSIMD::distance()` uses `debug_assert_eq!` for length check — elided in release builds. The AVX-512 path loads 64-byte chunks via `_mm512_loadu_si512`; mismatched buffer lengths could read past allocation. **Upgrade to `assert_eq!`** (one comparison per call, negligible cost). |
-| **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. Same logical operation, three incompatible paths. When `Fingerprint<N>` gets a SIMD-accelerated path, it should delegate to rustynum-core (like PR #24 did for rustynum-clam), not reimplement. |
+| **N6** | Three Hamming distance type signatures | 🟡 Architecture | 2 hours | `rustynum_core::simd` operates on `&[u8]`, `Fingerprint::hamming_distance()` on `[u64; N]`, `recognize.rs::hamming_64k()` on `&[u64]`. PR #25 partially addressed — `hamming_64k` delegates to `Fingerprint64K` for 1024-word case. SIMD acceleration of Fingerprint deferred. |
+| **N7** | Granger sign convention contradiction | 🔴 Correctness | 5 min | `granger_signal()` doc says G > 0 = A predicts B. Code + test prove G < 0 = A predicts B. `granger_scan()` has correct convention but prefaced with "Wait — let me clarify" debug thinking. Fix: swap G>0/G<0 descriptions in `granger_signal()`, remove debug text from `granger_scan()`. (PR #25) |
+| **N8** | `Contradiction` struct overpromises | 🟢 Naming | 10 min | Checks structural similarity only, not truth-value conflict. Should be `SimilarPair` until NARS truth values are integrated. (PR #25) |
+| **N9** | Flat confidence threshold in reverse_trace | 🟢 Improvement | 30 min | Uses 0.35 flat threshold, not CRP-calibrated. Wire to `ClusterDistribution.p95` when available. (PR #25) |
 
 ---
 
@@ -239,9 +242,10 @@ Based on compute intensity × frequency of use:
 ### Immediate (debt cleanup, <1 day)
 
 1. **Upgrade `debug_assert_eq!` → `assert_eq!` in `HammingSIMD::distance()`** — AVX-512 safety. One comparison per call, negligible cost. Also check upstream `rustynum_core::simd::hamming_distance` (N5).
-2. **Extract `rustynum_core::rng::SplitMix64`** — consolidate 5 PRNG copies (N1): search.rs, compress.rs, tree.rs, recognize.rs, ghost_discovery.rs. Single commit, cherry-pickable.
-3. **Refactor recognize.rs → Fingerprint\<1024\>** — connect LSH projection to the type system (N2).
-4. **Add OrganicWAL accessor methods** — replace pub(crate) fields (N3).
+2. **Fix Granger sign convention** — swap G>0/G<0 in `granger_signal()` doc, remove "Wait — let me clarify" from `granger_scan()` doc (N7). 5-minute fix.
+3. ~~Extract `rustynum_core::rng::SplitMix64`~~ — ✅ Done in PR #25 (N1 closed).
+4. ~~Refactor recognize.rs → Fingerprint\<1024\>~~ — ✅ Partially done in PR #25 (`hamming_64k` delegates for 1024-word case).
+5. ~~Add OrganicWAL accessor methods~~ — ✅ Done in PR #25 (N3 closed).
 
 ### Next sprint (CLAM completeness, 2-3 days)
 
