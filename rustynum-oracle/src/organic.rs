@@ -521,6 +521,43 @@ impl OrganicWAL {
         let recovered = cholesky_solve(&gram, &wb, k);
         recovered.iter().map(|&v| v as f32).collect()
     }
+
+    /// Get a reference to a registered concept's template.
+    pub fn template(&self, concept_idx: usize) -> &[i8] {
+        &self.known_templates[concept_idx]
+    }
+
+    /// Compute the residual: container minus reconstructed known-concept contributions.
+    ///
+    /// For each concept i with coefficient c_i, subtracts c_i * template_i
+    /// from the container at that concept's channel positions only.
+    /// Returns f32 residual (not quantized, to preserve precision).
+    pub fn compute_residual(&self, container: &[i8], coefficients: &[f32]) -> Vec<f32> {
+        let d = self.pattern.d;
+        let mut residual = vec![0.0f32; d];
+
+        for j in 0..d {
+            residual[j] = container[j] as f32;
+        }
+
+        for i in 0..self.k().min(coefficients.len()) {
+            let channel = i % self.pattern.channels;
+            let positions = &self.pattern.channel_positions[channel];
+            for &j in positions {
+                residual[j] -= coefficients[i] * self.known_templates[i][j] as f32;
+            }
+        }
+
+        residual
+    }
+
+    /// Residual energy: sum of squares of the residual.
+    ///
+    /// Low residual energy means the known concepts explain the container well.
+    pub fn residual_energy(&self, container: &[i8], coefficients: &[f32]) -> f32 {
+        let residual = self.compute_residual(container, coefficients);
+        residual.iter().map(|&v| v * v).sum::<f32>() / residual.len() as f32
+    }
 }
 
 // ---------------------------------------------------------------------------
