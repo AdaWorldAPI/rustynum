@@ -62,7 +62,7 @@ pub use nars::{
     Entity as NarsEntity, Role as NarsRole,
     reverse_trace, CausalTrace, TraceStep,
     granger_signal, granger_scan,
-    find_similar_pairs, Contradiction,
+    find_similar_pairs, SimilarPair,
 };
 
 pub use recognize::{

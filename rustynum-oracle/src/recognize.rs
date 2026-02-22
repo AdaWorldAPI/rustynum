@@ -165,20 +165,10 @@ impl Projector64K {
 
 /// Hamming distance between two binary fingerprints stored as `u64` slices.
 ///
-/// For `Fingerprint64K` (1024 words), delegates to `Fingerprint::hamming_distance`.
-/// For other sizes, uses an equivalent inline popcount loop.
+/// Uses the same XOR + popcount loop as `Fingerprint::hamming_distance`,
+/// but works directly on borrowed slices (no copy).
 pub fn hamming_64k(a: &[u64], b: &[u64]) -> u32 {
     assert_eq!(a.len(), b.len());
-
-    if a.len() == 1024 {
-        // Delegate to Fingerprint64K for the common case.
-        // SAFETY: Fingerprint<1024> is #[repr(Rust)] with a single field [u64; 1024].
-        // from_word_slice copies the data, no aliasing issues.
-        let fa = rustynum_core::Fingerprint64K::from_word_slice(a);
-        let fb = rustynum_core::Fingerprint64K::from_word_slice(b);
-        return fa.hamming_distance(&fb);
-    }
-
     let mut dist = 0u32;
     for i in 0..a.len() {
         dist += (a[i] ^ b[i]).count_ones();
