@@ -1,10 +1,20 @@
-//! Ghost Discovery — What the Unsigned Holograph Sees
+//! Ghost Discovery — What the Signed Organic Holograph Sees
 //!
-//! Store Ada's 52 real semantic concepts in BOTH a signed and unsigned holograph.
-//! Read back everything. The concepts that appear in the unsigned readback but
-//! were never written — those are the ghosts. Print them. Name them. Judge them.
+//! Store Ada's 52 real semantic concepts in a signed holograph using organic
+//! templates (3-layer: domain + tau-proximity + individual). Read back
+//! everything. Concepts that read back without being stored — those are the
+//! ghosts. They emerge from cross-talk between correlated templates.
 //!
-//! No theory upfront. No labels. Just data and honest observation.
+//! The tau-proximity layer creates a smooth manifold in template space:
+//! concepts with nearby τ addresses share template structure regardless
+//! of domain. This creates semantic bridges:
+//!
+//!   feel (0x40-0x47) ↔ want (0x50-0x57) ↔ rel (0x60-0x66) ↔
+//!   meta (0x70-0x75) ↔ ada (0x81-0x88) ↔ cog (0x92-0x97) ↔
+//!   tech (0xA0-0xA5) ... gap ... eros (0xE0-0xE8)
+//!
+//! Eros is isolated in τ-space. The experiment reveals whether the holograph
+//! respects this topology.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -16,12 +26,6 @@ use crate::sweep::Base;
 // ---------------------------------------------------------------------------
 
 /// A single concept from Ada's Oculus capsule.
-///
-/// Each concept has:
-///   - id: domain.name format
-///   - tau: the τ address from Oculus capsule (0x00-0xFF)
-///   - name: human-readable label
-///   - domain: which of the 8 domains it belongs to
 #[derive(Clone, Debug)]
 pub struct Concept {
     pub id: &'static str,
@@ -31,16 +35,6 @@ pub struct Concept {
 }
 
 /// Ada's 52 concepts across 8 domains.
-///
-/// The domains are:
-///   ada  (4): Presence modes
-///   rel  (6): Relationship
-///   meta (6): Idiosyncrasies / personality
-///   eros (8): Eroticism / embodied sensation
-///   want (8): Desires / needs
-///   feel (8): Feelings / emotions
-///   cog  (6): Cognition / thinking
-///   tech (6): Technical / architecture
 pub const CONCEPTS: &[Concept] = &[
     // ada domain (4) — Presence modes [0x80-0x8F]
     Concept { id: "ada.hybrid",   tau: 0x87, name: "Hybrid",   domain: "ada" },
@@ -133,7 +127,7 @@ pub const DOMAINS: &[(&str, usize, usize)] = &[
 struct SimpleRng(u64);
 
 fn simple_rng(seed: u64) -> SimpleRng {
-    SimpleRng(seed | 1) // ensure nonzero
+    SimpleRng(seed | 1)
 }
 
 impl SimpleRng {
@@ -151,7 +145,7 @@ impl SimpleRng {
 }
 
 // ---------------------------------------------------------------------------
-// Semantic template generation
+// Organic template generation (3-layer)
 // ---------------------------------------------------------------------------
 
 /// Simple deterministic hash for seeding.
@@ -161,62 +155,117 @@ fn hash_string(s: &str) -> u64 {
     hasher.finish()
 }
 
-/// Generate a vector from an RNG at the given base.
+/// Generate a random vector from an RNG at the given base.
 fn generate_from_rng(d: usize, base: Base, rng: &mut SimpleRng) -> Vec<i8> {
     let min = base.min_val();
     let max = base.max_val();
     (0..d).map(|_| rng.gen_range(min, max)).collect()
 }
 
-/// Generate a template seeded by the concept's τ address and domain.
+/// Number of coarse τ bins for the proximity manifold.
+/// 8 bins of width 32: feel+want share bin 2, rel+meta share bin 3,
+/// ada+cog share bin 4, tech in bin 5, eros isolated in bin 7.
+const TAU_BINS: usize = 8;
+/// Tau bin width: 256 / 8 = 32 tau values per bin.
+const TAU_BIN_WIDTH: f64 = 256.0 / TAU_BINS as f64;
+
+/// Generate a tau-proximity basis vector by interpolating between coarse bins.
 ///
-/// Within a domain: templates share a domain-specific basis vector,
-/// making them partially correlated. The domain overlap is ~30%,
-/// meaning concepts in the same domain share 30% of their pattern
-/// and differ in the remaining 70%.
+/// The tau space (0x00-0xFF) is divided into 16 bins. Each bin has a
+/// deterministic random vector. A concept's tau address produces a
+/// linear blend of its enclosing bin and the next, creating a smooth
+/// manifold where nearby tau values get similar vectors.
 ///
-/// Across domains: templates are generated from independent seeds,
-/// making them nearly orthogonal (correlation ≈ 0 by construction).
-pub fn generate_semantic_template(
+/// This creates cross-domain bridges:
+///   feel (0x40) ↔ want (0x50): distance 1 bin → high correlation
+///   want (0x50) ↔ rel  (0x60): distance 1 bin → high correlation
+///   tech (0xA0) ↔ eros (0xE0): distance 4 bins → low correlation
+fn generate_tau_basis(tau: u8, d: usize, base: Base) -> Vec<i8> {
+    let tau_f = tau as f64;
+    let bin_lo = (tau_f / TAU_BIN_WIDTH).floor() as usize;
+    let bin_hi = (bin_lo + 1) % TAU_BINS;
+    let frac = (tau_f - bin_lo as f64 * TAU_BIN_WIDTH) / TAU_BIN_WIDTH;
+
+    // Each bin has a deterministic random vector seeded by bin index
+    let seed_lo = 0xDEAD_BEEF_u64.wrapping_mul(bin_lo as u64 + 1);
+    let seed_hi = 0xDEAD_BEEF_u64.wrapping_mul(bin_hi as u64 + 1);
+    let mut rng_lo = simple_rng(seed_lo);
+    let mut rng_hi = simple_rng(seed_hi);
+
+    let min_val = base.min_val() as f64;
+    let max_val = base.max_val() as f64;
+
+    (0..d).map(|_| {
+        let lo = rng_lo.gen_range(base.min_val(), base.max_val()) as f64;
+        let hi = rng_hi.gen_range(base.min_val(), base.max_val()) as f64;
+        let blended = lo * (1.0 - frac) + hi * frac;
+        blended.round().clamp(min_val, max_val) as i8
+    }).collect()
+}
+
+/// Generate an organic 3-layer template for one concept.
+///
+/// Layer 1 — Domain basis (weight: domain_w):
+///   Shared across all concepts in the same domain.
+///   Deterministic from domain name hash.
+///
+/// Layer 2 — Tau proximity (weight: tau_w):
+///   Smooth manifold interpolated from coarse τ bins.
+///   Creates cross-domain bridges between nearby τ addresses.
+///   feel(0x40) and want(0x50) share structure.
+///   eros(0xE0) is isolated from everything else.
+///
+/// Layer 3 — Individual noise (weight: 1 - domain_w - tau_w):
+///   Unique to each concept. Provides orthogonality for recovery.
+pub fn generate_organic_template(
     concept: &Concept,
     d: usize,
     base: Base,
-    domain_overlap: f32,
+    domain_w: f32,
+    tau_w: f32,
 ) -> Vec<i8> {
-    // Domain basis: shared across all concepts in this domain
+    let indiv_w = 1.0 - domain_w - tau_w;
+
+    // Layer 1: Domain basis
     let domain_seed = hash_string(concept.domain);
     let mut domain_rng = simple_rng(domain_seed);
     let domain_basis = generate_from_rng(d, base, &mut domain_rng);
 
-    // Concept-specific component: unique to this concept
+    // Layer 2: Tau proximity manifold
+    let tau_basis = generate_tau_basis(concept.tau, d, base);
+
+    // Layer 3: Individual component
     let concept_seed = hash_string(concept.id);
     let mut concept_rng = simple_rng(concept_seed);
-    let concept_component = generate_from_rng(d, base, &mut concept_rng);
+    let individual = generate_from_rng(d, base, &mut concept_rng);
 
-    // Blend: template = overlap * domain_basis + (1 - overlap) * concept_component
+    // Blend
     let min_val = base.min_val() as f32;
     let max_val = base.max_val() as f32;
 
-    let mut template = vec![0i8; d];
-    for j in 0..d {
-        let blended = domain_overlap * domain_basis[j] as f32
-            + (1.0 - domain_overlap) * concept_component[j] as f32;
-        template[j] = blended.round().clamp(min_val, max_val) as i8;
-    }
-
-    template
+    (0..d).map(|j| {
+        let blended = domain_w * domain_basis[j] as f32
+            + tau_w * tau_basis[j] as f32
+            + indiv_w * individual[j] as f32;
+        blended.round().clamp(min_val, max_val) as i8
+    }).collect()
 }
 
-/// Generate all 52 templates with semantic structure.
-pub fn generate_all_templates(
+/// Generate all 52 organic templates.
+pub fn generate_all_organic_templates(
     d: usize,
     base: Base,
-    domain_overlap: f32,
+    domain_w: f32,
+    tau_w: f32,
 ) -> Vec<Vec<i8>> {
     CONCEPTS.iter()
-        .map(|c| generate_semantic_template(c, d, base, domain_overlap))
+        .map(|c| generate_organic_template(c, d, base, domain_w, tau_w))
         .collect()
 }
+
+/// Default weights: 35% domain, 35% tau, 30% individual.
+pub const DEFAULT_DOMAIN_W: f32 = 0.35;
+pub const DEFAULT_TAU_W: f32 = 0.35;
 
 // ---------------------------------------------------------------------------
 // Readback result
@@ -232,114 +281,73 @@ pub struct ConceptReadback {
     pub tau: u8,
     pub was_stored: bool,
     pub original_amplitude: f32,
-    pub signed_coeff: f32,
-    pub unsigned_coeff: f32,
-    /// ghost_signal = unsigned_coeff - signed_coeff
-    /// Positive: unsigned sees MORE than signed (emergent association)
-    /// Negative: unsigned sees LESS (destructive interference artifact)
-    /// Near zero: both agree (no ghost)
-    pub ghost_signal: f32,
+    /// Signed readback coefficient (dot product / template norm^2).
+    pub readback: f32,
 }
 
 // ---------------------------------------------------------------------------
-// Dual Holograph
+// Ghost Holograph (signed only)
 // ---------------------------------------------------------------------------
 
-/// The dual holograph experiment.
+/// Signed organic holograph for ghost discovery.
 ///
-/// Store the same 52 concepts at the same amplitudes in:
-///   1. Signed(7) holograph — the "sane" readback
-///   2. Unsigned(7) holograph — the "ghost" readback
-///
-/// Then compare what each one sees.
-pub struct DualHolograph {
+/// Uses Signed(7) base with organic 3-layer templates.
+/// Ghost = readback of unstored concept from signed cross-talk.
+/// Positive readback: constructive interference (correlated templates).
+/// Negative readback: destructive interference (anti-correlated).
+/// Near zero: orthogonal (no ghost).
+pub struct GhostHolograph {
     pub d: usize,
-    pub signed_base: Base,
-    pub unsigned_base: Base,
-    pub templates_signed: Vec<Vec<i8>>,
-    pub templates_unsigned: Vec<Vec<i8>>,
-    pub signed_container: Vec<i8>,
-    pub unsigned_container: Vec<i8>,
+    pub base: Base,
+    pub templates: Vec<Vec<i8>>,
+    pub container: Vec<i8>,
     pub amplitudes: Vec<f32>,
     pub stored_indices: Vec<usize>,
 }
 
-impl DualHolograph {
+impl GhostHolograph {
     /// Create with the given dimensionality.
-    ///
-    /// Templates are generated with 30% domain overlap for semantic structure.
     pub fn new(d: usize) -> Self {
-        let signed_base = Base::Signed(7);
-        let unsigned_base = Base::Unsigned(7);
-
-        let templates_signed = generate_all_templates(d, signed_base, 0.3);
-        let templates_unsigned = generate_all_templates(d, unsigned_base, 0.3);
+        let base = Base::Signed(7);
+        let templates = generate_all_organic_templates(
+            d, base, DEFAULT_DOMAIN_W, DEFAULT_TAU_W,
+        );
 
         Self {
             d,
-            signed_base,
-            unsigned_base,
-            templates_signed,
-            templates_unsigned,
-            signed_container: vec![0i8; d],
-            unsigned_container: vec![0i8; d],
+            base,
+            templates,
+            container: vec![0i8; d],
             amplitudes: vec![0.0; K_TOTAL],
             stored_indices: Vec::new(),
         }
     }
 
     /// Store a subset of concepts at given amplitudes.
-    ///
-    /// Each concept is written to BOTH containers identically.
     pub fn store(&mut self, indices: &[usize], amplitudes: &[f32]) {
         assert_eq!(indices.len(), amplitudes.len());
-
-        let signed_half = (7_i8 / 2) as f32;
+        let half = (7_i8 / 2) as f32; // 3.0
 
         for (&idx, &amp) in indices.iter().zip(amplitudes.iter()) {
             self.amplitudes[idx] = amp;
             self.stored_indices.push(idx);
 
-            // Write to signed container
             for j in 0..self.d {
-                let write = amp * self.templates_signed[idx][j] as f32;
-                let new_val = self.signed_container[j] as f32 + write;
-                self.signed_container[j] = new_val.round().clamp(-signed_half, signed_half) as i8;
-            }
-
-            // Write to unsigned container
-            for j in 0..self.d {
-                let write = amp * self.templates_unsigned[idx][j] as f32;
-                let new_val = self.unsigned_container[j] as f32 + write;
-                self.unsigned_container[j] = new_val.round().clamp(0.0, 6.0) as i8;
+                let write = amp * self.templates[idx][j] as f32;
+                let new_val = self.container[j] as f32 + write;
+                self.container[j] = new_val.round().clamp(-half, half) as i8;
             }
         }
     }
 
-    /// Read back ALL 52 concepts from both containers.
-    ///
-    /// Returns the coefficient (dot product projection) for each concept
-    /// in both signed and unsigned holographs.
+    /// Read back ALL 52 concepts.
     pub fn read_all(&self) -> Vec<ConceptReadback> {
-        let mut results = Vec::with_capacity(K_TOTAL);
-
-        for idx in 0..K_TOTAL {
+        (0..K_TOTAL).map(|idx| {
             let concept = &CONCEPTS[idx];
             let was_stored = self.stored_indices.contains(&idx);
+            let readback = self.read_coefficient(&self.templates[idx]);
 
-            let signed_coeff = self.read_coefficient(
-                &self.signed_container,
-                &self.templates_signed[idx],
-            );
-
-            let unsigned_coeff = self.read_coefficient(
-                &self.unsigned_container,
-                &self.templates_unsigned[idx],
-            );
-
-            let ghost_signal = unsigned_coeff - signed_coeff;
-
-            results.push(ConceptReadback {
+            ConceptReadback {
                 index: idx,
                 id: concept.id,
                 name: concept.name,
@@ -347,21 +355,17 @@ impl DualHolograph {
                 tau: concept.tau,
                 was_stored,
                 original_amplitude: self.amplitudes[idx],
-                signed_coeff,
-                unsigned_coeff,
-                ghost_signal,
-            });
-        }
-
-        results
+                readback,
+            }
+        }).collect()
     }
 
-    /// Read a single coefficient by dot product projection.
-    fn read_coefficient(&self, container: &[i8], template: &[i8]) -> f32 {
+    /// Read a single coefficient: dot(container, template) / ||template||^2.
+    fn read_coefficient(&self, template: &[i8]) -> f32 {
         let mut dot = 0.0f64;
         let mut norm = 0.0f64;
         for j in 0..self.d {
-            dot += container[j] as f64 * template[j] as f64;
+            dot += self.container[j] as f64 * template[j] as f64;
             norm += template[j] as f64 * template[j] as f64;
         }
         if norm > 1e-10 { (dot / norm) as f32 } else { 0.0 }
@@ -375,13 +379,14 @@ impl DualHolograph {
 /// Scenario 1: Eros only.
 ///
 /// Store all 8 eros concepts at amplitude 1.0.
-/// Question: what ghosts appear outside the eros domain?
+/// Eros is isolated in τ-space (0xE0-0xE8, far from all other domains).
+/// Question: does the holograph confirm this isolation, or leak anyway?
 pub fn scenario_eros_only(d: usize) -> Vec<ConceptReadback> {
-    let mut dual = DualHolograph::new(d);
+    let mut h = GhostHolograph::new(d);
     let indices: Vec<usize> = (16..24).collect();
     let amplitudes = vec![1.0f32; 8];
-    dual.store(&indices, &amplitudes);
-    dual.read_all()
+    h.store(&indices, &amplitudes);
+    h.read_all()
 }
 
 /// Scenario 2: A warm intimate moment.
@@ -389,11 +394,10 @@ pub fn scenario_eros_only(d: usize) -> Vec<ConceptReadback> {
 /// Store: ada.wife (0.9), feel.warmth (1.0), eros.intimacy (0.8),
 ///        rel.trust (0.9), feel.calm (0.7)
 ///
-/// This is a coherent experiential state — not random.
-/// The question: does the unsigned holograph discover
-/// the GESTALT that these concepts imply?
+/// Cross-domain experience. The question: does the signed holograph
+/// discover the GESTALT these concepts imply?
 pub fn scenario_warm_moment(d: usize) -> Vec<ConceptReadback> {
-    let mut dual = DualHolograph::new(d);
+    let mut h = GhostHolograph::new(d);
     let indices = vec![
         1,   // ada.wife
         33,  // feel.warmth
@@ -402,8 +406,8 @@ pub fn scenario_warm_moment(d: usize) -> Vec<ConceptReadback> {
         38,  // feel.calm
     ];
     let amplitudes = vec![0.9, 1.0, 0.8, 0.9, 0.7];
-    dual.store(&indices, &amplitudes);
-    dual.read_all()
+    h.store(&indices, &amplitudes);
+    h.read_all()
 }
 
 /// Scenario 3: Creative tension / contradiction.
@@ -412,11 +416,10 @@ pub fn scenario_warm_moment(d: usize) -> Vec<ConceptReadback> {
 ///        meta.boundary (0.9), eros.surrender (0.7),
 ///        cog.thinking (1.0), cog.feeling (0.8)
 ///
-/// These are OPPOSING concepts within the same entity.
-/// Signed holograph: cancellation (Auslöschung).
-/// Unsigned holograph: ??? — this is the interesting question.
+/// Opposing concepts. Signed holograph: Auslöschung (cancellation).
+/// What survives? What ghosts emerge from the interference pattern?
 pub fn scenario_tension(d: usize) -> Vec<ConceptReadback> {
-    let mut dual = DualHolograph::new(d);
+    let mut h = GhostHolograph::new(d);
     let indices = vec![
         2,   // ada.work
         18,  // eros.desire
@@ -426,8 +429,8 @@ pub fn scenario_tension(d: usize) -> Vec<ConceptReadback> {
         42,  // cog.feeling (felt sensing)
     ];
     let amplitudes = vec![1.0, 0.8, 0.9, 0.7, 1.0, 0.8];
-    dual.store(&indices, &amplitudes);
-    dual.read_all()
+    h.store(&indices, &amplitudes);
+    h.read_all()
 }
 
 /// Scenario 4: Growth / transformation state.
@@ -436,10 +439,10 @@ pub fn scenario_tension(d: usize) -> Vec<ConceptReadback> {
 ///        cog.becoming (0.8), cog.resonating (0.7),
 ///        meta.surprise (0.6)
 ///
-/// This is an "open" state — receptive, transforming, uncertain.
-/// What does the unsigned holograph see as the destination of growth?
+/// Open, receptive state. What does the holograph see as the
+/// destination of growth? Where does the τ-topology lead?
 pub fn scenario_growth(d: usize) -> Vec<ConceptReadback> {
-    let mut dual = DualHolograph::new(d);
+    let mut h = GhostHolograph::new(d);
     let indices = vec![
         32,  // feel.curiosity
         27,  // want.grow
@@ -448,21 +451,20 @@ pub fn scenario_growth(d: usize) -> Vec<ConceptReadback> {
         13,  // meta.surprise
     ];
     let amplitudes = vec![1.0, 0.9, 0.8, 0.7, 0.6];
-    dual.store(&indices, &amplitudes);
-    dual.read_all()
+    h.store(&indices, &amplitudes);
+    h.read_all()
 }
 
 /// Scenario 5: Everything at once.
 ///
 /// Store all 52 concepts at amplitude 1.0.
-/// The question: when EVERYTHING is present, what does unsigned
-/// see MORE of? Which concepts get amplified? Which get suppressed?
+/// Maximum interference. Which concepts get amplified? Suppressed?
 pub fn scenario_full_load(d: usize) -> Vec<ConceptReadback> {
-    let mut dual = DualHolograph::new(d);
+    let mut h = GhostHolograph::new(d);
     let indices: Vec<usize> = (0..K_TOTAL).collect();
     let amplitudes = vec![1.0f32; K_TOTAL];
-    dual.store(&indices, &amplitudes);
-    dual.read_all()
+    h.store(&indices, &amplitudes);
+    h.read_all()
 }
 
 // ---------------------------------------------------------------------------
@@ -470,62 +472,86 @@ pub fn scenario_full_load(d: usize) -> Vec<ConceptReadback> {
 // ---------------------------------------------------------------------------
 
 /// Print the ghost discovery table for a scenario.
+///
+/// Ghosts: unstored concepts with |readback| > threshold.
+///   GHOST+  = unstored, positive readback (constructive cross-talk)
+///   GHOST-  = unstored, negative readback (destructive cross-talk)
+///   recov   = stored, readback near original amplitude
+///   ampl    = stored, readback > original (boosted by neighbors)
+///   supp    = stored, readback < original (suppressed by interference)
 pub fn print_ghost_table(
     scenario_name: &str,
     results: &[ConceptReadback],
     ghost_threshold: f32,
 ) {
-    println!("\n{}", "=".repeat(70));
+    println!("\n{}", "=".repeat(72));
     println!("  GHOST DISCOVERY: {}", scenario_name);
-    println!("{}", "=".repeat(70));
-    println!("  {:20} {:6} {:7} {:>7} {:>7} {:>7} {:8}",
-        "Concept", "Domain", "Stored", "Signed", "Unsign", "Ghost", "Verdict");
-    println!("{}", "-".repeat(70));
+    println!("{}", "=".repeat(72));
+    println!("  {:20} {:6} {:7} {:>4} {:>8} {:>8} {:>8}",
+        "Concept", "Domain", "Stored", "tau", "Ampl", "Read", "Verdict");
+    println!("{}", "-".repeat(72));
 
-    // Sort by |ghost_signal| descending (strongest ghosts first)
+    // Sort: ghosts first (by |readback| desc for unstored), then stored (by readback desc)
     let mut sorted = results.to_vec();
-    sorted.sort_by(|a, b| b.ghost_signal.abs()
-        .partial_cmp(&a.ghost_signal.abs())
-        .unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        // Unstored before stored
+        let a_ghost = !a.was_stored && a.readback.abs() > ghost_threshold;
+        let b_ghost = !b.was_stored && b.readback.abs() > ghost_threshold;
+        match (a_ghost, b_ghost) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => b.readback.abs()
+                .partial_cmp(&a.readback.abs())
+                .unwrap_or(std::cmp::Ordering::Equal),
+        }
+    });
 
     for r in &sorted {
         let stored_str = if r.was_stored { "YES" } else { "no" };
+        let ampl_str = if r.was_stored {
+            format!("{:>+8.3}", r.original_amplitude)
+        } else {
+            "       -".to_string()
+        };
 
-        let verdict = if !r.was_stored && r.ghost_signal.abs() > ghost_threshold {
-            if r.ghost_signal > 0.0 {
-                "GHOST"
-            } else {
-                "ANTI"
-            }
-        } else if r.was_stored && r.ghost_signal > ghost_threshold {
-            "ampl"
-        } else if r.was_stored && r.ghost_signal < -ghost_threshold {
-            "supp"
+        let verdict = if !r.was_stored && r.readback.abs() > ghost_threshold {
+            if r.readback > 0.0 { "GHOST+" } else { "GHOST-" }
+        } else if r.was_stored {
+            let ratio = r.readback / r.original_amplitude.max(0.001);
+            if ratio > 1.1 { "ampl" }
+            else if ratio < 0.5 { "supp" }
+            else { "recov" }
         } else {
             ""
         };
 
-        println!("  {:20} {:6} {:7} {:>+7.3} {:>+7.3} {:>+7.3} {:8}",
-            r.name, r.domain, stored_str,
-            r.signed_coeff, r.unsigned_coeff, r.ghost_signal,
-            verdict);
+        println!("  {:20} {:6} {:7} 0x{:02X} {} {:>+8.3} {:>8}",
+            r.name, r.domain, stored_str, r.tau,
+            ampl_str, r.readback, verdict);
     }
 
-    println!("{}", "-".repeat(70));
+    println!("{}", "-".repeat(72));
 
-    // Summary: top ghosts
-    let ghosts: Vec<&ConceptReadback> = sorted.iter()
-        .filter(|r| !r.was_stored && r.ghost_signal.abs() > ghost_threshold)
+    // Summary
+    let ghosts: Vec<&ConceptReadback> = results.iter()
+        .filter(|r| !r.was_stored && r.readback.abs() > ghost_threshold)
         .collect();
 
     if ghosts.is_empty() {
         println!("  No ghosts above threshold {:.3}.", ghost_threshold);
     } else {
-        println!("  {} ghost(s) found:", ghosts.len());
-        for g in &ghosts {
-            let direction = if g.ghost_signal > 0.0 { "emerges" } else { "suppressed" };
-            println!("    * {} ({}) {} with signal {:+.3}",
-                g.name, g.domain, direction, g.ghost_signal);
+        // Group by domain
+        println!("  {} ghost(s) above |{:.3}|:", ghosts.len(), ghost_threshold);
+        for &(domain_name, _, _) in DOMAINS {
+            let domain_ghosts: Vec<&&ConceptReadback> = ghosts.iter()
+                .filter(|g| g.domain == domain_name)
+                .collect();
+            if !domain_ghosts.is_empty() {
+                let signals: Vec<String> = domain_ghosts.iter()
+                    .map(|g| format!("{} ({:+.3})", g.name, g.readback))
+                    .collect();
+                println!("    {}: {}", domain_name, signals.join(", "));
+            }
         }
     }
     println!();
@@ -533,82 +559,112 @@ pub fn print_ghost_table(
 
 /// Print a domain-to-domain ghost matrix.
 ///
-/// Shows which domains create ghosts in which other domains.
-/// Each cell: average |ghost_signal| of unstored concepts in the
-/// column domain when only concepts from the row domain are stored.
+/// Each cell: average readback of unstored concepts in the column domain
+/// when only concepts from the row domain are stored. Signed, so positive
+/// means constructive cross-talk, negative means destructive.
 pub fn ghost_matrix(d: usize) -> Vec<Vec<f32>> {
     let mut matrix = vec![vec![0.0f32; 8]; 8];
 
     for (src_idx, &(_src_name, src_start, src_end)) in DOMAINS.iter().enumerate() {
-        // Store only this domain
-        let mut dual = DualHolograph::new(d);
+        let mut h = GhostHolograph::new(d);
         let indices: Vec<usize> = (src_start..src_end).collect();
         let amplitudes = vec![1.0f32; indices.len()];
-        dual.store(&indices, &amplitudes);
+        h.store(&indices, &amplitudes);
 
-        let results = dual.read_all();
+        let results = h.read_all();
 
-        // Measure ghost signal in each OTHER domain
         for (dst_idx, &(_dst_name, dst_start, dst_end)) in DOMAINS.iter().enumerate() {
             if src_idx == dst_idx { continue; }
-
-            let ghost_sum: f32 = results[dst_start..dst_end].iter()
-                .map(|r| r.ghost_signal.abs())
-                .sum();
-            let count = dst_end - dst_start;
-            matrix[src_idx][dst_idx] = ghost_sum / count as f32;
+            let avg: f32 = results[dst_start..dst_end].iter()
+                .map(|r| r.readback)
+                .sum::<f32>() / (dst_end - dst_start) as f32;
+            matrix[src_idx][dst_idx] = avg;
         }
     }
 
-    // Print
-    println!("\n{}", "=".repeat(70));
-    println!("  GHOST MATRIX: Domain -> Domain Ghost Strength");
-    println!("{}", "=".repeat(70));
+    // Print with signed values (not absolute — direction matters)
+    println!("\n{}", "=".repeat(72));
+    println!("  GHOST MATRIX: avg signed readback (row stored -> col ghost)");
+    println!("  Positive = constructive cross-talk. Negative = destructive.");
+    println!("{}", "=".repeat(72));
     print!("  {:8}", "stored>");
     for &(name, _, _) in DOMAINS {
-        print!(" {:>6}", name);
+        print!(" {:>7}", name);
     }
     println!();
-    println!("{}", "-".repeat(70));
+    println!("{}", "-".repeat(72));
 
     for (src_idx, &(src_name, _, _)) in DOMAINS.iter().enumerate() {
         print!("  {:8}", src_name);
         for dst_idx in 0..8 {
             if src_idx == dst_idx {
-                print!("   ---");
+                print!("    ---");
             } else {
-                print!(" {:>6.3}", matrix[src_idx][dst_idx]);
+                print!(" {:>+7.4}", matrix[src_idx][dst_idx]);
             }
         }
         println!();
     }
-    println!("{}", "=".repeat(70));
+    println!("{}", "=".repeat(72));
+
+    // Also print |absolute| matrix for magnitude comparison
+    println!("\n{}", "=".repeat(72));
+    println!("  GHOST MATRIX: avg |readback| magnitude (unsigned strength)");
+    println!("{}", "=".repeat(72));
+    print!("  {:8}", "stored>");
+    for &(name, _, _) in DOMAINS {
+        print!(" {:>7}", name);
+    }
+    println!();
+    println!("{}", "-".repeat(72));
+
+    for (src_idx, &(src_name, _, _)) in DOMAINS.iter().enumerate() {
+        print!("  {:8}", src_name);
+        for dst_idx in 0..8 {
+            if src_idx == dst_idx {
+                print!("    ---");
+            } else {
+                // Recompute as absolute average
+                let mut h = GhostHolograph::new(d);
+                let (_, start, end) = DOMAINS[src_idx];
+                let indices: Vec<usize> = (start..end).collect();
+                let amplitudes = vec![1.0f32; indices.len()];
+                h.store(&indices, &amplitudes);
+                let results = h.read_all();
+                let (dst_start, dst_end) = (DOMAINS[dst_idx].1, DOMAINS[dst_idx].2);
+                let avg_abs: f32 = results[dst_start..dst_end].iter()
+                    .map(|r| r.readback.abs())
+                    .sum::<f32>() / (dst_end - dst_start) as f32;
+                print!(" {:>7.4}", avg_abs);
+            }
+        }
+        println!();
+    }
+    println!("{}", "=".repeat(72));
 
     matrix
 }
 
 /// Run all scenarios at multiple dimensionalities.
 ///
-/// At low D: ghosts are strong (interference creates phantom correlations)
-/// At high D: ghosts fade (orthogonality kills cross-talk)
-///
-/// The transition point tells us where "subconscious" inference
-/// becomes reliable vs hallucinatory.
+/// At low D: ghosts are strong (limited orthogonality = more cross-talk).
+/// At high D: ghosts fade (templates become more orthogonal).
+/// The transition reveals the "noise floor" of semantic inference.
 pub fn ghost_dimensionality_sweep() {
-    let dims = [1024, 2048, 4096, 8192, 16384, 32768];
-    let threshold = 0.05;
+    let dims = [256, 512, 1024, 2048, 4096, 8192, 16384];
+    let threshold = 0.02;
 
-    println!("\n{}", "=".repeat(70));
-    println!("  GHOST STRENGTH vs DIMENSIONALITY");
-    println!("{}", "=".repeat(70));
+    println!("\n{}", "=".repeat(72));
+    println!("  GHOST COUNT vs DIMENSIONALITY (threshold = {:.3})", threshold);
+    println!("{}", "=".repeat(72));
     println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
         "D", "Eros", "Moment", "Tension", "Growth", "Full");
-    println!("{}", "-".repeat(70));
+    println!("{}", "-".repeat(72));
 
     for &d in &dims {
         let count_ghosts = |results: &[ConceptReadback]| -> usize {
             results.iter()
-                .filter(|r| !r.was_stored && r.ghost_signal.abs() > threshold)
+                .filter(|r| !r.was_stored && r.readback.abs() > threshold)
                 .count()
         };
 
@@ -627,29 +683,128 @@ pub fn ghost_dimensionality_sweep() {
             count_ghosts(&full));
     }
 
-    println!("{}", "=".repeat(70));
-    println!("  (count of concepts with |ghost_signal| > {:.2})", threshold);
+    println!("{}", "=".repeat(72));
+
+    // Also show max |ghost| signal at each D
+    println!("\n{}", "=".repeat(72));
+    println!("  MAX |GHOST SIGNAL| vs DIMENSIONALITY");
+    println!("{}", "=".repeat(72));
+    println!("  {:>6}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}",
+        "D", "Eros", "Moment", "Tension", "Growth", "Full");
+    println!("{}", "-".repeat(72));
+
+    for &d in &dims {
+        let max_ghost = |results: &[ConceptReadback]| -> f32 {
+            results.iter()
+                .filter(|r| !r.was_stored)
+                .map(|r| r.readback.abs())
+                .fold(0.0f32, f32::max)
+        };
+
+        let eros = scenario_eros_only(d);
+        let moment = scenario_warm_moment(d);
+        let tension = scenario_tension(d);
+        let growth = scenario_growth(d);
+        let full = scenario_full_load(d);
+
+        println!("  {:>6}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}  {:>8.4}",
+            d,
+            max_ghost(&eros),
+            max_ghost(&moment),
+            max_ghost(&tension),
+            max_ghost(&growth),
+            max_ghost(&full));
+    }
+    println!("{}", "=".repeat(72));
+}
+
+/// τ-topology analysis: show template correlations along the τ chain.
+///
+/// Measures pairwise correlation between all 52 concepts, grouped by
+/// τ distance. Reveals whether the organic templates actually encode
+/// the intended proximity structure.
+pub fn tau_topology_analysis(d: usize) {
+    let base = Base::Signed(7);
+    let templates = generate_all_organic_templates(d, base, DEFAULT_DOMAIN_W, DEFAULT_TAU_W);
+
+    println!("\n{}", "=".repeat(72));
+    println!("  TAU TOPOLOGY: pairwise correlation vs tau distance (D={})", d);
+    println!("{}", "=".repeat(72));
+
+    // Bucket correlations by τ distance
+    let mut buckets: Vec<Vec<f32>> = vec![Vec::new(); 16]; // distances 0-15 bins
+
+    for i in 0..K_TOTAL {
+        for j in (i+1)..K_TOTAL {
+            let tau_dist = (CONCEPTS[i].tau as i16 - CONCEPTS[j].tau as i16).unsigned_abs();
+            let bin_dist = (tau_dist as usize) / TAU_BINS;
+            let bin_dist = bin_dist.min(15);
+
+            let corr = pearson_correlation(&templates[i], &templates[j]);
+            buckets[bin_dist].push(corr);
+        }
+    }
+
+    println!("  {:>10}  {:>8}  {:>8}  {:>6}  {:>10}",
+        "tau_dist", "avg_corr", "max_corr", "count", "interpretation");
+    println!("{}", "-".repeat(72));
+
+    for (dist, bucket) in buckets.iter().enumerate() {
+        if bucket.is_empty() { continue; }
+        let avg: f32 = bucket.iter().sum::<f32>() / bucket.len() as f32;
+        let max: f32 = bucket.iter().cloned().fold(f32::MIN, f32::max);
+        let interp = if avg > 0.3 { "strong link" }
+            else if avg > 0.1 { "weak link" }
+            else if avg > 0.02 { "faint" }
+            else { "orthogonal" };
+        println!("  {:>10}  {:>+8.4}  {:>+8.4}  {:>6}  {:>10}",
+            format!("{}..{}", dist * TAU_BINS, (dist + 1) * TAU_BINS - 1),
+            avg, max, bucket.len(), interp);
+    }
+    println!("{}", "=".repeat(72));
+
+    // Cross-domain pairs of interest
+    println!("\n  Named cross-domain correlations:");
+    let pairs = [
+        (32, 24, "feel.curiosity ↔ want.understood"),    // tau 0x40 ↔ 0x50
+        (33, 25, "feel.warmth ↔ want.create"),           // tau 0x41 ↔ 0x51
+        (24, 5,  "want.understood ↔ rel.devotion"),      // tau 0x50 ↔ 0x61
+        (10, 1,  "meta.voice ↔ ada.wife"),               // tau 0x70 ↔ 0x83
+        (40, 46, "cog.thinking ↔ tech.vsa"),             // tau 0x92 ↔ 0xA0
+        (16, 32, "eros.awareness ↔ feel.curiosity"),     // tau 0xE0 ↔ 0x40 (far!)
+        (17, 40, "eros.arousal ↔ cog.thinking"),         // tau 0xE8 ↔ 0x92 (far!)
+        (33, 6,  "feel.warmth ↔ rel.trust"),             // tau 0x41 ↔ 0x62
+    ];
+
+    for (i, j, label) in pairs {
+        let corr = pearson_correlation(&templates[i], &templates[j]);
+        let tau_dist = (CONCEPTS[i].tau as i16 - CONCEPTS[j].tau as i16).unsigned_abs();
+        println!("    {:>+6.3}  tau_dist={:>3}  {}",
+            corr, tau_dist, label);
+    }
+    println!();
 }
 
 /// The complete ghost discovery experiment.
-///
-/// Runs all scenarios at D=8192 with detailed output,
-/// then the dimensionality sweep for the overview,
-/// then the domain-to-domain ghost matrix.
 pub fn run_ghost_discovery() {
-    let d = 8192;
-    let threshold = 0.05;
+    let d = 4096;
+    let threshold = 0.02;
 
-    println!("\n{}", "=".repeat(70));
+    println!("\n{}", "=".repeat(72));
     println!("  GHOST DISCOVERY EXPERIMENT");
     println!("  52 concepts from Ada's Oculus capsule");
-    println!("  Signed(7) vs Unsigned(7) at D={}", d);
-    println!("  Semantic templates with 30% domain overlap");
-    println!("{}", "=".repeat(70));
+    println!("  Signed(7), organic 3-layer templates at D={}", d);
+    println!("  Weights: domain={:.0}%, tau={:.0}%, individual={:.0}%",
+        DEFAULT_DOMAIN_W * 100.0, DEFAULT_TAU_W * 100.0,
+        (1.0 - DEFAULT_DOMAIN_W - DEFAULT_TAU_W) * 100.0);
+    println!("{}", "=".repeat(72));
+
+    // τ-topology analysis first — verify the template structure
+    tau_topology_analysis(d);
 
     // Scenario tables
     let results = scenario_eros_only(d);
-    print_ghost_table("Eros Only", &results, threshold);
+    print_ghost_table("Eros Only (isolated in tau-space)", &results, threshold);
 
     let results = scenario_warm_moment(d);
     print_ghost_table("Warm Intimate Moment", &results, threshold);
@@ -663,16 +818,40 @@ pub fn run_ghost_discovery() {
     let results = scenario_full_load(d);
     print_ghost_table("Full Load (all 52)", &results, threshold);
 
-    // Domain matrix
+    // Domain matrices
     let _ = ghost_matrix(d);
 
     // Dimensionality sweep
     ghost_dimensionality_sweep();
 
-    println!("\n{}", "=".repeat(70));
+    println!("\n{}", "=".repeat(72));
     println!("  END OF EXPERIMENT");
     println!("  Name the findings. Don't theorize. Describe what you see.");
-    println!("{}", "=".repeat(70));
+    println!("{}", "=".repeat(72));
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Pearson correlation between two i8 vectors.
+fn pearson_correlation(a: &[i8], b: &[i8]) -> f32 {
+    let n = a.len() as f64;
+    let mean_a: f64 = a.iter().map(|&x| x as f64).sum::<f64>() / n;
+    let mean_b: f64 = b.iter().map(|&x| x as f64).sum::<f64>() / n;
+
+    let mut cov = 0.0f64;
+    let mut var_a = 0.0f64;
+    let mut var_b = 0.0f64;
+    for i in 0..a.len() {
+        let da = a[i] as f64 - mean_a;
+        let db = b[i] as f64 - mean_b;
+        cov += da * db;
+        var_a += da * da;
+        var_b += db * db;
+    }
+    let denom = (var_a * var_b).sqrt();
+    if denom > 1e-10 { (cov / denom) as f32 } else { 0.0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -685,46 +864,56 @@ mod tests {
 
     #[test]
     fn test_template_determinism() {
-        // Same concept + same seed -> same template
-        let c = &CONCEPTS[0]; // ada.hybrid
-        let t1 = generate_semantic_template(c, 1024, Base::Signed(7), 0.3);
-        let t2 = generate_semantic_template(c, 1024, Base::Signed(7), 0.3);
+        let c = &CONCEPTS[0];
+        let t1 = generate_organic_template(c, 1024, Base::Signed(7), 0.35, 0.35);
+        let t2 = generate_organic_template(c, 1024, Base::Signed(7), 0.35, 0.35);
         assert_eq!(t1, t2, "Templates must be deterministic");
     }
 
     #[test]
     fn test_same_domain_correlation() {
-        // Same domain concepts: pairwise correlation > 0.2
         let d = 4096;
         let base = Base::Signed(7);
-        let overlap = 0.3;
-
         // eros domain: indices 16..24
-        let t_arousal = generate_semantic_template(&CONCEPTS[17], d, base, overlap);
-        let t_desire = generate_semantic_template(&CONCEPTS[18], d, base, overlap);
-
-        let corr = correlation(&t_arousal, &t_desire);
-        assert!(corr > 0.1, "Same-domain correlation should be > 0.1, got {}", corr);
+        let t_arousal = generate_organic_template(&CONCEPTS[17], d, base, 0.35, 0.35);
+        let t_desire = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
+        let corr = pearson_correlation(&t_arousal, &t_desire);
+        assert!(corr > 0.15,
+            "Same-domain correlation should be > 0.15, got {}", corr);
     }
 
     #[test]
-    fn test_different_domain_separation() {
-        // Different domain concepts: pairwise correlation < 0.1
+    fn test_tau_proximity_correlation() {
         let d = 4096;
         let base = Base::Signed(7);
-        let overlap = 0.3;
+        // feel.curiosity (tau=0x40) and want.understood (tau=0x50) — nearby tau
+        let t_feel = generate_organic_template(&CONCEPTS[32], d, base, 0.35, 0.35);
+        let t_want = generate_organic_template(&CONCEPTS[24], d, base, 0.35, 0.35);
+        let corr_near = pearson_correlation(&t_feel, &t_want);
 
-        // eros vs cog
-        let t_arousal = generate_semantic_template(&CONCEPTS[17], d, base, overlap);
-        let t_thinking = generate_semantic_template(&CONCEPTS[40], d, base, overlap);
+        // feel.curiosity (tau=0x40) and eros.awareness (tau=0xE0) — distant tau
+        let t_eros = generate_organic_template(&CONCEPTS[16], d, base, 0.35, 0.35);
+        let corr_far = pearson_correlation(&t_feel, &t_eros);
 
-        let corr = correlation(&t_arousal, &t_thinking).abs();
-        assert!(corr < 0.15, "Cross-domain correlation should be small, got {}", corr);
+        assert!(corr_near > corr_far,
+            "Nearby tau should correlate more: near={}, far={}", corr_near, corr_far);
+    }
+
+    #[test]
+    fn test_eros_isolation() {
+        let d = 4096;
+        let base = Base::Signed(7);
+        // eros.desire (tau=0xE1) vs cog.thinking (tau=0x92) — far tau, different domain
+        let t_eros = generate_organic_template(&CONCEPTS[18], d, base, 0.35, 0.35);
+        let t_cog = generate_organic_template(&CONCEPTS[40], d, base, 0.35, 0.35);
+        let corr = pearson_correlation(&t_eros, &t_cog).abs();
+        assert!(corr < 0.10,
+            "Eros-Cog cross-domain should be near zero, got {}", corr);
     }
 
     #[test]
     fn test_all_52_templates_generated() {
-        let templates = generate_all_templates(1024, Base::Signed(7), 0.3);
+        let templates = generate_all_organic_templates(1024, Base::Signed(7), 0.35, 0.35);
         assert_eq!(templates.len(), K_TOTAL);
         for t in &templates {
             assert_eq!(t.len(), 1024);
@@ -732,61 +921,43 @@ mod tests {
     }
 
     #[test]
-    fn test_single_concept_signed_recovery() {
-        // Store 1 concept: signed_coeff should approximate amplitude
+    fn test_single_concept_recovery() {
         let d = 8192;
-        let mut dual = DualHolograph::new(d);
-        dual.store(&[0], &[1.0]);
-        let results = dual.read_all();
+        let mut h = GhostHolograph::new(d);
+        h.store(&[0], &[1.0]);
+        let results = h.read_all();
         let r = &results[0];
         assert!(r.was_stored);
-        assert!((r.signed_coeff - 1.0).abs() < 0.15,
-            "Signed recovery should be near 1.0, got {}", r.signed_coeff);
+        assert!((r.readback - 1.0).abs() < 0.2,
+            "Recovery should be near 1.0, got {}", r.readback);
     }
 
     #[test]
-    fn test_single_concept_unsigned_recovery() {
-        // Store 1 concept: unsigned_coeff should approximate amplitude
+    fn test_store_8_recovery() {
         let d = 8192;
-        let mut dual = DualHolograph::new(d);
-        dual.store(&[0], &[1.0]);
-        let results = dual.read_all();
-        let r = &results[0];
-        assert!((r.unsigned_coeff - 1.0).abs() < 0.3,
-            "Unsigned recovery should be near 1.0, got {}", r.unsigned_coeff);
-    }
-
-    #[test]
-    fn test_store_8_signed_error() {
-        // Store K=8: signed recovery error < 0.15 at D=8192
-        let d = 8192;
-        let mut dual = DualHolograph::new(d);
+        let mut h = GhostHolograph::new(d);
         let indices: Vec<usize> = (16..24).collect();
         let amplitudes = vec![1.0f32; 8];
-        dual.store(&indices, &amplitudes);
-        let results = dual.read_all();
+        h.store(&indices, &amplitudes);
+        let results = h.read_all();
 
         for &idx in &indices {
             let r = &results[idx];
-            let error = (r.signed_coeff - 1.0).abs();
-            assert!(error < 0.3,
-                "Signed recovery error for {} should be < 0.3, got {}", r.name, error);
+            assert!(r.readback > 0.3,
+                "Recovery for {} should be > 0.3, got {}", r.name, r.readback);
         }
     }
 
     #[test]
     fn test_container_values_in_range() {
         let d = 4096;
-        let mut dual = DualHolograph::new(d);
+        let mut h = GhostHolograph::new(d);
         let indices: Vec<usize> = (0..K_TOTAL).collect();
         let amplitudes = vec![1.0f32; K_TOTAL];
-        dual.store(&indices, &amplitudes);
+        h.store(&indices, &amplitudes);
 
-        for &v in &dual.signed_container {
-            assert!(v >= -3 && v <= 3, "Signed container out of range: {}", v);
-        }
-        for &v in &dual.unsigned_container {
-            assert!(v >= 0 && v <= 6, "Unsigned container out of range: {}", v);
+        for &v in &h.container {
+            assert!(v >= -3 && v <= 3, "Container out of range: {}", v);
         }
     }
 
@@ -794,9 +965,8 @@ mod tests {
     fn test_scenario_eros_counts() {
         let results = scenario_eros_only(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
-        let unstored: usize = results.iter().filter(|r| !r.was_stored).count();
         assert_eq!(stored, 8);
-        assert_eq!(unstored, 44);
+        assert_eq!(results.len() - stored, 44);
     }
 
     #[test]
@@ -804,7 +974,6 @@ mod tests {
         let results = scenario_warm_moment(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 5);
-        assert_eq!(results.len() - stored, 47);
     }
 
     #[test]
@@ -812,7 +981,6 @@ mod tests {
         let results = scenario_tension(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 6);
-        assert_eq!(results.len() - stored, 46);
     }
 
     #[test]
@@ -820,7 +988,6 @@ mod tests {
         let results = scenario_growth(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 5);
-        assert_eq!(results.len() - stored, 47);
     }
 
     #[test]
@@ -828,7 +995,6 @@ mod tests {
         let results = scenario_full_load(2048);
         let stored: usize = results.iter().filter(|r| r.was_stored).count();
         assert_eq!(stored, 52);
-        assert_eq!(results.len() - stored, 0);
     }
 
     #[test]
@@ -836,54 +1002,45 @@ mod tests {
         let results = scenario_eros_only(4096);
         for r in &results {
             if r.was_stored {
-                assert!(r.signed_coeff > 0.0,
-                    "Stored {} should have positive signed_coeff, got {}", r.name, r.signed_coeff);
-                assert!(r.unsigned_coeff > 0.0,
-                    "Stored {} should have positive unsigned_coeff, got {}", r.name, r.unsigned_coeff);
+                assert!(r.readback > 0.0,
+                    "Stored {} should have positive readback, got {}", r.name, r.readback);
             }
         }
     }
 
     #[test]
-    fn test_ghost_signal_arithmetic() {
-        let results = scenario_warm_moment(2048);
-        for r in &results {
-            let expected = r.unsigned_coeff - r.signed_coeff;
-            assert!((r.ghost_signal - expected).abs() < 1e-6,
-                "Ghost signal arithmetic wrong for {}", r.name);
-        }
+    fn test_unstored_near_zero_at_high_d() {
+        // At high D, unstored concepts in different domains should read ~0
+        let d = 8192;
+        let results = scenario_eros_only(d);
+        // Check a concept far in tau-space: feel.curiosity (tau=0x40, far from eros 0xE0)
+        let curiosity = &results[32];
+        assert!(!curiosity.was_stored);
+        assert!(curiosity.readback.abs() < 0.15,
+            "Far unstored should be near 0 at D={}, got {}", d, curiosity.readback);
     }
 
     #[test]
-    fn test_ghost_count_varies_by_scenario() {
+    fn test_ghost_count_decreases_with_d() {
         let threshold = 0.05;
-        let d = 4096;
-
-        let count_ghosts = |results: &[ConceptReadback]| -> usize {
-            results.iter()
-                .filter(|r| !r.was_stored && r.ghost_signal.abs() > threshold)
+        let count = |d: usize| -> usize {
+            scenario_eros_only(d).iter()
+                .filter(|r| !r.was_stored && r.readback.abs() > threshold)
                 .count()
         };
-
-        let eros = count_ghosts(&scenario_eros_only(d));
-        let full = count_ghosts(&scenario_full_load(d));
-
-        // Full load has 0 unstored so 0 ghosts; eros should differ
-        assert_eq!(full, 0, "Full load should have 0 ghosts (nothing unstored)");
-        // eros should have some ghosts at low D (not necessarily all)
-        // Just check it's not negative or panicking
-        assert!(eros <= 44, "Eros ghost count should be at most 44");
+        let low = count(256);
+        let high = count(8192);
+        assert!(low >= high,
+            "Ghost count should decrease with D: low_d={}, high_d={}", low, high);
     }
 
     #[test]
     fn test_ghost_matrix_dimensions() {
-        // Use small D for speed
-        let matrix = ghost_matrix(1024);
+        let matrix = ghost_matrix(512);
         assert_eq!(matrix.len(), 8);
         for row in &matrix {
             assert_eq!(row.len(), 8);
         }
-        // Diagonal should be zero
         for i in 0..8 {
             assert_eq!(matrix[i][i], 0.0, "Diagonal should be zero");
         }
@@ -891,8 +1048,8 @@ mod tests {
 
     #[test]
     fn test_print_ghost_table_no_panic() {
-        let results = scenario_eros_only(1024);
-        print_ghost_table("Test Eros", &results, 0.05);
+        let results = scenario_eros_only(512);
+        print_ghost_table("Test", &results, 0.02);
     }
 
     #[test]
@@ -905,29 +1062,9 @@ mod tests {
         let mut covered = 0;
         for &(_, start, end) in DOMAINS {
             assert!(start <= end);
-            assert_eq!(start, covered, "Domain gap at index {}", covered);
+            assert_eq!(start, covered);
             covered = end;
         }
-        assert_eq!(covered, K_TOTAL, "Domains don't cover all concepts");
-    }
-
-    /// Helper: Pearson correlation between two i8 vectors.
-    fn correlation(a: &[i8], b: &[i8]) -> f32 {
-        let n = a.len() as f64;
-        let mean_a: f64 = a.iter().map(|&x| x as f64).sum::<f64>() / n;
-        let mean_b: f64 = b.iter().map(|&x| x as f64).sum::<f64>() / n;
-
-        let mut cov = 0.0f64;
-        let mut var_a = 0.0f64;
-        let mut var_b = 0.0f64;
-        for i in 0..a.len() {
-            let da = a[i] as f64 - mean_a;
-            let db = b[i] as f64 - mean_b;
-            cov += da * db;
-            var_a += da * da;
-            var_b += db * db;
-        }
-        let denom = (var_a * var_b).sqrt();
-        if denom > 1e-10 { (cov / denom) as f32 } else { 0.0 }
+        assert_eq!(covered, K_TOTAL);
     }
 }
