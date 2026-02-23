@@ -177,7 +177,69 @@ The original `rustynum-rs` used a transpose-dot GEMM. NumPy (backed by OpenBLAS/
 
 ---
 
-## 5. BF16 Mixed-Precision GEMM
+## 5. RustyBLAS Level 1 — SDOT / SAXPY at Scale (8K-256K)
+
+| Size | sdot | saxpy | sdot bytes/ns | saxpy bytes/ns |
+|------|------|-------|---------------|----------------|
+| 64 | 8.78 ns | 6.07 ns | 29.2 | 42.2 |
+| 256 | 17.55 ns | 16.16 ns | 58.3 | 63.4 |
+| 1,024 | 53.83 ns | 94.91 ns | 76.1 | 43.2 |
+| 4,096 | 180.10 ns | 359.23 ns | 91.0 | 45.6 |
+| 8,192 | 852.83 ns | 1.02 us | 38.4 | 32.1 |
+| 16,384 | 1.39 us | 3.40 us | 47.2 | 19.3 |
+| 32,768 | 2.81 us | 6.83 us | 46.6 | 19.2 |
+| 65,536 | 5.74 us | 13.55 us | 45.7 | 19.4 |
+| 131,072 | 13.64 us | 27.39 us | 38.4 | 19.1 |
+| 262,144 | 37.36 us | 63.66 us | 28.1 | 16.5 |
+
+SDOT stays in L1/L2 cache up to 4K elements, then bandwidth-limited. SAXPY writes back, so it hits memory bandwidth earlier.
+
+## 6. RustyMKL VML — VSEXP / VSSQRT at Scale (8K-256K)
+
+| Size | vsexp | vssqrt | vsexp/elem | vssqrt/elem |
+|------|-------|--------|------------|-------------|
+| 64 | 122 ns | 16.5 ns | 1.91 ns | **0.26 ns** |
+| 256 | 475 ns | 65.5 ns | 1.86 ns | **0.26 ns** |
+| 1,024 | 1.90 us | 264 ns | 1.85 ns | **0.26 ns** |
+| 4,096 | 7.79 us | 1.05 us | 1.90 ns | **0.26 ns** |
+| 8,192 | 16.37 us | 2.10 us | 2.00 ns | **0.26 ns** |
+| 16,384 | 32.55 us | 4.24 us | 1.99 ns | **0.26 ns** |
+| 32,768 | 65.32 us | 8.47 us | 1.99 ns | **0.26 ns** |
+| 65,536 | 130.17 us | 17.03 us | 1.99 ns | **0.26 ns** |
+| 131,072 | 247.43 us | 33.78 us | 1.89 ns | **0.26 ns** |
+| 262,144 | 520.43 us | 69.43 us | 1.98 ns | **0.26 ns** |
+
+VSSQRT: **constant 0.26 ns/elem** from 64 to 262K — pure SIMD throughput, zero cache effects. This is `vsqrtps` on `f32x16` — 16 square roots per instruction.
+
+VSEXP: ~1.9 ns/elem — minimax polynomial + range reduction. Stable across all sizes.
+
+## 7. RustyMKL FFT at Scale
+
+| Size | Time | ns/elem |
+|------|------|---------|
+| 64 | 2.57 us | 40.2 |
+| 256 | 9.90 us | 38.7 |
+| 1,024 | 38.56 us | 37.7 |
+| 4,096 | 156.19 us | 38.1 |
+| 8,192 | 344.36 us | 42.0 |
+| 16,384 | 716.78 us | 43.7 |
+| 32,768 | 1.46 ms | 44.5 |
+| 65,536 | 2.86 ms | 43.6 |
+
+Radix-2 Cooley-Tukey. Stable ~38-44 ns/elem. O(n log n) scaling confirmed.
+
+## 8. SGEMM Criterion Results (32-1024)
+
+| Size | Time | GFLOPS |
+|------|------|--------|
+| 32x32 | 11.18 us | 5.87 |
+| 64x64 | 23.12 us | 22.67 |
+| 128x128 | 148.35 us | 28.29 |
+| 256x256 | 1.06 ms | 31.63 |
+| 512x512 | 5.52 ms | 48.64 |
+| **1024x1024** | **14.50 ms** | **148.16** |
+
+## 9. BF16 Mixed-Precision GEMM
 
 RustyBLAS includes `bf16_gemm_f32` (BF16 inputs, f32 accumulation) in `rustyblas/src/bf16_gemm.rs`. This provides ~2x memory bandwidth improvement over f32 GEMM while maintaining numerical stability via f32 accumulators. Cache-blocked with MC=128, NC=256, KC=256 tile sizes.
 
@@ -186,9 +248,31 @@ Available functions:
 - `mixed_precision_gemm` — f32 inputs quantized on-the-fly to BF16
 - `f32_to_bf16_slice` / `bf16_to_f32_slice` — bulk SIMD conversion
 
+## 10. Why GEMM and Hamming Are Different Universes
+
+GEMM optimization (MKL's domain) and Hamming distance (RustyNum's domain) operate on fundamentally different instruction classes:
+
+```
+GEMM (VFMADD231PS)                      Hamming (VPXORQ + VPOPCNTDQ)
+────────────────────────                 ────────────────────────────
+Fused multiply-add on 16 f32            XOR + popcount on 512 bits
+3-5 cycle latency per FMA               1 cycle (XOR) + 3 cycle (POPCNT)
+32-bit mantissa arithmetic              Exact integer bitwise
+Hundreds of FMAs per tile               Two instructions total
+Three matrices in cache (enormous)      Two vectors, L1 only
+Infinite optimization surface           Already optimal at 2 instructions
+Needs JIT, tiling, packing, scheduling  Needs nothing
+```
+
+MKL's genius is making `VFMADD231PS` go as fast as silicon allows — orchestrating the **hardest** arithmetic instruction on the chip through 30 years of cache-line tuning and JIT compilation.
+
+RustyNum's insight is that for similarity search, you don't need FMA at all. `VPXORQ` is the **simplest** instruction on the chip. There's nothing left to optimize — two instructions answer the same question: *how similar are these two vectors?*
+
+This is why RustyNum achieves 17-338x speedups over NumPy for HDC/cascade operations while being 7x slower at dense GEMM. Different instructions, different silicon, different world.
+
 ---
 
-## 6. Summary: Where Each Library Wins
+## 11. Summary: Where Each Library Wins
 
 ### RustyNum dominates (no contest)
 

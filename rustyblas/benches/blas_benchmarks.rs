@@ -3,7 +3,7 @@ use rustyblas::{level1, level3, Layout, Transpose};
 
 fn bench_sdot(c: &mut Criterion) {
     let mut group = c.benchmark_group("sdot");
-    for &n in &[64, 256, 1024, 4096, 16384] {
+    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
         let x: Vec<f32> = (0..n).map(|i| i as f32 * 0.001).collect();
         let y: Vec<f32> = (0..n).map(|i| i as f32 * 0.002).collect();
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {
@@ -15,7 +15,7 @@ fn bench_sdot(c: &mut Criterion) {
 
 fn bench_saxpy(c: &mut Criterion) {
     let mut group = c.benchmark_group("saxpy");
-    for &n in &[64, 256, 1024, 4096, 16384] {
+    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
         let x: Vec<f32> = (0..n).map(|i| i as f32 * 0.001).collect();
         let mut y: Vec<f32> = (0..n).map(|i| i as f32 * 0.002).collect();
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {
@@ -30,7 +30,8 @@ fn bench_saxpy(c: &mut Criterion) {
 
 fn bench_sgemm(c: &mut Criterion) {
     let mut group = c.benchmark_group("sgemm");
-    for &n in &[32, 64, 128, 256] {
+    group.sample_size(10);
+    for &n in &[32, 64, 128, 256, 512, 1024] {
         let a: Vec<f32> = (0..n * n).map(|i| (i as f32 * 0.001).sin()).collect();
         let b: Vec<f32> = (0..n * n).map(|i| (i as f32 * 0.002).cos()).collect();
         let mut c_mat = vec![0.0f32; n * n];
