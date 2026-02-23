@@ -1,17 +1,10 @@
-// TODO(refactor): Extract trait bounds into NumElement supertrait.
-// Current: 12+ bounds copy-pasted on every function, FromUsize duplicated.
-// Fix: trait NumElement: Copy + Mul<Output=Self> + Add<Output=Self> + ... {}
-//
 //! # Linear Algebra Operations
 //!
 //! Provides operations such as matrix-vector multiplication using NumArray data structures.
 use super::NumArray;
-use std::iter::Sum;
 
 use crate::simd_ops::SimdOps;
-use crate::traits::{ExpLog, FromU32, FromUsize, NumOps};
-use std::fmt::Debug;
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use crate::traits::NumElement;
 
 /// Performs matrix-vector multiplication.
 ///
@@ -29,21 +22,7 @@ pub fn matrix_vector_multiply<T, Ops>(
     rhs: &NumArray<T, Ops>,
 ) -> NumArray<T, Ops>
 where
-    T: Copy
-        + Mul<Output = T>
-        + Add<Output = T>
-        + Sub<Output = T>
-        + Div<Output = T>
-        + Sum<T>
-        + Default
-        + PartialOrd
-        + FromU32
-        + FromUsize
-        + FromUsize
-        + ExpLog
-        + Neg<Output = T>
-        + NumOps
-        + Debug,
+    T: NumElement,
     Ops: SimdOps<T>,
 {
     assert!(
@@ -80,21 +59,7 @@ pub fn matrix_matrix_multiply<T, Ops>(
     rhs: &NumArray<T, Ops>,
 ) -> NumArray<T, Ops>
 where
-    T: Copy
-        + Mul<Output = T>
-        + Add<Output = T>
-        + Sub<Output = T>
-        + Div<Output = T>
-        + Sum<T>
-        + Default
-        + PartialOrd
-        + FromU32
-        + FromUsize
-        + FromUsize
-        + ExpLog
-        + Neg<Output = T>
-        + NumOps
-        + Debug,
+    T: NumElement,
     Ops: SimdOps<T>,
 {
     assert!(
@@ -133,21 +98,7 @@ where
 /// Panics if the shapes are not compatible for either matrix-vector or matrix-matrix multiplication.
 pub fn matrix_multiply<T, Ops>(lhs: &NumArray<T, Ops>, rhs: &NumArray<T, Ops>) -> NumArray<T, Ops>
 where
-    T: Copy
-        + Mul<Output = T>
-        + Add<Output = T>
-        + Sub<Output = T>
-        + Div<Output = T>
-        + Sum<T>
-        + Default
-        + PartialOrd
-        + FromU32
-        + FromUsize
-        + FromUsize
-        + ExpLog
-        + Neg<Output = T>
-        + NumOps
-        + Debug,
+    T: NumElement,
     Ops: SimdOps<T>,
 {
     match rhs.shape().len() {
@@ -208,18 +159,18 @@ mod tests {
     fn test_matrix_matrix_multiply_size_16() {
         let matrix = NumArrayF32::new_with_shape(
             vec![
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-                16.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0,
-                2.0, 1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0, 14.0, 12.0, 10.0, 8.0, 6.0,
-                4.0, 2.0, 0.0,
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0,
+                15.0, 16.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0,
+                4.0, 3.0, 2.0, 1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0, 14.0, 12.0,
+                10.0, 8.0, 6.0, 4.0, 2.0, 0.0,
             ],
             vec![3, 16],
         );
 
         let matrix_rhs = NumArrayF32::new_with_shape(
             vec![
-                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-                16.0,
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0,
+                15.0, 16.0,
             ],
             vec![16, 1],
         );
