@@ -52,6 +52,6 @@ pub mod ir;
 pub mod scan_jit;
 
 // Re-exports
-pub use engine::JitEngine;
+pub use engine::{JitEngine, JitEngineBuilder};
 pub use ir::{JitError, ScanParams};
 pub use scan_jit::ScanKernel;

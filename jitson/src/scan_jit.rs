@@ -6,8 +6,11 @@
 //! - `prefetch_ahead` → `PREFETCHT0 [ptr + N * RECORD_SIZE]` as constant
 //! - `focus_mask` → AND mask baked into code section
 //!
-//! The generated function CALLS existing SIMD kernels (hamming_distance,
-//! cosine_distance) via function pointer. JIT the loop, not the kernel.
+//! Two modes:
+//! 1. **Inline**: simple XOR+popcnt for small records (proof of concept)
+//! 2. **Hybrid**: JIT the loop, CALL an external SIMD kernel (hamming_distance,
+//!    cosine_distance). The kernel is registered via `JitEngineBuilder::register_fn()`.
+//!    This is the production path — JIT the loop, not the kernel.
 
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::types;
@@ -68,31 +71,27 @@ impl ScanKernel {
 
 /// Build the Cranelift IR for a scan loop with baked-in parameters.
 ///
-/// Generated pseudo-code:
+/// If `dist_func_id` is Some, generates a CALL to the external distance function
+/// (hybrid approach). Otherwise, generates inline XOR+popcnt (POC).
+///
+/// Generated pseudo-code (hybrid):
 /// ```text
 /// fn scan(query, field, field_len, record_size, candidates_out) -> u64:
 ///     candidate_count = 0
 ///     for i in 0..field_len:
-///         if i + PREFETCH_AHEAD < field_len:
-///             prefetch(field + (i + PREFETCH_AHEAD) * RECORD_SIZE)
-///         record_ptr = field + i * RECORD_SIZE
-///         // In the hybrid approach, this would CALL hamming_distance
-///         // For now, generate a simple byte-level XOR + popcount loop
-///         dist = xor_popcount(query, record_ptr, RECORD_SIZE)
-///         if dist < THRESHOLD:
+///         record_ptr = field + i * RECORD_SIZE    // RECORD_SIZE is immediate
+///         dist = CALL distance_fn(query, record_ptr, RECORD_SIZE)
+///         if dist < THRESHOLD:                     // THRESHOLD is immediate
 ///             candidates_out[candidate_count] = i
 ///             candidate_count += 1
-///             if candidate_count >= TOP_K:
+///             if candidate_count >= TOP_K:          // TOP_K is immediate
 ///                 return candidate_count
 ///     return candidate_count
 /// ```
-///
-/// Note: THRESHOLD, PREFETCH_AHEAD, RECORD_SIZE, TOP_K are all baked
-/// as immediates in the generated code, not loaded from memory.
 pub fn build_scan_ir(
     func: &mut Function,
     params: &ScanParams,
-    _module: &cranelift_jit::JITModule,
+    dist_func_ref: Option<cranelift_codegen::ir::FuncRef>,
 ) -> Result<(), JitError> {
     let mut fbc = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(func, &mut fbc);
@@ -100,7 +99,7 @@ pub fn build_scan_ir(
     // Variables
     let v_i = Variable::from_u32(0); // loop counter
     let v_count = Variable::from_u32(1); // candidate count
-    let v_dist = Variable::from_u32(2); // distance accumulator
+    let v_dist = Variable::from_u32(2); // distance result
 
     builder.declare_var(v_i, types::I64);
     builder.declare_var(v_count, types::I64);
@@ -127,10 +126,6 @@ pub fn build_scan_ir(
         .ins()
         .iconst(types::I64, params.record_size as i64);
     let top_k_imm = builder.ins().iconst(types::I64, params.top_k as i64);
-    // TODO: Use for PREFETCHT0 generation in the hybrid scan loop
-    let _prefetch_dist_imm = builder
-        .ins()
-        .iconst(types::I64, params.prefetch_ahead as i64);
     let zero = builder.ins().iconst(types::I64, 0);
     let one = builder.ins().iconst(types::I64, 1);
     let eight = builder.ins().iconst(types::I64, 8); // sizeof(u64) for candidates_out
@@ -162,20 +157,25 @@ pub fn build_scan_ir(
     let offset = builder.ins().imul(i, record_size_imm);
     let record_ptr = builder.ins().iadd(field, offset);
 
-    // Simple distance: XOR bytes and count set bits.
-    // In the full hybrid approach, this would be a CALL to hamming_distance().
-    // For the scaffold, we generate a simple byte-level loop.
-    builder.def_var(v_dist, zero);
-    // NOTE: The actual XOR+popcount loop would be generated here.
-    // For now, we just load a single u64 from each and XOR+popcnt as a proof of concept.
-    let q_val = builder
-        .ins()
-        .load(types::I64, MemFlags::trusted(), query, 0);
-    let r_val = builder
-        .ins()
-        .load(types::I64, MemFlags::trusted(), record_ptr, 0);
-    let xor_val = builder.ins().bxor(q_val, r_val);
-    let dist = builder.ins().popcnt(xor_val);
+    // Compute distance
+    let dist = if let Some(func_ref) = dist_func_ref {
+        // ── Hybrid mode: CALL external distance function ──
+        // dist = distance_fn(query, record_ptr, RECORD_SIZE)
+        let call = builder
+            .ins()
+            .call(func_ref, &[query, record_ptr, record_size_imm]);
+        builder.inst_results(call)[0]
+    } else {
+        // ── Inline mode: simple XOR + popcnt of first 8 bytes (POC) ──
+        let q_val = builder
+            .ins()
+            .load(types::I64, MemFlags::trusted(), query, 0);
+        let r_val = builder
+            .ins()
+            .load(types::I64, MemFlags::trusted(), record_ptr, 0);
+        let xor_val = builder.ins().bxor(q_val, r_val);
+        builder.ins().popcnt(xor_val)
+    };
     builder.def_var(v_dist, dist);
 
     // if dist < THRESHOLD (THRESHOLD is immediate)
