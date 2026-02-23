@@ -15,7 +15,9 @@
 pub mod bf16_hamming;
 pub mod blackboard;
 pub mod compute;
+pub mod delta;
 pub mod fingerprint;
+pub mod layer_stack;
 pub mod layout;
 pub mod parallel;
 pub mod rng;
@@ -35,12 +37,16 @@ pub mod simd;
 pub mod mkl_ffi;
 
 pub use bf16_hamming::{
-    bf16_bytes_to_fp32, bf16_hamming_scalar, fp32_to_bf16_bytes, select_bf16_hamming_fn,
-    structural_diff, BF16StructuralDiff, BF16Weights, JINA_WEIGHTS, TRAINING_WEIGHTS,
+    bf16_bytes_to_fp32, bf16_hamming_scalar, fp32_to_bf16_bytes, pack_awareness_states,
+    select_bf16_hamming_fn, structural_diff, superposition_decompose, unpack_awareness_states,
+    AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights, SuperpositionState,
+    JINA_WEIGHTS, TRAINING_WEIGHTS,
 };
 pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
+pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
+pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
 pub use rng::SplitMix64;

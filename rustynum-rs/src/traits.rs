@@ -328,3 +328,32 @@ impl AbsOps for i64 {
         i64::abs(self)
     }
 }
+
+// ---------------------------------------------------------------------------
+// NumElement supertrait — replaces 12+ copy-pasted bounds everywhere
+// ---------------------------------------------------------------------------
+
+/// Supertrait collecting all numeric element bounds used across rustynum-rs.
+///
+/// Instead of copy-pasting `Copy + Mul<Output=T> + Add<Output=T> + ...`
+/// on every function, use `T: NumElement`.
+pub trait NumElement:
+    Copy
+    + std::ops::Mul<Output = Self>
+    + std::ops::Add<Output = Self>
+    + std::ops::Sub<Output = Self>
+    + std::ops::Div<Output = Self>
+    + std::iter::Sum<Self>
+    + Default
+    + PartialOrd
+    + FromU32
+    + FromUsize
+    + ExpLog
+    + std::ops::Neg<Output = Self>
+    + NumOps
+    + std::fmt::Debug
+{
+}
+
+impl NumElement for f32 {}
+impl NumElement for f64 {}

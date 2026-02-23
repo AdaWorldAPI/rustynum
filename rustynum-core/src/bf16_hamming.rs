@@ -349,6 +349,239 @@ pub fn structural_diff(a: &[u8], b: &[u8]) -> BF16StructuralDiff {
 }
 
 // ---------------------------------------------------------------------------
+// Awareness substrate — 4-state superposition decomposition
+// ---------------------------------------------------------------------------
+
+/// Four-state awareness classification per dimension.
+/// Encodes as 2 bits: 00=Crystallized, 01=Tensioned, 10=Uncertain, 11=Noise
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AwarenessState {
+    /// All vectors agree on sign, low exponent spread. Settled knowledge.
+    Crystallized = 0,
+    /// Sign disagreement. Active contradiction — hold both.
+    Tensioned = 1,
+    /// All agree on sign, high exponent spread. Direction known, intensity unknown.
+    Uncertain = 2,
+    /// Only mantissa differs. Irrelevant noise — mask out.
+    Noise = 3,
+}
+
+/// Result of decomposing 2-3 superposed BF16 vectors.
+/// Per-dimension sign consensus, exponent spread, and 4-state classification.
+#[derive(Clone, Debug)]
+pub struct SuperpositionState {
+    /// Number of dimensions
+    pub n_dims: usize,
+    /// Per-dimension sign consensus ratio: 1.0 = unanimous, 0.5 = split
+    /// Stored as u8 quantized: 0=0.0, 255=1.0
+    pub sign_consensus: Vec<u8>,
+    /// Per-dimension exponent spread (XOR popcount across pairs, max 8)
+    pub exp_spread: Vec<u8>,
+    /// Per-dimension mantissa noise flag (true = mantissa disagrees)
+    pub mantissa_noise: Vec<bool>,
+    /// Per-dimension 4-state classification
+    pub states: Vec<AwarenessState>,
+    /// Packed 2-bit-per-dimension state vector (ceil(N/4) bytes)
+    pub packed_states: Vec<u8>,
+    /// Aggregate statistics
+    pub crystallized_pct: f32,
+    pub tensioned_pct: f32,
+    pub uncertain_pct: f32,
+    pub noise_pct: f32,
+}
+
+/// Thresholds for 4-state awareness classification.
+#[derive(Clone, Copy, Debug)]
+pub struct AwarenessThresholds {
+    /// Sign consensus ratio below this = tensioned (default: 0.75 = 192/255)
+    pub sign_consensus_threshold: u8,
+    /// Exponent spread above this = uncertain (default: 2 bits)
+    pub exp_spread_threshold: u8,
+    /// Mantissa popcount above this = noise (default: 1 bit)
+    pub mantissa_noise_threshold: u8,
+}
+
+impl Default for AwarenessThresholds {
+    fn default() -> Self {
+        Self {
+            sign_consensus_threshold: 192,
+            exp_spread_threshold: 2,
+            mantissa_noise_threshold: 1,
+        }
+    }
+}
+
+/// Pack awareness states into a 2-bit-per-dimension byte vector.
+/// 4 states per byte, MSB first:
+/// `byte = (state[4i] << 6) | (state[4i+1] << 4) | (state[4i+2] << 2) | state[4i+3]`
+pub fn pack_awareness_states(states: &[AwarenessState]) -> Vec<u8> {
+    let n_bytes = (states.len() + 3) / 4;
+    let mut packed = vec![0u8; n_bytes];
+    for (i, &s) in states.iter().enumerate() {
+        let byte_idx = i / 4;
+        let shift = 6 - (i % 4) * 2;
+        packed[byte_idx] |= (s as u8) << shift;
+    }
+    packed
+}
+
+/// Unpack 2-bit-per-dimension packed states back to AwarenessState vector.
+pub fn unpack_awareness_states(packed: &[u8], n_dims: usize) -> Vec<AwarenessState> {
+    let mut states = Vec::with_capacity(n_dims);
+    for i in 0..n_dims {
+        let byte_idx = i / 4;
+        let shift = 6 - (i % 4) * 2;
+        let val = (packed[byte_idx] >> shift) & 0x03;
+        states.push(match val {
+            0 => AwarenessState::Crystallized,
+            1 => AwarenessState::Tensioned,
+            2 => AwarenessState::Uncertain,
+            3 => AwarenessState::Noise,
+            _ => unreachable!(),
+        });
+    }
+    states
+}
+
+/// Decompose 2-3 superposed BF16 vectors into per-dimension awareness states.
+///
+/// For each dimension, classifies the relationship between the vectors:
+/// - **Crystallized**: sign agreement + low exponent spread → settled knowledge
+/// - **Tensioned**: sign disagreement → active contradiction, hold both
+/// - **Uncertain**: sign agreement + high exponent spread → direction known, intensity unknown
+/// - **Noise**: only mantissa differs → irrelevant noise, mask out
+pub fn superposition_decompose(
+    vectors: &[&[u8]],
+    thresholds: &AwarenessThresholds,
+) -> SuperpositionState {
+    let n_vecs = vectors.len();
+    assert!(
+        n_vecs >= 2 && n_vecs <= 3,
+        "superposition_decompose requires 2-3 vectors, got {}",
+        n_vecs
+    );
+
+    let byte_len = vectors[0].len();
+    for v in vectors.iter() {
+        assert_eq!(
+            v.len(),
+            byte_len,
+            "All vectors must have the same byte length"
+        );
+    }
+    assert!(
+        byte_len % 2 == 0,
+        "BF16 data must be an even number of bytes"
+    );
+
+    let n_dims = byte_len / 2;
+    let n_pairs = n_vecs * (n_vecs - 1) / 2; // 1 for N=2, 3 for N=3
+
+    let mut sign_consensus = Vec::with_capacity(n_dims);
+    let mut exp_spread = Vec::with_capacity(n_dims);
+    let mut mantissa_noise = Vec::with_capacity(n_dims);
+    let mut states = Vec::with_capacity(n_dims);
+
+    for d in 0..n_dims {
+        let offset = d * 2;
+
+        // Extract u16 for each vector at this dimension
+        let vals: SmallVec<[u16; 3]> = vectors
+            .iter()
+            .map(|v| u16::from_le_bytes([v[offset], v[offset + 1]]))
+            .collect();
+
+        // Compute pairwise metrics
+        let mut sign_agreements: u32 = 0;
+        let mut max_exp_popcount: u8 = 0;
+        let mut has_mantissa_noise = false;
+
+        for i in 0..n_vecs {
+            for j in (i + 1)..n_vecs {
+                let xor = vals[i] ^ vals[j];
+
+                // Sign bit (bit 15): do they agree?
+                if xor & 0x8000 == 0 {
+                    sign_agreements += 1;
+                }
+
+                // Exponent (bits 14-7): XOR popcount
+                let exp_xor = (xor >> 7) & 0xFF;
+                let exp_pc = exp_xor.count_ones() as u8;
+                if exp_pc > max_exp_popcount {
+                    max_exp_popcount = exp_pc;
+                }
+
+                // Mantissa (bits 6-0): XOR popcount > threshold?
+                let man_xor = xor & 0x7F;
+                let man_pc = man_xor.count_ones() as u8;
+                if man_pc > thresholds.mantissa_noise_threshold {
+                    has_mantissa_noise = true;
+                }
+            }
+        }
+
+        // Sign consensus: map agreements/n_pairs to 0..255
+        let consensus: u8 = if n_pairs == 1 {
+            if sign_agreements == 1 { 255 } else { 0 }
+        } else {
+            // n_pairs == 3
+            match sign_agreements {
+                3 => 255,
+                2 => 170,
+                1 => 85,
+                0 => 0,
+                _ => unreachable!(),
+            }
+        };
+
+        // Classify
+        let state = if consensus < thresholds.sign_consensus_threshold {
+            AwarenessState::Tensioned
+        } else if max_exp_popcount > thresholds.exp_spread_threshold {
+            AwarenessState::Uncertain
+        } else if has_mantissa_noise && max_exp_popcount == 0 && consensus == 255 {
+            AwarenessState::Noise
+        } else {
+            AwarenessState::Crystallized
+        };
+
+        sign_consensus.push(consensus);
+        exp_spread.push(max_exp_popcount);
+        mantissa_noise.push(has_mantissa_noise);
+        states.push(state);
+    }
+
+    // Pack states
+    let packed_states = pack_awareness_states(&states);
+
+    // Aggregate percentages
+    let mut counts = [0u32; 4];
+    for &s in &states {
+        counts[s as usize] += 1;
+    }
+    let n = n_dims as f32;
+    let crystallized_pct = counts[0] as f32 / n;
+    let tensioned_pct = counts[1] as f32 / n;
+    let uncertain_pct = counts[2] as f32 / n;
+    let noise_pct = counts[3] as f32 / n;
+
+    SuperpositionState {
+        n_dims,
+        sign_consensus,
+        exp_spread,
+        mantissa_noise,
+        states,
+        packed_states,
+        crystallized_pct,
+        tensioned_pct,
+        uncertain_pct,
+        noise_pct,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -588,5 +821,86 @@ mod tests {
     fn test_weights_new_overflow_panics() {
         // 4096 + 8*4096 + 7*4096 = 4096 + 32768 + 28672 = 65536 — wraps!
         BF16Weights::new(4096, 4096, 4096);
+    }
+
+    // -----------------------------------------------------------------------
+    // Awareness substrate tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_superposition_identical_vectors_all_crystallized() {
+        let v = fp32_to_bf16_bytes(&[1.0, 2.0, 3.0, 4.0]);
+        let state = superposition_decompose(&[&v, &v], &AwarenessThresholds::default());
+        assert_eq!(state.n_dims, 4);
+        assert!(state.crystallized_pct > 0.99);
+        for s in &state.states {
+            assert_eq!(*s, AwarenessState::Crystallized);
+        }
+    }
+
+    #[test]
+    fn test_superposition_sign_flips_are_tensioned() {
+        let a = fp32_to_bf16_bytes(&[1.0, 2.0, 3.0, 4.0]);
+        let b = fp32_to_bf16_bytes(&[-1.0, -2.0, 3.0, 4.0]);
+        let state = superposition_decompose(&[&a, &b], &AwarenessThresholds::default());
+        assert_eq!(state.states[0], AwarenessState::Tensioned);
+        assert_eq!(state.states[1], AwarenessState::Tensioned);
+        // Dims 2,3 should NOT be tensioned
+        assert_ne!(state.states[2], AwarenessState::Tensioned);
+        assert_ne!(state.states[3], AwarenessState::Tensioned);
+    }
+
+    #[test]
+    fn test_superposition_magnitude_shift_is_uncertain() {
+        let a = fp32_to_bf16_bytes(&[1.0, 1.0]);
+        let b = fp32_to_bf16_bytes(&[1.0, 256.0]); // same sign, large exponent shift
+        let state = superposition_decompose(&[&a, &b], &AwarenessThresholds::default());
+        assert_eq!(state.states[0], AwarenessState::Crystallized);
+        assert_eq!(state.states[1], AwarenessState::Uncertain);
+    }
+
+    #[test]
+    fn test_superposition_mantissa_only_is_noise() {
+        let a = fp32_to_bf16_bytes(&[1.0]);
+        let b = fp32_to_bf16_bytes(&[1.09375]); // only mantissa differs (2 bits in BF16 mantissa)
+        let state = superposition_decompose(&[&a, &b], &AwarenessThresholds::default());
+        assert_eq!(state.states[0], AwarenessState::Noise);
+    }
+
+    #[test]
+    fn test_superposition_three_vectors() {
+        let a = fp32_to_bf16_bytes(&[1.0, -2.0, 3.0]);
+        let b = fp32_to_bf16_bytes(&[1.0, 2.0, 3.0]);
+        let c = fp32_to_bf16_bytes(&[-1.0, 2.0, 3.0]);
+        let state = superposition_decompose(&[&a, &b, &c], &AwarenessThresholds::default());
+        // dim 0: a=+, b=+, c=- -> 1/3 disagree -> tensioned (consensus ~170/255)
+        // dim 1: a=-, b=+, c=+ -> 1/3 disagree -> tensioned
+        assert_eq!(state.states[0], AwarenessState::Tensioned);
+        assert_eq!(state.states[1], AwarenessState::Tensioned);
+        // dim 2: all agree -> crystallized (if exp spread is low)
+        assert_eq!(state.states[2], AwarenessState::Crystallized);
+    }
+
+    #[test]
+    fn test_pack_unpack_awareness_states() {
+        let states = vec![
+            AwarenessState::Crystallized,
+            AwarenessState::Tensioned,
+            AwarenessState::Uncertain,
+            AwarenessState::Noise,
+            AwarenessState::Crystallized,
+        ];
+        let packed = pack_awareness_states(&states);
+        let unpacked = unpack_awareness_states(&packed, states.len());
+        assert_eq!(states, unpacked);
+    }
+
+    #[test]
+    fn test_superposition_aggregate_percentages() {
+        let a = fp32_to_bf16_bytes(&[1.0, -2.0, 3.0, 4.0]);
+        let b = fp32_to_bf16_bytes(&[-1.0, 2.0, 3.0, 4.0]);
+        let state = superposition_decompose(&[&a, &b], &AwarenessThresholds::default());
+        let total = state.crystallized_pct + state.tensioned_pct + state.uncertain_pct + state.noise_pct;
+        assert!((total - 1.0).abs() < 0.01, "Percentages should sum to ~1.0, got {}", total);
     }
 }
