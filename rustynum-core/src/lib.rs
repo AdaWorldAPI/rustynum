@@ -16,6 +16,7 @@ pub mod bf16_hamming;
 pub mod blackboard;
 pub mod compute;
 pub mod delta;
+pub mod jit_scan;
 pub mod fingerprint;
 pub mod layer_stack;
 pub mod layout;
@@ -44,6 +45,7 @@ pub use bf16_hamming::{
 };
 pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
+pub use jit_scan::{DefaultKernelRegistry, ScanConfig, ScanResult, SimdKernelRegistry};
 pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
 pub use layer_stack::{CollapseGate, LayerStack};
