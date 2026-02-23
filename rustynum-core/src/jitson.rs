@@ -497,6 +497,9 @@ pub const KNOWN_INSTRUCTIONS: &[&str] = &[
 /// Known kernel names.
 const KNOWN_KERNELS: &[&str] = &["hamming_distance", "cosine_i8", "dot_f32"];
 
+/// Known backend names for CPU-lane data sources/sinks.
+pub const KNOWN_BACKENDS: &[&str] = &["lancedb", "dragonfly"];
+
 /// Known Cranelift presets.
 const KNOWN_PRESETS: &[&str] = &[
     "baseline",
@@ -688,8 +691,67 @@ pub fn validate(root: &JsonValue) -> Vec<ValidationError> {
         }
     }
 
+    // backends (optional object of named backend configs)
+    if let Some(backends) = root.get("backends") {
+        match backends.as_object() {
+            Some(pairs) => {
+                for (key, val) in pairs {
+                    if !KNOWN_BACKENDS.contains(&key.as_str()) {
+                        errs.push(ValidationError {
+                            path: alloc::format!("/backends/{}", key),
+                            message: alloc::format!(
+                                "unknown backend \"{}\"; known: {}",
+                                key,
+                                KNOWN_BACKENDS.join(", ")
+                            ),
+                        });
+                    }
+                    if val.as_object().is_none() {
+                        errs.push(ValidationError {
+                            path: alloc::format!("/backends/{}", key),
+                            message: String::from("must be an object"),
+                        });
+                    } else if val.get("uri").and_then(|v| v.as_str()).is_none() {
+                        errs.push(ValidationError {
+                            path: alloc::format!("/backends/{}/uri", key),
+                            message: String::from("required string field"),
+                        });
+                    }
+                }
+            }
+            None => errs.push(ValidationError {
+                path: String::from("/backends"),
+                message: String::from("must be an object"),
+            }),
+        }
+    }
+
+    // Validate pipeline stage backend references
+    if let Some(pipeline) = root.get("pipeline").and_then(|v| v.as_array()) {
+        let declared_backends: Vec<&str> = root
+            .get("backends")
+            .and_then(|v| v.as_object())
+            .map(|pairs| pairs.iter().map(|(k, _)| k.as_str()).collect())
+            .unwrap_or_default();
+        for (i, stage) in pipeline.iter().enumerate() {
+            if let Some(backend) = stage.get("backend").and_then(|v| v.as_str()) {
+                if !declared_backends.contains(&backend) {
+                    errs.push(ValidationError {
+                        path: alloc::format!("/pipeline/{}/backend", i),
+                        message: alloc::format!(
+                            "backend \"{}\" referenced but not declared in /backends",
+                            backend
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
     // Warn on unknown top-level keys
-    let known_top: &[&str] = &["version", "kernel", "scan", "pipeline", "features", "cranelift"];
+    let known_top: &[&str] = &[
+        "version", "kernel", "scan", "pipeline", "features", "cranelift", "backends",
+    ];
     for (key, _) in obj {
         if !known_top.contains(&key.as_str()) {
             errs.push(ValidationError {
@@ -737,6 +799,7 @@ pub struct JitsonTemplate {
     pub scan: ScanConfig,
     pub pipeline: Vec<PipelineStage>,
     pub features: Vec<(String, bool)>,
+    pub backends: Vec<BackendConfig>,
     pub cranelift_preset: Option<String>,
     pub cranelift_opt_level: Option<String>,
 }
@@ -747,6 +810,19 @@ pub struct PipelineStage {
     pub stage: String,
     pub avx512_instr: Option<String>,
     pub fallback: Option<String>,
+    /// Backend CPU-lane reference (e.g. "lancedb", "dragonfly").
+    pub backend: Option<String>,
+    /// Backend-specific key/table/prefix for this stage.
+    pub backend_key: Option<String>,
+}
+
+/// Configuration for an external data backend (CPU lane).
+#[derive(Clone, Debug)]
+pub struct BackendConfig {
+    pub name: String,
+    pub uri: String,
+    /// Extra backend-specific options (key-value pairs from the JSON object).
+    pub options: Vec<(String, String)>,
 }
 
 /// Parse a JSON string, validate it, and convert to a [`JitsonTemplate`].
@@ -803,6 +879,41 @@ fn convert(root: &JsonValue) -> Result<JitsonTemplate, JitsonError> {
                 stage: s.get("stage").and_then(|v| v.as_str()).unwrap_or("").into(),
                 avx512_instr: s.get("avx512").and_then(|v| v.as_str()).map(String::from),
                 fallback: s.get("fallback").and_then(|v| v.as_str()).map(String::from),
+                backend: s.get("backend").and_then(|v| v.as_str()).map(String::from),
+                backend_key: s
+                    .get("table")
+                    .or_else(|| s.get("prefix"))
+                    .or_else(|| s.get("key"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+
+    let backends = match root.get("backends").and_then(|v| v.as_object()) {
+        Some(pairs) => pairs
+            .iter()
+            .map(|(name, cfg)| {
+                let uri = cfg
+                    .get("uri")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into();
+                let options = cfg
+                    .as_object()
+                    .map(|o| {
+                        o.iter()
+                            .filter(|(k, _)| k != "uri")
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), String::from(s))))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                BackendConfig {
+                    name: name.clone(),
+                    uri,
+                    options,
+                }
             })
             .collect(),
         None => Vec::new(),
@@ -833,6 +944,7 @@ fn convert(root: &JsonValue) -> Result<JitsonTemplate, JitsonError> {
         scan,
         pipeline,
         features,
+        backends,
         cranelift_preset,
         cranelift_opt_level,
     })
@@ -914,6 +1026,185 @@ pub fn check_pipeline_features(template: &JitsonTemplate) -> Vec<(usize, String,
         }
     }
     unsatisfied
+}
+
+// ---------------------------------------------------------------------------
+// WAL Precompile Queue + Prefetch Addressing
+// ---------------------------------------------------------------------------
+
+/// Stable 64-bit hash of a JITSON template for use as a precompile cache key.
+///
+/// This is the "prefetch address" — a unique identifier for a compiled JIT
+/// function.  Two templates that produce identical scan configs, pipelines,
+/// and feature sets will have the same hash, enabling cache hits across
+/// processes and restarts.
+pub fn template_hash(template: &JitsonTemplate) -> u64 {
+    // FNV-1a 64-bit — fast, deterministic, no dependencies
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut h = FNV_OFFSET;
+    let mut feed = |bytes: &[u8]| {
+        for &b in bytes {
+            h ^= b as u64;
+            h = h.wrapping_mul(FNV_PRIME);
+        }
+    };
+
+    feed(template.kernel.as_bytes());
+    feed(&template.scan.threshold.to_le_bytes());
+    feed(&template.scan.record_size.to_le_bytes());
+    feed(&template.scan.top_k.to_le_bytes());
+
+    for stage in &template.pipeline {
+        feed(stage.stage.as_bytes());
+        if let Some(ref instr) = stage.avx512_instr {
+            feed(instr.as_bytes());
+        }
+        if let Some(ref fb) = stage.fallback {
+            feed(fb.as_bytes());
+        }
+        if let Some(ref be) = stage.backend {
+            feed(be.as_bytes());
+        }
+    }
+
+    for (feat, on) in &template.features {
+        feed(feat.as_bytes());
+        feed(&[*on as u8]);
+    }
+
+    if let Some(ref preset) = template.cranelift_preset {
+        feed(preset.as_bytes());
+    }
+    if let Some(ref opt) = template.cranelift_opt_level {
+        feed(opt.as_bytes());
+    }
+
+    h
+}
+
+/// Entry in the write-ahead precompile queue.
+///
+/// Each entry represents a JIT-compiled function that is either:
+/// - `Pending`: queued for compilation
+/// - `Compiled`: compiled and ready, with a stable prefetch address
+/// - `Evicted`: previously compiled but dropped from the hot cache
+#[derive(Clone, Debug)]
+pub struct PrecompileEntry {
+    /// Stable FNV-1a hash of the template — the prefetch address.
+    pub hash: u64,
+    /// The template that produced this entry.
+    pub template: JitsonTemplate,
+    /// Compilation state.
+    pub state: CompileState,
+}
+
+/// State of a precompile entry in the WAL queue.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CompileState {
+    /// Queued for compilation, not yet started.
+    Pending,
+    /// Compiled successfully.  `code_addr` is the function pointer in the
+    /// JIT code cache (will be set by the actual JIT backend).
+    Compiled { code_addr: u64 },
+    /// Previously compiled but evicted from the hot cache.
+    Evicted,
+}
+
+/// Write-ahead precompile queue.
+///
+/// Templates are appended in order.  The queue supports:
+/// - **Enqueue**: add a template for compilation (deduplicates by hash)
+/// - **Lookup**: check if a template is already compiled (prefetch hit)
+/// - **Prefetch hint**: given the current template, return the next entry's
+///   hash so the caller can issue a memory prefetch for its code page
+///
+/// The queue is intentionally simple — a `Vec` with linear scan.  For
+/// production use at scale, swap in an LRU or LFU map.
+#[derive(Clone, Debug, Default)]
+pub struct PrecompileQueue {
+    entries: Vec<PrecompileEntry>,
+}
+
+impl PrecompileQueue {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// Enqueue a template for precompilation.  Returns the stable hash.
+    /// If the template is already in the queue, returns the existing hash
+    /// without duplicating it.
+    pub fn enqueue(&mut self, template: JitsonTemplate) -> u64 {
+        let hash = template_hash(&template);
+        if self.entries.iter().any(|e| e.hash == hash) {
+            return hash;
+        }
+        self.entries.push(PrecompileEntry {
+            hash,
+            template,
+            state: CompileState::Pending,
+        });
+        hash
+    }
+
+    /// Look up a template by its prefetch address (hash).
+    pub fn lookup(&self, hash: u64) -> Option<&PrecompileEntry> {
+        self.entries.iter().find(|e| e.hash == hash)
+    }
+
+    /// Mark a template as compiled with the given code address.
+    pub fn mark_compiled(&mut self, hash: u64, code_addr: u64) -> bool {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.hash == hash) {
+            entry.state = CompileState::Compiled { code_addr };
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Mark a template as evicted from the hot cache.
+    pub fn mark_evicted(&mut self, hash: u64) -> bool {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.hash == hash) {
+            entry.state = CompileState::Evicted;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Return the prefetch address of the entry immediately after `hash`.
+    ///
+    /// This enables speculative prefetching: while executing compiled code
+    /// for `hash`, the caller can issue `PREFETCHT0` on the next entry's
+    /// code page.
+    pub fn prefetch_next(&self, hash: u64) -> Option<u64> {
+        let idx = self.entries.iter().position(|e| e.hash == hash)?;
+        self.entries.get(idx + 1).and_then(|e| match e.state {
+            CompileState::Compiled { code_addr } => Some(code_addr),
+            _ => None,
+        })
+    }
+
+    /// Return all pending entries (templates awaiting compilation).
+    pub fn pending(&self) -> Vec<&PrecompileEntry> {
+        self.entries
+            .iter()
+            .filter(|e| e.state == CompileState::Pending)
+            .collect()
+    }
+
+    /// Number of entries in the queue.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the queue is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,5 +1403,151 @@ mod tests {
         let input = "{\n// this is a comment\n\"version\": 1, \"kernel\": \"dot_f32\", \"scan\": {\"threshold\": 1, \"record_size\": 64, \"top_k\": 5}}";
         let root = parse_json(input).unwrap();
         assert_eq!(root.get("version").unwrap().as_u64(), Some(1));
+    }
+
+    // --- Backend CPU-lane tests ---
+
+    const BACKEND_TEMPLATE: &str = r#"{
+        "version": 1,
+        "kernel": "hamming_distance",
+        "scan": { "threshold": 2048, "record_size": 256, "top_k": 10 },
+        "pipeline": [
+            { "stage": "fetch",  "backend": "lancedb",   "table": "embeddings" },
+            { "stage": "xor",    "avx512": "vpxord" },
+            { "stage": "popcnt", "avx512": "vpopcntd" },
+            { "stage": "store",  "backend": "dragonfly", "prefix": "results:" }
+        ],
+        "backends": {
+            "lancedb":   { "uri": "data/vectors.lance" },
+            "dragonfly": { "uri": "redis://127.0.0.1:6379" }
+        },
+        "features": { "avx512f": true, "avx512vl": true, "avx512vpopcntdq": true }
+    }"#;
+
+    #[test]
+    fn test_backend_template_parses() {
+        let tmpl = from_json(BACKEND_TEMPLATE).unwrap();
+        assert_eq!(tmpl.backends.len(), 2);
+        assert_eq!(tmpl.backends[0].name, "lancedb");
+        assert_eq!(tmpl.backends[0].uri, "data/vectors.lance");
+        assert_eq!(tmpl.backends[1].name, "dragonfly");
+        assert_eq!(tmpl.backends[1].uri, "redis://127.0.0.1:6379");
+    }
+
+    #[test]
+    fn test_pipeline_backend_refs() {
+        let tmpl = from_json(BACKEND_TEMPLATE).unwrap();
+        assert_eq!(tmpl.pipeline[0].backend.as_deref(), Some("lancedb"));
+        assert_eq!(tmpl.pipeline[0].backend_key.as_deref(), Some("embeddings"));
+        assert_eq!(tmpl.pipeline[3].backend.as_deref(), Some("dragonfly"));
+        assert_eq!(tmpl.pipeline[3].backend_key.as_deref(), Some("results:"));
+    }
+
+    #[test]
+    fn test_validate_undeclared_backend() {
+        let input = r#"{
+            "version": 1,
+            "kernel": "dot_f32",
+            "scan": { "threshold": 1, "record_size": 64, "top_k": 5 },
+            "pipeline": [{ "stage": "fetch", "backend": "postgres" }]
+        }"#;
+        let root = parse_json(input).unwrap();
+        let errs = validate(&root);
+        assert!(errs.iter().any(|e| e.message.contains("postgres")));
+    }
+
+    #[test]
+    fn test_validate_unknown_backend_type() {
+        let input = r#"{
+            "version": 1,
+            "kernel": "dot_f32",
+            "scan": { "threshold": 1, "record_size": 64, "top_k": 5 },
+            "backends": { "mongodb": { "uri": "mongodb://localhost" } }
+        }"#;
+        let root = parse_json(input).unwrap();
+        let errs = validate(&root);
+        assert!(errs.iter().any(|e| e.message.contains("mongodb")));
+    }
+
+    // --- WAL precompile queue tests ---
+
+    #[test]
+    fn test_template_hash_deterministic() {
+        let tmpl = from_json(VALID_TEMPLATE).unwrap();
+        let h1 = template_hash(&tmpl);
+        let h2 = template_hash(&tmpl);
+        assert_eq!(h1, h2);
+        assert_ne!(h1, 0);
+    }
+
+    #[test]
+    fn test_template_hash_different_templates() {
+        let t1 = from_json(VALID_TEMPLATE).unwrap();
+        let t2 = from_json(BACKEND_TEMPLATE).unwrap();
+        assert_ne!(template_hash(&t1), template_hash(&t2));
+    }
+
+    #[test]
+    fn test_precompile_queue_enqueue_dedup() {
+        let tmpl = from_json(VALID_TEMPLATE).unwrap();
+        let mut queue = PrecompileQueue::new();
+        let h1 = queue.enqueue(tmpl.clone());
+        let h2 = queue.enqueue(tmpl);
+        assert_eq!(h1, h2);
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_precompile_queue_lifecycle() {
+        let t1 = from_json(VALID_TEMPLATE).unwrap();
+        let t2 = from_json(BACKEND_TEMPLATE).unwrap();
+        let mut queue = PrecompileQueue::new();
+
+        let h1 = queue.enqueue(t1);
+        let h2 = queue.enqueue(t2);
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue.pending().len(), 2);
+
+        // Compile first template
+        assert!(queue.mark_compiled(h1, 0xDEAD_BEEF));
+        assert_eq!(queue.pending().len(), 1);
+        let entry = queue.lookup(h1).unwrap();
+        assert_eq!(entry.state, CompileState::Compiled { code_addr: 0xDEAD_BEEF });
+
+        // Compile second template
+        assert!(queue.mark_compiled(h2, 0xCAFE_BABE));
+        assert_eq!(queue.pending().len(), 0);
+    }
+
+    #[test]
+    fn test_prefetch_next() {
+        let t1 = from_json(VALID_TEMPLATE).unwrap();
+        let t2 = from_json(BACKEND_TEMPLATE).unwrap();
+        let mut queue = PrecompileQueue::new();
+
+        let h1 = queue.enqueue(t1);
+        let h2 = queue.enqueue(t2);
+
+        // Before compilation — prefetch_next returns None (next is Pending)
+        assert!(queue.prefetch_next(h1).is_none());
+
+        // After compiling both
+        queue.mark_compiled(h1, 0x1000);
+        queue.mark_compiled(h2, 0x2000);
+
+        // Now prefetch_next(h1) → 0x2000 (the code address of h2)
+        assert_eq!(queue.prefetch_next(h1), Some(0x2000));
+        // prefetch_next(h2) → None (no entry after h2)
+        assert!(queue.prefetch_next(h2).is_none());
+    }
+
+    #[test]
+    fn test_eviction() {
+        let tmpl = from_json(VALID_TEMPLATE).unwrap();
+        let mut queue = PrecompileQueue::new();
+        let h = queue.enqueue(tmpl);
+        queue.mark_compiled(h, 0x1000);
+        queue.mark_evicted(h);
+        assert_eq!(queue.lookup(h).unwrap().state, CompileState::Evicted);
     }
 }

@@ -47,7 +47,9 @@ pub use bf16_hamming::{
 pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use jit_scan::{DefaultKernelRegistry, ScanConfig, ScanResult, SimdKernelRegistry};
-pub use jitson::{JitsonError, JitsonTemplate, PipelineStage, from_json};
+pub use jitson::{
+    BackendConfig, JitsonError, JitsonTemplate, PipelineStage, PrecompileQueue, from_json,
+};
 pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
 pub use layer_stack::{CollapseGate, LayerStack};
