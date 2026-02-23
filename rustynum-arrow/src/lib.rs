@@ -42,6 +42,9 @@ pub mod channel_index;
 #[cfg(feature = "arrow")]
 pub mod indexed_cascade;
 
+#[cfg(feature = "arrow")]
+pub mod horizontal_sweep;
+
 // Re-exports for convenience
 #[cfg(feature = "arrow")]
 pub use arrow_bridge::{
@@ -64,4 +67,10 @@ pub use channel_index::{ChannelIndex, ClusterMeta};
 pub use indexed_cascade::{
     indexed_cascade_search, learn, rebuild, CascadeIndices, IndexedCascadeResult,
     IndexedCascadeStats,
+};
+
+#[cfg(feature = "arrow")]
+pub use horizontal_sweep::{
+    horizontal_sweep, horizontal_sweep_filtered, hybrid_cascade_sweep, HorizontalSweepConfig,
+    HorizontalSweepResult, HorizontalSweepStats, HybridCascadeResult,
 };
