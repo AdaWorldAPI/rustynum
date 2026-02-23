@@ -50,7 +50,9 @@ pub const SGEMM_KC: usize = 256;
 /// Block size for M dimension in GEMM (fits in L2).
 pub const SGEMM_MC: usize = 128;
 /// Block size for N dimension in GEMM (fits in L3).
-pub const SGEMM_NC: usize = 4096;
+/// Tuned so B panel (KC × NC × 4 bytes) fits in per-core L3 slice.
+/// NC=1024: B panel = 256×1024×4 = 1MB — fits comfortably in ~2MB L3/core.
+pub const SGEMM_NC: usize = 1024;
 
 /// Block size for K dimension in DGEMM.
 pub const DGEMM_KC: usize = 256;

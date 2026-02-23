@@ -253,8 +253,34 @@ fn sgemm_blocked(
         1
     };
 
+    // ── Pre-allocate ALL buffers ONCE before tile loops ──
     // Packed B is shared across all threads (read-only after packing)
     let mut packed_b = vec![0.0f32; kc * nc_padded];
+
+    // Pre-compute work items for MT path (depends only on m, not jc/pc)
+    let packed_a_size = mc_padded * kc;
+    let work_items: Vec<(usize, usize)> = if num_threads > 1 {
+        let rows_per_thread = m.div_ceil(num_threads).div_ceil(SGEMM_MR) * SGEMM_MR;
+        let mut items = Vec::new();
+        let mut row = 0;
+        while row < m {
+            let row_end = (row + rows_per_thread).min(m);
+            items.push((row, row_end - row));
+            row = row_end;
+        }
+        items
+    } else {
+        Vec::new()
+    };
+
+    // Pre-allocate packed A buffers — one per work item (MT) or one (ST).
+    // Flat buffer, split via chunks_mut to give each thread exclusive access.
+    let num_bufs = if num_threads > 1 {
+        work_items.len().max(1)
+    } else {
+        1
+    };
+    let mut all_packed_a = vec![0.0f32; packed_a_size * num_bufs];
 
     for jc in (0..n).step_by(nc) {
         let jb = nc.min(n - jc);
@@ -271,26 +297,20 @@ fn sgemm_blocked(
                 // We wrap C's pointer in SendPtr so threads can write to
                 // non-overlapping regions — the blackboard borrow-mut pattern.
                 let c_send = SendMutPtr::new(c);
-                let rows_per_thread = m.div_ceil(num_threads).div_ceil(SGEMM_MR) * SGEMM_MR;
-
-                // Collect work items (row ranges) upfront
-                let mut work_items = Vec::new();
-                let mut row = 0;
-                while row < m {
-                    let row_end = (row + rows_per_thread).min(m);
-                    work_items.push((row, row_end - row));
-                    row = row_end;
-                }
 
                 std::thread::scope(|s| {
                     let packed_b_ref = &packed_b;
-                    for &(ic, thread_m) in &work_items {
+                    // chunks_mut gives each thread a non-overlapping pre-allocated buffer
+                    let chunks: Vec<&mut [f32]> =
+                        all_packed_a.chunks_mut(packed_a_size).collect();
+                    for (packed_a_buf, &(ic, thread_m)) in
+                        chunks.into_iter().zip(work_items.iter())
+                    {
                         let c_ptr = c_send;
                         s.spawn(move || {
                             // Safety: each thread writes to rows [ic..ic+thread_m] of C,
                             // which are non-overlapping across threads.
                             let c_slice = unsafe { c_ptr.as_mut_slice() };
-                            let mut thread_packed_a = vec![0.0f32; mc_padded * kc];
 
                             let mut thread_ic = ic;
                             while thread_ic < ic + thread_m {
@@ -304,11 +324,11 @@ fn sgemm_blocked(
                                     pc,
                                     ib,
                                     pb,
-                                    &mut thread_packed_a,
+                                    packed_a_buf,
                                 );
                                 sgemm_macrokernel(
                                     alpha,
-                                    &thread_packed_a,
+                                    packed_a_buf,
                                     packed_b_ref,
                                     c_slice,
                                     layout,
@@ -326,12 +346,13 @@ fn sgemm_blocked(
                 });
             } else {
                 // ── Single-threaded M-loop ──
-                let mut packed_a = vec![0.0f32; mc_padded * kc];
+                // Reuse pre-allocated buffer (no per-iteration allocation)
+                let packed_a = &mut all_packed_a[..packed_a_size];
                 for ic in (0..m).step_by(mc) {
                     let ib = mc.min(m - ic);
-                    pack_a_f32(layout, trans_a, a, lda, ic, pc, ib, pb, &mut packed_a);
+                    pack_a_f32(layout, trans_a, a, lda, ic, pc, ib, pb, packed_a);
                     sgemm_macrokernel(
-                        alpha, &packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb,
+                        alpha, packed_a, &packed_b, c, layout, ldc, ic, jc, ib, jb, pb,
                     );
                 }
             }
@@ -458,6 +479,10 @@ fn sgemm_macrokernel(
 /// Uses 6 accumulator registers (one per row of the tile),
 /// each holding 16 f32 values — exactly one zmm register.
 /// This gives 6 * 16 = 96 FMA operations per K iteration.
+///
+/// K-loop is 2x unrolled to keep the FMA pipeline full — while one
+/// FMA is in flight (4-cycle latency), the next one starts. Software
+/// prefetch hints are placed 4 K-steps ahead for both A and B panels.
 #[inline(always)]
 fn sgemm_microkernel_6x16(
     alpha: f32,
@@ -474,22 +499,69 @@ fn sgemm_microkernel_6x16(
 ) {
     // Accumulator registers for MR rows x NR columns
     let mut acc = [F32Simd::splat(0.0); 6];
+    let full_b = nr >= SGEMM_NR;
 
-    // Main K loop
-    for p in 0..kb {
-        // Load NR elements of B for this K step
-        let b_base = p * SGEMM_NR;
-        let b_vec = if nr >= SGEMM_NR {
+    // ── 2x-unrolled K loop with software prefetch ──
+    let kb_even = kb & !1;
+    let mut p = 0;
+    while p < kb_even {
+        // Software prefetch: 4 K-steps ahead for B and A panels
+        #[cfg(target_arch = "x86_64")]
+        if p + 4 < kb {
+            unsafe {
+                use std::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+                let b_pf = packed_b.as_ptr().add((p + 4) * SGEMM_NR);
+                _mm_prefetch(b_pf as *const i8, _MM_HINT_T0);
+                let a_pf = packed_a.as_ptr().add((p + 4) * SGEMM_MR);
+                _mm_prefetch(a_pf as *const i8, _MM_HINT_T0);
+            }
+        }
+
+        // K-step 0: load B[p] vector
+        let b_base0 = p * SGEMM_NR;
+        let b_vec0 = if full_b {
+            F32Simd::from_slice(&packed_b[b_base0..])
+        } else {
+            let mut tmp = [0.0f32; SGEMM_NR];
+            tmp[..nr].copy_from_slice(&packed_b[b_base0..b_base0 + nr]);
+            F32Simd::from_slice(&tmp)
+        };
+
+        // K-step 1: load B[p+1] vector
+        let b_base1 = (p + 1) * SGEMM_NR;
+        let b_vec1 = if full_b {
+            F32Simd::from_slice(&packed_b[b_base1..])
+        } else {
+            let mut tmp = [0.0f32; SGEMM_NR];
+            tmp[..nr].copy_from_slice(&packed_b[b_base1..b_base1 + nr]);
+            F32Simd::from_slice(&tmp)
+        };
+
+        // Interleaved FMA: acc[ir] += A[p,ir]*B[p] then += A[p+1,ir]*B[p+1]
+        // This hides FMA latency by interleaving independent chains.
+        let a_base0 = p * SGEMM_MR;
+        let a_base1 = (p + 1) * SGEMM_MR;
+        for ir in 0..mr.min(SGEMM_MR) {
+            let a0 = F32Simd::splat(packed_a[a_base0 + ir]);
+            acc[ir] = a0.mul_add(b_vec0, acc[ir]);
+            let a1 = F32Simd::splat(packed_a[a_base1 + ir]);
+            acc[ir] = a1.mul_add(b_vec1, acc[ir]);
+        }
+
+        p += 2;
+    }
+
+    // Handle remaining odd K step
+    if kb & 1 != 0 {
+        let b_base = kb_even * SGEMM_NR;
+        let b_vec = if full_b {
             F32Simd::from_slice(&packed_b[b_base..])
         } else {
-            // Partial: pad with zeros — stack array, not heap
             let mut tmp = [0.0f32; SGEMM_NR];
             tmp[..nr].copy_from_slice(&packed_b[b_base..b_base + nr]);
             F32Simd::from_slice(&tmp)
         };
-
-        // Load MR elements of A and broadcast-FMA
-        let a_base = p * SGEMM_MR;
+        let a_base = kb_even * SGEMM_MR;
         for ir in 0..mr.min(SGEMM_MR) {
             let a_val = F32Simd::splat(packed_a[a_base + ir]);
             acc[ir] = a_val.mul_add(b_vec, acc[ir]);
