@@ -32,7 +32,7 @@ use std::simd::{f32x16, f64x8, i32x16, i64x8, u8x64};
 
 use crate::num_array::linalg::matrix_multiply;
 use crate::simd_ops::SimdOps;
-use crate::traits::{AbsOps, ExpLog, FromU32, FromUsize, NumOps};
+use crate::traits::{AbsOps, ExpLog, FromU32, FromUsize, NumElement, NumOps};
 
 pub type NumArrayU8 = NumArray<u8, u8x64>;
 pub type NumArrayI32 = NumArray<i32, i32x16>;
@@ -327,7 +327,8 @@ where
         + ExpLog
         + Neg<Output = T>
         + Default
-        + Debug,
+        + Debug
+        + NumElement,
     Ops: SimdOps<T>,
 {
     /// Computes the dot product of two arrays, which can be vectors or matrices.
