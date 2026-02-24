@@ -63,3 +63,12 @@ pub use hybrid::{
     HybridScore, HybridConfig, HybridStats, LearningSignal,
 };
 pub use rng::SplitMix64;
+
+// BF16 3D Spatial Resonance — Crystal4K-aligned axis model
+// Wires: SPO grammar + semantic kernel + Jina 1024-D into 3-axis BF16 space
+pub mod spatial_resonance;
+pub use spatial_resonance::{
+    CrystalAxis, SpatialCrystal3D, SpatialDistances, SpatialAxis,
+    SpatialAwareness, SpatialLearningSignal, SpatialMatch,
+    spatial_awareness_decompose, extract_spatial_learning_signal, spatial_sweep,
+};
