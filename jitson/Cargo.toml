@@ -6,11 +6,16 @@ description = "JSON/YAML config → native function pointers via Cranelift JIT. 
 license = "MIT"
 
 [dependencies]
-# Cranelift JIT compiler infrastructure
-cranelift-codegen = "0.116"
-cranelift-frontend = "0.116"
-cranelift-jit = "0.116"
-cranelift-module = "0.116"
+# Cranelift JIT compiler infrastructure — uses patched wasmtime fork
+# with full AVX-512 support (VPOPCNTDQ, VNNI, VPTERNLOG, BITALG).
+# Commit 5c5086fc1 in AdaWorldAPI/wasmtime adds:
+#   - avx512bw, avx512vpopcntdq, avx512vnni, avx512ifma feature flags
+#   - VPOPCNTD/VPOPCNTQ, VPDPBUSD, VPTERNLOGD instructions
+#   - Sapphire Rapids / Granite Rapids microarchitecture presets
+cranelift-codegen = { path = "../../wasmtime/cranelift/codegen" }
+cranelift-frontend = { path = "../../wasmtime/cranelift/frontend" }
+cranelift-jit = { path = "../../wasmtime/cranelift/jit" }
+cranelift-module = { path = "../../wasmtime/cranelift/module" }
 target-lexicon = "0.13"
 
 # Serialization (for JSON/YAML config parsing)
