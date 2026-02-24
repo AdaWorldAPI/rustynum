@@ -4,6 +4,7 @@
 //! nowhere else. The orchestration layer (hybrid.rs) only sees
 //! `&dyn TailBackend`.
 
+pub mod gemm;
 pub mod popcnt;
 
 #[cfg(feature = "libxsmm")]

@@ -1439,4 +1439,83 @@ mod tests {
             stats.max_survivor_dot
         );
     }
+
+    // ====================================================================
+    // GEMM backend integration tests
+    // ====================================================================
+
+    #[test]
+    fn test_gemm_backend_hybrid_pipeline() {
+        // GEMM backend through the full hybrid pipeline
+        let config = HybridConfig::sku_16k();
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 10;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match at index 0
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let gemm = crate::tail_backend::gemm_backend();
+        let (scores, stats) =
+            hybrid_pipeline_with_backend(&query, &db, n, &config, gemm.as_ref());
+
+        // GEMM backend should find exact match
+        assert!(!scores.is_empty(), "GEMM backend should find matches");
+        assert_eq!(
+            scores[0].index, 0,
+            "GEMM backend: best match should be exact copy at index 0"
+        );
+        assert_eq!(scores[0].hamming_distance, 0);
+
+        // Stats should show batch scoring was used
+        assert!(stats.bf16_scored >= 1);
+        assert_eq!(stats.binary_stats.total, n);
+    }
+
+    #[test]
+    fn test_gemm_backend_batch_distance_ordering() {
+        // GEMM batch distances should order exact > near > random
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        // Near match: small perturbation
+        let near_vals: Vec<f32> = (0..n_dims)
+            .map(|i| (i as f32 * 0.01).sin() * 1.005)
+            .collect();
+        let near = make_container(&near_vals, kernels::SKU_16K_BYTES);
+
+        // Random
+        let rand_vals: Vec<f32> = (0..n_dims).map(|j| (j as f32 * 0.037).cos()).collect();
+        let random = make_container(&rand_vals, kernels::SKU_16K_BYTES);
+
+        let gemm = crate::backends::gemm::GemmBackend::new();
+        let weights = crate::bf16_hamming::BF16Weights::default();
+
+        let mut batch = Vec::new();
+        batch.extend_from_slice(&query);   // 0: exact
+        batch.extend_from_slice(&near);    // 1: near
+        batch.extend_from_slice(&random);  // 2: random
+
+        let result = crate::tail_backend::TailBackend::score_batch(
+            &gemm, &query, &batch, 3, &weights,
+        );
+
+        // Exact match: distance 0
+        assert_eq!(result.distances[0], 0, "Exact match batch distance should be 0");
+        // Near match: small distance
+        // Random: larger distance
+        assert!(
+            result.distances[1] < result.distances[2],
+            "Near ({}) should be closer than random ({})",
+            result.distances[1],
+            result.distances[2]
+        );
+    }
 }
