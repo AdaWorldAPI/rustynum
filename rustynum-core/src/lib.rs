@@ -68,8 +68,9 @@ pub use kernels::{
 };
 pub use hybrid::{
     hybrid_pipeline, hybrid_pipeline_with_backend,
-    extract_learning_signal, update_hybrid_weights,
+    extract_learning_signal, update_hybrid_weights, resonance_decompose,
     HybridScore, HybridConfig, HybridStats, LearningSignal,
+    ResonanceResult, ResonantMatch,
     Tier0Config, Tier0Mode, Tier0Stats,
 };
 pub use tail_backend::{
