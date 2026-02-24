@@ -37,6 +37,7 @@ use crate::bf16_hamming::{
     SuperpositionState,
 };
 use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SliceGate};
+use crate::tail_backend::TailBackend;
 
 // ============================================================================
 // Hybrid score — combines binary + BF16 + awareness
@@ -225,6 +226,137 @@ pub fn hybrid_pipeline(
             index: km.index,
             combined_score: combined,
         });
+    }
+
+    // Sort by combined score (best first)
+    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap());
+
+    (hybrid_scores, stats)
+}
+
+/// Run the hybrid pipeline with a pluggable tail backend.
+///
+/// Same as `hybrid_pipeline` but uses a `TailBackend` trait object for the
+/// BF16 tail scoring phase. This is the libCEED-style performance-portable
+/// entry point: the caller selects the backend at init time, then the
+/// pipeline dispatches through the trait.
+///
+/// Use `tail_backend::auto_detect()` for automatic runtime selection.
+///
+/// ```text
+/// let backend = rustynum_core::tail_backend::auto_detect();
+/// let (scores, stats) = hybrid_pipeline_with_backend(
+///     &query, &db, n, &config, backend.as_ref(),
+/// );
+/// ```
+pub fn hybrid_pipeline_with_backend(
+    query_bytes: &[u8],
+    database_bytes: &[u8],
+    n_candidates: usize,
+    config: &HybridConfig,
+    backend: &dyn TailBackend,
+) -> (Vec<HybridScore>, HybridStats) {
+    let n_bytes = query_bytes.len();
+    assert!(
+        n_bytes == kernels::SKU_16K_BYTES || n_bytes == kernels::SKU_64K_BYTES,
+        "query must be {} or {} bytes, got {}",
+        kernels::SKU_16K_BYTES,
+        kernels::SKU_64K_BYTES,
+        n_bytes
+    );
+    assert!(database_bytes.len() >= n_candidates * n_bytes);
+
+    // Phase 1: Binary Hamming pipeline (K0→K1→K2) — same as before
+    let (binary_matches, binary_stats) =
+        kernels::kernel_pipeline_bytes(query_bytes, database_bytes, n_candidates, &config.gate);
+
+    let mut stats = HybridStats {
+        binary_stats,
+        ..Default::default()
+    };
+
+    // Sort binary matches by distance so we BF16-score the best candidates first
+    let mut sorted_binary = binary_matches;
+    sorted_binary.sort_by_key(|m| m.distance);
+
+    let bf16_limit = if config.max_bf16_candidates == 0 {
+        sorted_binary.len()
+    } else {
+        sorted_binary.len().min(config.max_bf16_candidates)
+    };
+
+    let candidates_to_score = &sorted_binary[..bf16_limit];
+
+    // Phase 2: BF16 tail scoring via backend
+    let mut hybrid_scores: Vec<HybridScore> = Vec::with_capacity(candidates_to_score.len());
+
+    if backend.supports_batch() && candidates_to_score.len() >= 8 {
+        // Batch path: collect candidate bytes, score all at once
+        let mut batch_bytes = Vec::with_capacity(candidates_to_score.len() * n_bytes);
+        for km in candidates_to_score {
+            let offset = km.index * n_bytes;
+            batch_bytes.extend_from_slice(&database_bytes[offset..offset + n_bytes]);
+        }
+
+        let batch = backend.score_batch(
+            query_bytes,
+            &batch_bytes,
+            candidates_to_score.len(),
+            &config.bf16_weights,
+        );
+
+        for (i, km) in candidates_to_score.iter().enumerate() {
+            stats.bf16_scored += 1;
+            let diff = &batch.diffs[i];
+            if diff.sign_flips > 0 {
+                stats.sign_flip_candidates += 1;
+            }
+            if !diff.major_magnitude_shifts.is_empty() {
+                stats.magnitude_shift_candidates += 1;
+            }
+
+            let combined = km.distance as f64 * config.hamming_weight
+                + batch.distances[i] as f64 * config.bf16_weight;
+
+            hybrid_scores.push(HybridScore {
+                hamming_distance: km.distance,
+                hdr: km.hdr,
+                energy: km.energy,
+                bf16_distance: batch.distances[i],
+                structural_diff: diff.clone(),
+                index: km.index,
+                combined_score: combined,
+            });
+        }
+    } else {
+        // Per-candidate path
+        for km in candidates_to_score {
+            let cand_offset = km.index * n_bytes;
+            let cand_bytes = &database_bytes[cand_offset..cand_offset + n_bytes];
+
+            let tail = backend.score(query_bytes, cand_bytes, &config.bf16_weights);
+
+            stats.bf16_scored += 1;
+            if tail.structural_diff.sign_flips > 0 {
+                stats.sign_flip_candidates += 1;
+            }
+            if !tail.structural_diff.major_magnitude_shifts.is_empty() {
+                stats.magnitude_shift_candidates += 1;
+            }
+
+            let combined = km.distance as f64 * config.hamming_weight
+                + tail.bf16_distance as f64 * config.bf16_weight;
+
+            hybrid_scores.push(HybridScore {
+                hamming_distance: km.distance,
+                hdr: km.hdr,
+                energy: km.energy,
+                bf16_distance: tail.bf16_distance,
+                structural_diff: tail.structural_diff,
+                index: km.index,
+                combined_score: combined,
+            });
+        }
     }
 
     // Sort by combined score (best first)
@@ -634,6 +766,45 @@ mod tests {
         let unpacked =
             bf16_hamming::unpack_awareness_states(&signal.packed_states, signal.awareness.n_dims);
         assert_eq!(unpacked, signal.awareness.states);
+    }
+
+    #[test]
+    fn test_hybrid_pipeline_with_backend_matches_original() {
+        let config = HybridConfig::sku_16k();
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 10;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match at index 0
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Run both pipelines
+        let (original_scores, original_stats) = hybrid_pipeline(&query, &db, n, &config);
+        let backend = crate::tail_backend::auto_detect();
+        let (backend_scores, backend_stats) =
+            hybrid_pipeline_with_backend(&query, &db, n, &config, backend.as_ref());
+
+        // Results must match
+        assert_eq!(original_scores.len(), backend_scores.len());
+        assert_eq!(original_stats.bf16_scored, backend_stats.bf16_scored);
+
+        for (orig, back) in original_scores.iter().zip(backend_scores.iter()) {
+            assert_eq!(orig.index, back.index);
+            assert_eq!(orig.hamming_distance, back.hamming_distance);
+            assert_eq!(orig.bf16_distance, back.bf16_distance);
+            assert!(
+                (orig.combined_score - back.combined_score).abs() < 1e-10,
+                "Scores diverged: {} vs {}",
+                orig.combined_score,
+                back.combined_score
+            );
+        }
     }
 
     #[test]

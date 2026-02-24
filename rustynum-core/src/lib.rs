@@ -21,6 +21,8 @@ pub mod jitson;
 pub mod fingerprint;
 pub mod hybrid;
 pub mod kernels;
+pub mod backends;
+pub mod tail_backend;
 pub mod layer_stack;
 pub mod layout;
 pub mod parallel;
@@ -65,9 +67,11 @@ pub use kernels::{
     SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
 };
 pub use hybrid::{
-    hybrid_pipeline, extract_learning_signal, update_hybrid_weights,
+    hybrid_pipeline, hybrid_pipeline_with_backend,
+    extract_learning_signal, update_hybrid_weights,
     HybridScore, HybridConfig, HybridStats, LearningSignal,
 };
+pub use tail_backend::{TailBackend, TailScore, BatchTailScore, auto_detect as auto_detect_backend};
 pub use rng::SplitMix64;
 
 // BF16 3D Spatial Resonance — Crystal4K-aligned axis model
