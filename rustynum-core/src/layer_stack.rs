@@ -288,9 +288,7 @@ mod tests {
             let mut val = Fingerprint::<4>::zero();
             val.words[i] = 0xFFFF;
             let g = stack.ground().clone();
-            stack
-                .writer_mut(i)
-                .write(&g, &val);
+            stack.writer_mut(i).write(&g, &val);
         }
 
         assert_eq!(*stack.ground(), ground_copy);

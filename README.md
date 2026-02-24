@@ -68,21 +68,21 @@ The original `rustynum-rs` used a simple transpose-dot GEMM. NumPy (backed by Op
 4. **Multithreaded M-loop:** Scoped threads with `SendMutPtr<T>` — each thread owns disjoint C rows. Zero locks, zero contention.
 5. **Adaptive Thresholds:** Simple triple-loop for tiny matrices (<110K flops), single-threaded blocked for medium (<256x256), multithreaded for large.
 
-### Benchmark Results (16 threads, AVX-512)
+### Benchmark Results (16 threads, AVX-512) — February 2026
 
 ```
 === GEMM Benchmark: old (transpose-dot) vs new (cache-blocked + 16T) ===
   Size         | Old (transpose-dot)              | New (Goto+MT)                    | Speedup
   ─────────────┼──────────────────────────────────┼──────────────────────────────────┼────────
-  32x32        |  0.01 ms (  6.77 GFLOPS)         |  0.03 ms (  2.48 GFLOPS)         |  0.37x
-  64x64        |  0.04 ms ( 12.86 GFLOPS)         |  0.03 ms ( 20.31 GFLOPS)         |  1.58x
-  128x128      |  0.27 ms ( 15.79 GFLOPS)         |  0.16 ms ( 25.78 GFLOPS)         |  1.63x
-  256x256      |  1.82 ms ( 18.40 GFLOPS)         |  1.13 ms ( 29.67 GFLOPS)         |  1.61x
-  512x512      | 13.75 ms ( 19.52 GFLOPS)         |  6.56 ms ( 40.90 GFLOPS)         |  2.10x
-  1024x1024    |167.98 ms ( 12.78 GFLOPS)         | 18.55 ms (115.77 GFLOPS)         |  9.06x
+  32x32        |  0.01 ms (  7.25 GFLOPS)         |  0.01 ms (  5.68 GFLOPS)         |  0.78x
+  64x64        |  0.04 ms ( 12.47 GFLOPS)         |  0.02 ms ( 21.87 GFLOPS)         |  1.75x
+  128x128      |  0.30 ms ( 14.06 GFLOPS)         |  0.15 ms ( 27.76 GFLOPS)         |  1.97x
+  256x256      |  1.76 ms ( 19.01 GFLOPS)         |  1.02 ms ( 32.86 GFLOPS)         |  1.73x
+  512x512      | 13.17 ms ( 20.38 GFLOPS)         |  5.67 ms ( 47.30 GFLOPS)         |  2.32x
+  1024x1024    |162.83 ms ( 13.19 GFLOPS)         | 15.47 ms (138.85 GFLOPS)         | 10.53x
 ```
 
-**Key insight:** At 1024x1024, the old approach hit a cache cliff (12.78 GFLOPS) while the new cache-blocked + MT approach achieves **115.77 GFLOPS** — a **9.06x speedup**. The 512x512 gap that NumPy exploited is now closed with 2.10x faster than the old path.
+**Key insight:** At 1024x1024, the old approach hit a cache cliff (13.19 GFLOPS) while the new cache-blocked + MT approach achieves **138.85 GFLOPS** — a **10.53x speedup**. The 512x512 gap that NumPy exploited is now closed with 2.32x faster than the old path.
 
 ## Supported Data Types
 
@@ -353,12 +353,12 @@ compute::print_caps();
 
 | Size | Old (transpose-dot) | New (Goto+MT, 16T) | Speedup | Notes |
 |------|--------------------|--------------------|---------|-------|
-| 32x32 | 6.77 GFLOPS | 2.48 GFLOPS | 0.37x | Too small for blocked overhead |
-| 64x64 | 12.86 GFLOPS | 20.31 GFLOPS | **1.58x** | Blocked path kicks in |
-| 128x128 | 15.79 GFLOPS | 25.78 GFLOPS | **1.63x** | Single-threaded blocked |
-| 256x256 | 18.40 GFLOPS | 29.67 GFLOPS | **1.61x** | Single-threaded blocked |
-| 512x512 | 19.52 GFLOPS | 40.90 GFLOPS | **2.10x** | Gap that NumPy exploited: **closed** |
-| 1024x1024 | 12.78 GFLOPS | **115.77 GFLOPS** | **9.06x** | Cache cliff eliminated |
+| 32x32 | 7.25 GFLOPS | 5.68 GFLOPS | 0.78x | Too small for blocked overhead |
+| 64x64 | 12.47 GFLOPS | 21.87 GFLOPS | **1.75x** | Blocked path kicks in |
+| 128x128 | 14.06 GFLOPS | 27.76 GFLOPS | **1.97x** | Single-threaded blocked |
+| 256x256 | 19.01 GFLOPS | 32.86 GFLOPS | **1.73x** | Single-threaded blocked |
+| 512x512 | 20.38 GFLOPS | 47.30 GFLOPS | **2.32x** | Gap that NumPy exploited: **closed** |
+| 1024x1024 | 13.19 GFLOPS | **138.85 GFLOPS** | **10.53x** | Cache cliff eliminated |
 
 ### HDC Bitwise Operations (8192-byte = 65536-bit vectors)
 
@@ -418,31 +418,38 @@ Note: n=1024 barely costs more than n=256 — the ripple-carry counter scales O(
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### RustyNum vs NumPy Comparison (Updated)
+### RustyNum vs NumPy Comparison (Live: February 2026, NumPy 2.4.2 / OpenBLAS)
 
 | Operation | NumPy | RustyNum | Speedup | Notes |
 |-----------|-------|----------|---------|-------|
-| XOR / BIND (8 KB) | ~3-5 us | **0.7 us** | **5-7x** | NumPy has no SIMD bitwise path |
-| Hamming distance (8 KB) | ~25-50 us | **1.7 us** | **15-30x** | NumPy: unpackbits+sum |
-| Bundle n=64 (8 KB) | ~8-20 ms | **633 us** | **13-32x** | NumPy: unpackbits per vector |
-| Int8 dot (1024D) | ~3-8 us | **226 ns** | **13-35x** | NumPy: astype(int32)+dot |
-| Int8 cosine (1024D) | ~10-20 us | **522 ns** | **19-38x** | NumPy: astype(float64)+norm |
-| DB scan 10K x 2 KB | ~500-1000 ms | **369 us** | **1350-2700x** | Adaptive cascade eliminates 99.7% |
-| f32 addition (10K) | ~3-5 us | **760 ns** | **4-7x** | NumPy C loops vs portable_simd |
-| f32 mean (10K) | ~3-5 us | **684 ns** | **4-7x** | |
-| f32 dot (10K) | ~2-4 us | **759 ns** | **3-5x** | |
-| **Matrix mul 1Kx1K** | ~1-3 ms | **18.55 ms** | **0.05-0.16x** | NumPy/MKL still faster (highly tuned) |
+| XOR / BIND (8 KB) | 711 ns | **~227 ns** | **3.1x** | NumPy has no SIMD bitwise path |
+| XOR / BIND (64 KB) | 2.9 us | **~502 ns** | **5.8x** | Scales with AVX-512 |
+| Hamming distance (8 KB) | 27.0 us | **~1.6 us** | **17x** | NumPy: LUT popcount |
+| Hamming distance (64 KB) | 200.7 us | **~4.2 us** | **48x** | VPOPCNTDQ |
+| Popcount (64 KB) | 203.7 us | **~4.2 us** | **49x** | VPOPCNTDQ |
+| Bundle n=64 (8 KB) | 2.69 ms | **~270 us** | **10x** | Ripple-carry SIMD |
+| Bundle n=256 (8 KB) | 11.06 ms | **~753 us** | **15x** | O(log n) per lane |
+| Int8 dot (1024D) | 2.4 us | **~113 ns** | **21x** | VNNI vpdpbusd |
+| Int8 cosine (1024D) | 4.7 us | **~226 ns** | **21x** | VNNI + fused norm |
+| DB scan 1K x 2 KB | 6.38 ms | **~49 us** | **130x** | 3sigma cascade |
+| DB scan 10K x 2 KB | 91.54 ms | **~369 us** | **248x** | 99.7% early rejection |
+| DB scan 1K x 8 KB | 26.39 ms | **~78 us** | **338x** | Adaptive cascade |
+| f32 addition (10K) | 3.4 us | **~760 ns** | **4.5x** | portable_simd |
+| f32 mean (10K) | 7.2 us | **~684 ns** | **10.5x** | |
+| f32 dot (10K) | 1.6 us | **~759 ns** | **2.1x** | |
+| f32 std (10K) | 17.5 us | **~2 us** | **8.8x** | |
+| Cosine sim (10K) | 5.3 us | **~2 us** | **2.7x** | |
+| **Matrix mul 1Kx1K** | **2.13 ms** | 15.47 ms | **0.14x** | NumPy/OpenBLAS wins |
 
 **Where RustyNum now replaces NumPy entirely:**
-- HDC/VSA bitwise operations: **15-30x faster** (native SIMD, no Python overhead)
-- Int8 embedding search: **13-38x faster** (VNNI + cascade filter)
-- Vector statistics (mean, std, var): **4-7x faster** (explicit SIMD)
-- Database scans with early exit: **1000x+ faster** (cascade has no NumPy equivalent)
-- GEMM 512x512+: **Now competitive** (cache-blocked + MT, was the one area NumPy dominated)
+- HDC/VSA bitwise operations: **17-49x faster** (VPOPCNTDQ, no Python overhead)
+- Int8 embedding search: **21x faster** (VNNI + cascade filter)
+- Vector statistics (mean, std, var): **4-11x faster** (explicit SIMD)
+- Database scans with early exit: **130-338x faster** (cascade has no NumPy equivalent)
 - Zero-dependency deployment (no BLAS, no pip, no GIL)
 
-**Where NumPy/MKL still leads (and the plan to close):**
-- 1024x1024 GEMM: NumPy/MKL achieves ~200+ GFLOPS with fully-tuned microkernels. Our 115.77 GFLOPS is competitive but not yet at parity. Next steps:
+**Where NumPy/OpenBLAS/MKL still leads (and the plan to close):**
+- 1024x1024 GEMM: NumPy/OpenBLAS at 2.13ms vs RustyNum at 15.47ms (7.3x gap). MKL achieves ~200+ GFLOPS with fully-tuned microkernels. Our 138.85 GFLOPS is closing the gap. Next steps:
   - AMX tile GEMM (detected: `amx_int8=true`, `amx_bf16=true`) — 1024 ops/cycle
   - Register-blocking optimization for the 6x16 microkernel
   - Prefetch hints for panel packing
@@ -458,8 +465,8 @@ Note: n=1024 barely costs more than n=256 — the ripple-carry counter scales O(
 |-----------|----------|---------------------|----------|
 | XOR 8 KB | ~50 ns | 0.7 us | GPU 14x, but PCIe kills latency |
 | Hamming 2 KB | ~80 ns | 1.7 us | GPU 21x, need batch >10K |
-| Int8 dot 1024D | ~30 ns | 226 ns | GPU 7.5x, tensor core batch only |
-| GEMM 1Kx1K | ~0.1 ms | 18.55 ms | **GPU 185x** (tensor cores) |
+| Int8 dot 1024D | ~30 ns | 113 ns | GPU 3.8x, tensor core batch only |
+| GEMM 1Kx1K | ~0.1 ms | 15.47 ms | **GPU 155x** (tensor cores) |
 | GEMM 1Kx1K (INT8) | ~0.05 ms | ~5 ms (est.) | GPU 100x (INT8 tensor cores) |
 | **DB scan 10K x 2 KB** | ~2-5 ms | **369 us** | **CPU wins** (cascade 99.7%) |
 | **DB scan 1M x 2 KB** | ~200-500 ms | **~37 ms** (est.) | **CPU competitive** |
