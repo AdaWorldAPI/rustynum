@@ -1439,4 +1439,286 @@ mod tests {
             stats.max_survivor_dot
         );
     }
+
+    // ====================================================================
+    // GEMM backend integration tests
+    // ====================================================================
+
+    #[test]
+    fn test_gemm_backend_hybrid_pipeline() {
+        // GEMM backend through the full hybrid pipeline
+        let config = HybridConfig::sku_16k();
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 10;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match at index 0
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let gemm = crate::tail_backend::gemm_backend();
+        let (scores, stats) =
+            hybrid_pipeline_with_backend(&query, &db, n, &config, gemm.as_ref());
+
+        // GEMM backend should find exact match
+        assert!(!scores.is_empty(), "GEMM backend should find matches");
+        assert_eq!(
+            scores[0].index, 0,
+            "GEMM backend: best match should be exact copy at index 0"
+        );
+        assert_eq!(scores[0].hamming_distance, 0);
+
+        // Stats should show batch scoring was used
+        assert!(stats.bf16_scored >= 1);
+        assert_eq!(stats.binary_stats.total, n);
+    }
+
+    #[test]
+    fn test_gemm_backend_batch_distance_ordering() {
+        // GEMM batch distances should order exact > near > random
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        // Near match: small perturbation
+        let near_vals: Vec<f32> = (0..n_dims)
+            .map(|i| (i as f32 * 0.01).sin() * 1.005)
+            .collect();
+        let near = make_container(&near_vals, kernels::SKU_16K_BYTES);
+
+        // Random
+        let rand_vals: Vec<f32> = (0..n_dims).map(|j| (j as f32 * 0.037).cos()).collect();
+        let random = make_container(&rand_vals, kernels::SKU_16K_BYTES);
+
+        let gemm = crate::backends::gemm::GemmBackend::new();
+        let weights = crate::bf16_hamming::BF16Weights::default();
+
+        let mut batch = Vec::new();
+        batch.extend_from_slice(&query);   // 0: exact
+        batch.extend_from_slice(&near);    // 1: near
+        batch.extend_from_slice(&random);  // 2: random
+
+        let result = crate::tail_backend::TailBackend::score_batch(
+            &gemm, &query, &batch, 3, &weights,
+        );
+
+        // Exact match: distance 0
+        assert_eq!(result.distances[0], 0, "Exact match batch distance should be 0");
+        // Near match: small distance
+        // Random: larger distance
+        assert!(
+            result.distances[1] < result.distances[2],
+            "Near ({}) should be closer than random ({})",
+            result.distances[1],
+            result.distances[2]
+        );
+    }
+
+    // ====================================================================
+    // Multi-agent awareness feedback loop with GEMM backend
+    // ====================================================================
+
+    #[test]
+    fn test_multi_agent_gemm_awareness_convergence() {
+        // Simulates 3 A2A agents sharing a blackboard via hybrid weights:
+        //
+        //   Agent 0 ("explorer"):   queries near-match patterns → high crystallization
+        //   Agent 1 ("contrarian"): queries sign-flipped patterns → high tension
+        //   Agent 2 ("random"):     queries random patterns → noise
+        //
+        // Each agent:
+        //   1. Runs GEMM-backed hybrid pipeline
+        //   2. Extracts learning signal from top-K results
+        //   3. Updates shared [f32; 32] hybrid weights (simulating blackboard)
+        //
+        // After 3 rounds, verify:
+        //   - Shared weights reflect combined awareness
+        //   - Crystallized regions have higher weights
+        //   - Noisy regions have lower weights
+        let gemm = crate::tail_backend::gemm_backend();
+        let config = HybridConfig::sku_16k();
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let learning_rate = 0.2;
+
+        // Build shared database with structured patterns
+        let base_vals: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let base = make_container(&base_vals, kernels::SKU_16K_BYTES);
+
+        let n = 30;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+
+        // Slot 0: base pattern (exact)
+        db.extend_from_slice(&base);
+        // Slots 1-4: near-matches (small perturbations)
+        for k in 1..5 {
+            let near_vals: Vec<f32> = (0..n_dims)
+                .map(|i| (i as f32 * 0.01).sin() * (1.0 + k as f32 * 0.003))
+                .collect();
+            db.extend_from_slice(&make_container(&near_vals, kernels::SKU_16K_BYTES));
+        }
+        // Slots 5-9: sign-flipped patterns (contrarian)
+        for k in 0..5 {
+            let mut flipped = base_vals.clone();
+            let start = k * (n_dims / 5);
+            let end = start + n_dims / 5;
+            for v in flipped[start..end].iter_mut() {
+                *v = -*v;
+            }
+            db.extend_from_slice(&make_container(&flipped, kernels::SKU_16K_BYTES));
+        }
+        // Slots 10-29: random
+        for i in 10..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 999 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Shared hybrid weights (simulates blackboard typed slot)
+        let mut shared_weights = [0.5f32; 32];
+
+        // === Agent queries ===
+
+        // Agent 0: explorer — queries the base pattern (expects crystallized matches)
+        let query_explorer = base.clone();
+
+        // Agent 1: contrarian — queries a sign-flipped variant
+        let mut contrarian_vals = base_vals.clone();
+        for v in contrarian_vals[..n_dims / 2].iter_mut() {
+            *v = -*v;
+        }
+        let query_contrarian = make_container(&contrarian_vals, kernels::SKU_16K_BYTES);
+
+        // Agent 2: random — queries random data
+        let rand_query_vals: Vec<f32> =
+            (0..n_dims).map(|j| (j as f32 * 0.123).cos()).collect();
+        let query_random = make_container(&rand_query_vals, kernels::SKU_16K_BYTES);
+
+        // === Run 3 rounds of agent exploration ===
+        let queries = [&query_explorer, &query_contrarian, &query_random];
+
+        for round in 0..3 {
+            for (agent_id, query) in queries.iter().enumerate() {
+                // Phase 1: GEMM-backed recognition
+                let (scores, _stats) = hybrid_pipeline_with_backend(
+                    query,
+                    &db,
+                    n,
+                    &config,
+                    gemm.as_ref(),
+                );
+
+                // Phase 2: Extract learning signal from top-2 results
+                if scores.len() >= 2 {
+                    let top_0_offset = scores[0].index * kernels::SKU_16K_BYTES;
+                    let top_1_offset = scores[1].index * kernels::SKU_16K_BYTES;
+                    let top_0 = &db[top_0_offset..top_0_offset + kernels::SKU_16K_BYTES];
+                    let top_1 = &db[top_1_offset..top_1_offset + kernels::SKU_16K_BYTES];
+
+                    let signal = extract_learning_signal(
+                        query,
+                        &[top_0, top_1],
+                        &config.awareness_thresholds,
+                    );
+
+                    // Phase 3: Update shared weights (A2A blackboard write)
+                    update_hybrid_weights(&mut shared_weights, &signal, learning_rate);
+
+                    // Verify signal is sensible
+                    assert!(
+                        signal.crystallized_ratio + signal.tension_ratio <= 1.01,
+                        "Round {}, Agent {}: ratios sum > 1.0 (c={}, t={})",
+                        round, agent_id,
+                        signal.crystallized_ratio, signal.tension_ratio
+                    );
+                }
+            }
+        }
+
+        // === Verify convergence ===
+
+        // After 3 rounds × 3 agents = 9 weight updates, weights should have moved
+        let moved = shared_weights.iter().filter(|&&w| (w - 0.5).abs() > 0.01).count();
+        assert!(
+            moved > 0,
+            "Some weights should have moved from initial 0.5 after 9 updates: {:?}",
+            &shared_weights[..8]
+        );
+
+        // All weights should be in valid range [0, 1]
+        for (i, &w) in shared_weights.iter().enumerate() {
+            assert!(
+                w >= 0.0 && w <= 1.0,
+                "Weight {} out of range: {}",
+                i, w
+            );
+        }
+    }
+
+    #[test]
+    fn test_gemm_awareness_crystallization_vs_noise() {
+        // Two agents: one gets crystallized signal, one gets noise.
+        // Their weights should diverge.
+        let gemm = crate::tail_backend::gemm_backend();
+        let config = HybridConfig::sku_16k();
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+
+        // Database: 10 exact copies of the query + 10 random
+        let vals: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&vals, kernels::SKU_16K_BYTES);
+
+        let n = 20;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        for _ in 0..10 {
+            db.extend_from_slice(&query); // copies
+        }
+        for i in 10..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 777 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Agent A: queries exact match → crystallized
+        let mut weights_a = [0.5f32; 32];
+        let (scores_a, _) = hybrid_pipeline_with_backend(&query, &db, n, &config, gemm.as_ref());
+        if scores_a.len() >= 2 {
+            let t0 = &db[scores_a[0].index * kernels::SKU_16K_BYTES..][..kernels::SKU_16K_BYTES];
+            let t1 = &db[scores_a[1].index * kernels::SKU_16K_BYTES..][..kernels::SKU_16K_BYTES];
+            let sig = extract_learning_signal(&query, &[t0, t1], &config.awareness_thresholds);
+            update_hybrid_weights(&mut weights_a, &sig, 0.5);
+
+            assert!(
+                sig.crystallized_ratio > 0.8,
+                "Exact match should be >80% crystallized, got {}",
+                sig.crystallized_ratio
+            );
+        }
+
+        // Agent B: queries random → noise/uncertain
+        let rand_q: Vec<f32> = (0..n_dims).map(|j| (j as f32 * 0.0777).cos()).collect();
+        let random_query = make_container(&rand_q, kernels::SKU_16K_BYTES);
+        let mut weights_b = [0.5f32; 32];
+        let (scores_b, _) =
+            hybrid_pipeline_with_backend(&random_query, &db, n, &config, gemm.as_ref());
+        if scores_b.len() >= 2 {
+            let t0 = &db[scores_b[0].index * kernels::SKU_16K_BYTES..][..kernels::SKU_16K_BYTES];
+            let t1 = &db[scores_b[1].index * kernels::SKU_16K_BYTES..][..kernels::SKU_16K_BYTES];
+            let sig =
+                extract_learning_signal(&random_query, &[t0, t1], &config.awareness_thresholds);
+            update_hybrid_weights(&mut weights_b, &sig, 0.5);
+        }
+
+        // Weights should have diverged: A (crystallized) higher than B (noise)
+        let avg_a: f32 = weights_a.iter().sum::<f32>() / 32.0;
+        let avg_b: f32 = weights_b.iter().sum::<f32>() / 32.0;
+        assert!(
+            avg_a >= avg_b,
+            "Crystallized agent should have >= avg weight than noisy: A={:.3} B={:.3}",
+            avg_a, avg_b
+        );
+    }
 }

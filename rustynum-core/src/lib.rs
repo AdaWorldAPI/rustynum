@@ -75,6 +75,7 @@ pub use hybrid::{
 pub use tail_backend::{
     TailBackend, TailScore, BatchTailScore, CompactTailScore, Capabilities,
     auto_detect as auto_detect_backend, capabilities as backend_capabilities,
+    gemm_backend, gemm_backend_with_scale,
 };
 pub use rng::SplitMix64;
 

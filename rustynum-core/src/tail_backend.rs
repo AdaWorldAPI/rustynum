@@ -199,6 +199,10 @@ pub trait TailBackend: Send + Sync {
 ///
 /// The result is `Box<dyn TailBackend>` — one allocation at init time,
 /// then zero-cost trait dispatch on every call.
+///
+/// Note: The GEMM backend is NOT auto-selected because it uses a different
+/// distance metric (dot-product gap vs. weighted Hamming). Use `gemm_backend()`
+/// to explicitly select it.
 pub fn auto_detect() -> Box<dyn TailBackend> {
     // Priority 1: LIBXSMM (feature-gated)
     #[cfg(feature = "libxsmm")]
@@ -218,6 +222,29 @@ pub fn auto_detect() -> Box<dyn TailBackend> {
 
     // Priority 3: Scalar fallback (always available)
     Box::new(crate::backends::popcnt::PopcntBackend::scalar())
+}
+
+/// Create a GEMM-based tail backend for batch-optimized scoring.
+///
+/// Uses f32 dot product (via BF16→f32 conversion + SIMD) as the batch distance
+/// metric. The distance is `(query_self_dot - dot(query, candidate)) * scale`,
+/// which gives lower distance for more similar vectors.
+///
+/// Single-candidate scoring (`score()`) uses standard BF16 structured Hamming
+/// distance for backward compatibility.
+///
+/// This backend reports `supports_batch() = true` and is optimized for cases
+/// where many K2 survivors need scoring simultaneously.
+pub fn gemm_backend() -> Box<dyn TailBackend> {
+    Box::new(crate::backends::gemm::GemmBackend::new())
+}
+
+/// Create a GEMM-based tail backend with custom scale factor.
+///
+/// See `gemm_backend()` for details. The scale factor controls the
+/// f32→u64 distance quantization resolution.
+pub fn gemm_backend_with_scale(scale: f32) -> Box<dyn TailBackend> {
+    Box::new(crate::backends::gemm::GemmBackend::with_scale(scale))
 }
 
 // ============================================================================
