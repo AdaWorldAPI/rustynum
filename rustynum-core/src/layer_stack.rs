@@ -196,7 +196,8 @@ mod tests {
             words: [0xFF, 0, 0, 0],
         };
         let mut stack = LayerStack::new(ground, 2);
-        stack.writer_mut(0).write(stack.ground(), &desired);
+        let g = stack.ground().clone();
+        stack.writer_mut(0).write(&g, &desired);
         assert_eq!(stack.writer_view(0), desired);
     }
 
@@ -286,9 +287,10 @@ mod tests {
         for i in 0..3 {
             let mut val = Fingerprint::<4>::zero();
             val.words[i] = 0xFFFF;
+            let g = stack.ground().clone();
             stack
                 .writer_mut(i)
-                .write(stack.ground(), &val);
+                .write(&g, &val);
         }
 
         assert_eq!(*stack.ground(), ground_copy);

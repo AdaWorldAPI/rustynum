@@ -17,6 +17,7 @@ pub mod blackboard;
 pub mod compute;
 pub mod delta;
 pub mod fingerprint;
+pub mod kernels;
 pub mod layer_stack;
 pub mod layout;
 pub mod parallel;
@@ -49,4 +50,11 @@ pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K}
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
+pub use kernels::{
+    kernel_pipeline, kernel_pipeline_bytes, full_sweep, bf16_tail_score,
+    SliceGate, EnergyConflict, HdrScore, KernelResult, KernelStage,
+    PipelineStats, BenchmarkTranscript,
+    SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
+    SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+};
 pub use rng::SplitMix64;
