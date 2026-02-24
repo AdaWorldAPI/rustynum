@@ -19,6 +19,10 @@ pub mod delta;
 pub mod jit_scan;
 pub mod jitson;
 pub mod fingerprint;
+pub mod hybrid;
+pub mod kernels;
+pub mod backends;
+pub mod tail_backend;
 pub mod layer_stack;
 pub mod layout;
 pub mod parallel;
@@ -55,4 +59,30 @@ pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K}
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
+pub use kernels::{
+    kernel_pipeline, kernel_pipeline_bytes, full_sweep, bf16_tail_score,
+    SliceGate, EnergyConflict, HdrScore, KernelResult, KernelStage,
+    PipelineStats, BenchmarkTranscript,
+    SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
+    SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+};
+pub use hybrid::{
+    hybrid_pipeline, hybrid_pipeline_with_backend,
+    extract_learning_signal, update_hybrid_weights,
+    HybridScore, HybridConfig, HybridStats, LearningSignal,
+    Tier0Config, Tier0Mode, Tier0Stats,
+};
+pub use tail_backend::{
+    TailBackend, TailScore, BatchTailScore, CompactTailScore, Capabilities,
+    auto_detect as auto_detect_backend, capabilities as backend_capabilities,
+};
 pub use rng::SplitMix64;
+
+// BF16 3D Spatial Resonance — Crystal4K-aligned axis model
+// Wires: SPO grammar + semantic kernel + Jina 1024-D into 3-axis BF16 space
+pub mod spatial_resonance;
+pub use spatial_resonance::{
+    CrystalAxis, SpatialCrystal3D, SpatialDistances, SpatialAxis,
+    SpatialAwareness, SpatialLearningSignal, SpatialMatch,
+    spatial_awareness_decompose, extract_spatial_learning_signal, spatial_sweep,
+};
