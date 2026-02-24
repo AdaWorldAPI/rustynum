@@ -16,9 +16,14 @@ avx2 = []
 # When enabled, compile-time feature gate routes to MKL instead of hand-rolled SIMD.
 # Uses static linking, LP64 (32-bit ints), sequential (no OpenMP — Rayon handles threading).
 mkl = ["dep:intel-mkl-src"]
+# LIBXSMM: optional FFI backend for JIT-compiled BF16 GEMM in the tail scorer.
+# When enabled, the xsmm backend is compiled and selected at runtime if available.
+# Requires libxsmm to be installed. See backends/xsmm.rs for linking requirements.
+libxsmm = ["dep:libc"]
 
 [dependencies]
 intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-seq"], optional = true }
+libc = { version = "0.2", optional = true }
 smallvec = "1"
 
 [dev-dependencies]

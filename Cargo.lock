@@ -5093,6 +5093,7 @@ name = "rustynum-core"
 version = "0.1.0"
 dependencies = [
  "intel-mkl-src",
+ "libc",
  "smallvec",
 ]
 

@@ -8,7 +8,7 @@
 //! and the trait implementation.
 
 use crate::bf16_hamming::{self, BF16Weights};
-use crate::tail_backend::{TailBackend, TailScore};
+use crate::tail_backend::{CompactTailScore, TailBackend, TailScore, compact_score_from_bytes};
 
 /// POPCNT-based tail backend.
 ///
@@ -66,6 +66,34 @@ impl TailBackend for PopcntBackend {
             bf16_distance,
             structural_diff,
         }
+    }
+
+    /// Compact scoring: distance + counters only, no structural diff allocation.
+    fn score_compact(
+        &self,
+        query_bytes: &[u8],
+        candidate_bytes: &[u8],
+        weights: &BF16Weights,
+    ) -> CompactTailScore {
+        compact_score_from_bytes(query_bytes, candidate_bytes, weights)
+    }
+
+    /// Compact batch: loops score_compact, no diff computation.
+    fn score_batch_compact(
+        &self,
+        query_bytes: &[u8],
+        candidate_slices: &[u8],
+        n_candidates: usize,
+        weights: &BF16Weights,
+    ) -> Vec<CompactTailScore> {
+        let stride = query_bytes.len();
+        let mut results = Vec::with_capacity(n_candidates);
+        for i in 0..n_candidates {
+            let offset = i * stride;
+            let cand = &candidate_slices[offset..offset + stride];
+            results.push(compact_score_from_bytes(query_bytes, cand, weights));
+        }
+        results
     }
 }
 

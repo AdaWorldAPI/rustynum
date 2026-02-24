@@ -35,7 +35,7 @@
 //! into one backend call — the maxsim-cpu pattern.
 
 use crate::bf16_hamming::{self, BF16Weights};
-use crate::tail_backend::{BatchTailScore, TailBackend, TailScore};
+use crate::tail_backend::{BatchTailScore, CompactTailScore, TailBackend, TailScore, compact_score_from_bytes};
 use std::sync::Once;
 
 // ============================================================================
@@ -228,6 +228,34 @@ impl TailBackend for XsmmBackend {
 
     fn supports_batch(&self) -> bool {
         true
+    }
+
+    /// Compact single scoring: distance + counters, no structural diff.
+    fn score_compact(
+        &self,
+        query_bytes: &[u8],
+        candidate_bytes: &[u8],
+        weights: &BF16Weights,
+    ) -> CompactTailScore {
+        compact_score_from_bytes(query_bytes, candidate_bytes, weights)
+    }
+
+    /// Compact batch: distance + counters only, skips structural diff entirely.
+    fn score_batch_compact(
+        &self,
+        query_bytes: &[u8],
+        candidate_slices: &[u8],
+        n_candidates: usize,
+        weights: &BF16Weights,
+    ) -> Vec<CompactTailScore> {
+        let stride = query_bytes.len();
+        let mut results = Vec::with_capacity(n_candidates);
+        for i in 0..n_candidates {
+            let offset = i * stride;
+            let cand = &candidate_slices[offset..offset + stride];
+            results.push(compact_score_from_bytes(query_bytes, cand, weights));
+        }
+        results
     }
 }
 

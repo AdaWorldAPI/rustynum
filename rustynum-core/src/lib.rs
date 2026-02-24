@@ -71,7 +71,10 @@ pub use hybrid::{
     extract_learning_signal, update_hybrid_weights,
     HybridScore, HybridConfig, HybridStats, LearningSignal,
 };
-pub use tail_backend::{TailBackend, TailScore, BatchTailScore, auto_detect as auto_detect_backend};
+pub use tail_backend::{
+    TailBackend, TailScore, BatchTailScore, CompactTailScore, Capabilities,
+    auto_detect as auto_detect_backend, capabilities as backend_capabilities,
+};
 pub use rng::SplitMix64;
 
 // BF16 3D Spatial Resonance — Crystal4K-aligned axis model
