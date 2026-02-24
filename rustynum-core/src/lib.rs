@@ -17,6 +17,7 @@ pub mod blackboard;
 pub mod compute;
 pub mod delta;
 pub mod fingerprint;
+pub mod hybrid;
 pub mod kernels;
 pub mod layer_stack;
 pub mod layout;
@@ -56,5 +57,9 @@ pub use kernels::{
     PipelineStats, BenchmarkTranscript,
     SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
     SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+};
+pub use hybrid::{
+    hybrid_pipeline, extract_learning_signal, update_hybrid_weights,
+    HybridScore, HybridConfig, HybridStats, LearningSignal,
 };
 pub use rng::SplitMix64;
