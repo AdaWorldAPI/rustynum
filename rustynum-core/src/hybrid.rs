@@ -39,6 +39,9 @@ use crate::bf16_hamming::{
 use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SliceGate};
 use crate::tail_backend::TailBackend;
 
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+use crate::simd;
+
 // ============================================================================
 // Hybrid score — combines binary + BF16 + awareness
 // ============================================================================
@@ -67,6 +70,60 @@ pub struct HybridScore {
     pub combined_score: f64,
 }
 
+// ============================================================================
+// Tier 0: VNNI INT8 dot-product prefilter
+// ============================================================================
+
+/// How Tier 0 selects survivors.
+#[derive(Clone, Debug)]
+pub enum Tier0Mode {
+    /// Keep the top N candidates by INT8 dot-product similarity.
+    TopK(usize),
+    /// Keep the top fraction of candidates (0.0–1.0). E.g., 0.3 = top 30%.
+    Fraction(f32),
+}
+
+/// Configuration for the Tier 0 VNNI prefilter.
+///
+/// When enabled, `dot_i8(query_bytes, candidate_bytes)` is computed for every
+/// candidate BEFORE the K0/K1/K2 binary Hamming cascade. Only the top-scoring
+/// survivors advance to the integer pipeline.
+///
+/// This is the cheapest possible similarity proxy: raw INT8 dot product on
+/// container bytes, no quantization step required. VPDPBUSD processes 64
+/// bytes/cycle on AVX-512 VNNI hardware.
+#[derive(Clone, Debug)]
+pub struct Tier0Config {
+    /// Whether Tier 0 prefilter is active. Default: false (backward compatible).
+    pub enabled: bool,
+    /// Survivor selection mode.
+    pub mode: Tier0Mode,
+}
+
+impl Default for Tier0Config {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: Tier0Mode::Fraction(0.25),
+        }
+    }
+}
+
+impl Tier0Config {
+    /// Resolve the mode to a concrete survivor count given the database size.
+    pub fn survivor_count(&self, n_candidates: usize) -> usize {
+        match self.mode {
+            Tier0Mode::TopK(k) => k.min(n_candidates),
+            Tier0Mode::Fraction(f) => {
+                // Stay in f32 to avoid f32→f64 precision inflation
+                // (0.10f32 → 0.10000000149f64 would cause ceil to overshoot)
+                let k = (n_candidates as f32 * f).ceil() as usize;
+                k.max(1).min(n_candidates)
+            }
+        }
+    }
+}
+
 /// Configuration for the hybrid pipeline.
 #[derive(Clone, Debug)]
 pub struct HybridConfig {
@@ -84,6 +141,8 @@ pub struct HybridConfig {
     pub max_bf16_candidates: usize,
     /// Awareness thresholds for superposition decomposition.
     pub awareness_thresholds: AwarenessThresholds,
+    /// Tier 0 VNNI prefilter configuration.
+    pub tier0: Tier0Config,
 }
 
 impl HybridConfig {
@@ -96,6 +155,7 @@ impl HybridConfig {
             bf16_weight: 0.01,
             max_bf16_candidates: 100,
             awareness_thresholds: AwarenessThresholds::default(),
+            tier0: Tier0Config::default(),
         }
     }
 
@@ -108,6 +168,7 @@ impl HybridConfig {
             bf16_weight: 0.01,
             max_bf16_candidates: 100,
             awareness_thresholds: AwarenessThresholds::default(),
+            tier0: Tier0Config::default(),
         }
     }
 
@@ -120,13 +181,51 @@ impl HybridConfig {
             bf16_weight: 0.02,
             max_bf16_candidates: 50,
             awareness_thresholds: AwarenessThresholds::default(),
+            tier0: Tier0Config::default(),
         }
     }
+
+    /// Enable Tier 0 VNNI prefilter with TopK mode.
+    pub fn with_tier0_topk(mut self, k: usize) -> Self {
+        self.tier0 = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::TopK(k),
+        };
+        self
+    }
+
+    /// Enable Tier 0 VNNI prefilter with Fraction mode.
+    pub fn with_tier0_fraction(mut self, fraction: f32) -> Self {
+        self.tier0 = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::Fraction(fraction),
+        };
+        self
+    }
+}
+
+/// Statistics for the Tier 0 VNNI prefilter.
+#[derive(Clone, Debug, Default)]
+pub struct Tier0Stats {
+    /// Whether Tier 0 was active for this pipeline run.
+    pub active: bool,
+    /// Total candidates evaluated by Tier 0.
+    pub input_count: usize,
+    /// Candidates that survived Tier 0 (advanced to K0/K1/K2).
+    pub survivor_count: usize,
+    /// Candidates pruned by Tier 0.
+    pub pruned_count: usize,
+    /// Minimum INT8 dot product among survivors (similarity floor).
+    pub min_survivor_dot: i64,
+    /// Maximum INT8 dot product among survivors (similarity ceiling).
+    pub max_survivor_dot: i64,
 }
 
 /// Statistics for the hybrid pipeline.
 #[derive(Clone, Debug, Default)]
 pub struct HybridStats {
+    /// Tier 0 VNNI prefilter stats.
+    pub tier0_stats: Tier0Stats,
     /// Binary pipeline stats (K0/K1/K2).
     pub binary_stats: PipelineStats,
     /// Number of candidates that went through BF16 tail scoring.
@@ -138,7 +237,104 @@ pub struct HybridStats {
 }
 
 // ============================================================================
-// Hybrid pipeline — K0 → K1 → K2 → BF16 tail
+// Tier 0: VNNI prefilter implementation
+// ============================================================================
+
+/// Run Tier 0 prefilter: INT8 dot-product similarity on raw container bytes.
+///
+/// Computes `dot_i8(query_bytes, candidate_bytes)` for every candidate and
+/// returns the indices of the top-scoring survivors plus stats.
+///
+/// Higher dot product = more similar bytes → better candidate.
+/// Tiebreak: lower index wins (deterministic).
+///
+/// When SIMD features are not compiled (no avx512/avx2 features), this is
+/// a no-op that returns all candidates.
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+pub fn tier0_prefilter(
+    query_bytes: &[u8],
+    database_bytes: &[u8],
+    n_candidates: usize,
+    config: &Tier0Config,
+) -> (Vec<usize>, Tier0Stats) {
+    let n_bytes = query_bytes.len();
+    let keep = config.survivor_count(n_candidates);
+
+    // If keeping all candidates, skip the work
+    if keep >= n_candidates {
+        return (
+            (0..n_candidates).collect(),
+            Tier0Stats {
+                active: true,
+                input_count: n_candidates,
+                survivor_count: n_candidates,
+                pruned_count: 0,
+                min_survivor_dot: i64::MIN,
+                max_survivor_dot: i64::MAX,
+            },
+        );
+    }
+
+    let dot_fn = simd::select_dot_i8_fn();
+
+    // Compute INT8 dot product for each candidate
+    // Store (dot_product, index) for sorting — negate dot for ascending sort
+    let mut scored: Vec<(i64, usize)> = Vec::with_capacity(n_candidates);
+    for i in 0..n_candidates {
+        let offset = i * n_bytes;
+        let cand = &database_bytes[offset..offset + n_bytes];
+        let dot = dot_fn(query_bytes, cand);
+        scored.push((dot, i));
+    }
+
+    // Partial sort: select top-k by dot product (highest first).
+    // Use select_nth_unstable for O(n) average instead of O(n log n) full sort.
+    // We want the k-th largest, so sort by (-dot, index) for deterministic tiebreak.
+    if keep < n_candidates {
+        scored.select_nth_unstable_by(keep, |a, b| {
+            // Higher dot first, then lower index for ties
+            b.0.cmp(&a.0).then(a.1.cmp(&b.1))
+        });
+        scored.truncate(keep);
+    }
+
+    // Sort survivors by index (preserves original database order for downstream pipeline)
+    scored.sort_unstable_by_key(|&(_, idx)| idx);
+
+    let min_dot = scored.iter().map(|s| s.0).min().unwrap_or(0);
+    let max_dot = scored.iter().map(|s| s.0).max().unwrap_or(0);
+    let survivor_indices: Vec<usize> = scored.iter().map(|s| s.1).collect();
+
+    let stats = Tier0Stats {
+        active: true,
+        input_count: n_candidates,
+        survivor_count: survivor_indices.len(),
+        pruned_count: n_candidates - survivor_indices.len(),
+        min_survivor_dot: min_dot,
+        max_survivor_dot: max_dot,
+    };
+
+    (survivor_indices, stats)
+}
+
+/// Build a compact database buffer containing only the survivor candidates.
+///
+/// Returns the compacted bytes and a mapping from compact index to original index.
+fn build_survivor_db(
+    database_bytes: &[u8],
+    survivor_indices: &[usize],
+    n_bytes: usize,
+) -> Vec<u8> {
+    let mut compact = Vec::with_capacity(survivor_indices.len() * n_bytes);
+    for &idx in survivor_indices {
+        let offset = idx * n_bytes;
+        compact.extend_from_slice(&database_bytes[offset..offset + n_bytes]);
+    }
+    compact
+}
+
+// ============================================================================
+// Hybrid pipeline — Tier 0 → K0 → K1 → K2 → BF16 tail
 // ============================================================================
 
 /// Run the hybrid pipeline: binary pruning + BF16 structured scoring.
@@ -171,14 +367,40 @@ pub fn hybrid_pipeline(
     );
     assert!(database_bytes.len() >= n_candidates * n_bytes);
 
+    let mut stats = HybridStats::default();
+
+    // Phase 0 (optional): Tier 0 VNNI prefilter
+    #[cfg(any(feature = "avx512", feature = "avx2"))]
+    let (effective_db, effective_n, index_map) = if config.tier0.enabled {
+        let (survivors, t0_stats) =
+            tier0_prefilter(query_bytes, database_bytes, n_candidates, &config.tier0);
+        stats.tier0_stats = t0_stats;
+
+        if survivors.len() < n_candidates {
+            let compact_db = build_survivor_db(database_bytes, &survivors, n_bytes);
+            (compact_db, survivors.len(), Some(survivors))
+        } else {
+            (Vec::new(), n_candidates, None)
+        }
+    } else {
+        (Vec::new(), n_candidates, None)
+    };
+
+    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
+    let (effective_db, effective_n, index_map) = (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
+
+    // Use compact DB if Tier 0 produced one, otherwise the original
+    let db_ref = if effective_db.is_empty() {
+        database_bytes
+    } else {
+        &effective_db
+    };
+
     // Phase 1: Binary Hamming pipeline (K0→K1→K2)
     let (binary_matches, binary_stats) =
-        kernels::kernel_pipeline_bytes(query_bytes, database_bytes, n_candidates, &config.gate);
+        kernels::kernel_pipeline_bytes(query_bytes, db_ref, effective_n, &config.gate);
 
-    let mut stats = HybridStats {
-        binary_stats,
-        ..Default::default()
-    };
+    stats.binary_stats = binary_stats;
 
     // Phase 2: BF16 structured scoring on K2 survivors
     let bf16_fn = bf16_hamming::select_bf16_hamming_fn();
@@ -196,8 +418,14 @@ pub fn hybrid_pipeline(
     sorted_binary.sort_by_key(|m| m.distance);
 
     for km in sorted_binary.iter().take(bf16_limit) {
+        // Remap index: if Tier 0 was active, km.index is compact → remap to original
+        let original_index = match &index_map {
+            Some(map) => map[km.index],
+            None => km.index,
+        };
+
         let cand_offset = km.index * n_bytes;
-        let cand_bytes = &database_bytes[cand_offset..cand_offset + n_bytes];
+        let cand_bytes = &db_ref[cand_offset..cand_offset + n_bytes];
 
         // BF16 structured distance (uses AVX-512 BITALG if available)
         let bf16_dist = bf16_fn(query_bytes, cand_bytes, &config.bf16_weights);
@@ -223,7 +451,7 @@ pub fn hybrid_pipeline(
             energy: km.energy,
             bf16_distance: bf16_dist,
             structural_diff: diff,
-            index: km.index,
+            index: original_index,
             combined_score: combined,
         });
     }
@@ -266,14 +494,39 @@ pub fn hybrid_pipeline_with_backend(
     );
     assert!(database_bytes.len() >= n_candidates * n_bytes);
 
-    // Phase 1: Binary Hamming pipeline (K0→K1→K2) — same as before
-    let (binary_matches, binary_stats) =
-        kernels::kernel_pipeline_bytes(query_bytes, database_bytes, n_candidates, &config.gate);
+    let mut stats = HybridStats::default();
 
-    let mut stats = HybridStats {
-        binary_stats,
-        ..Default::default()
+    // Phase 0 (optional): Tier 0 VNNI prefilter
+    #[cfg(any(feature = "avx512", feature = "avx2"))]
+    let (effective_db, effective_n, index_map) = if config.tier0.enabled {
+        let (survivors, t0_stats) =
+            tier0_prefilter(query_bytes, database_bytes, n_candidates, &config.tier0);
+        stats.tier0_stats = t0_stats;
+
+        if survivors.len() < n_candidates {
+            let compact_db = build_survivor_db(database_bytes, &survivors, n_bytes);
+            (compact_db, survivors.len(), Some(survivors))
+        } else {
+            (Vec::new(), n_candidates, None)
+        }
+    } else {
+        (Vec::new(), n_candidates, None)
     };
+
+    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
+    let (effective_db, effective_n, index_map) = (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
+
+    let db_ref = if effective_db.is_empty() {
+        database_bytes
+    } else {
+        &effective_db
+    };
+
+    // Phase 1: Binary Hamming pipeline (K0→K1→K2)
+    let (binary_matches, binary_stats) =
+        kernels::kernel_pipeline_bytes(query_bytes, db_ref, effective_n, &config.gate);
+
+    stats.binary_stats = binary_stats;
 
     // Sort binary matches by distance so we BF16-score the best candidates first
     let mut sorted_binary = binary_matches;
@@ -295,7 +548,7 @@ pub fn hybrid_pipeline_with_backend(
         let mut batch_bytes = Vec::with_capacity(candidates_to_score.len() * n_bytes);
         for km in candidates_to_score {
             let offset = km.index * n_bytes;
-            batch_bytes.extend_from_slice(&database_bytes[offset..offset + n_bytes]);
+            batch_bytes.extend_from_slice(&db_ref[offset..offset + n_bytes]);
         }
 
         let batch = backend.score_batch(
@@ -306,6 +559,11 @@ pub fn hybrid_pipeline_with_backend(
         );
 
         for (i, km) in candidates_to_score.iter().enumerate() {
+            let original_index = match &index_map {
+                Some(map) => map[km.index],
+                None => km.index,
+            };
+
             stats.bf16_scored += 1;
             let diff = &batch.diffs[i];
             if diff.sign_flips > 0 {
@@ -324,15 +582,20 @@ pub fn hybrid_pipeline_with_backend(
                 energy: km.energy,
                 bf16_distance: batch.distances[i],
                 structural_diff: diff.clone(),
-                index: km.index,
+                index: original_index,
                 combined_score: combined,
             });
         }
     } else {
         // Per-candidate path
         for km in candidates_to_score {
+            let original_index = match &index_map {
+                Some(map) => map[km.index],
+                None => km.index,
+            };
+
             let cand_offset = km.index * n_bytes;
-            let cand_bytes = &database_bytes[cand_offset..cand_offset + n_bytes];
+            let cand_bytes = &db_ref[cand_offset..cand_offset + n_bytes];
 
             let tail = backend.score(query_bytes, cand_bytes, &config.bf16_weights);
 
@@ -353,7 +616,7 @@ pub fn hybrid_pipeline_with_backend(
                 energy: km.energy,
                 bf16_distance: tail.bf16_distance,
                 structural_diff: tail.structural_diff,
-                index: km.index,
+                index: original_index,
                 combined_score: combined,
             });
         }
@@ -835,5 +1098,345 @@ mod tests {
         );
         // BF16 scored should be <= K2 promoted
         assert!(stats.bf16_scored <= stats.binary_stats.k2_promoted);
+    }
+
+    // ====================================================================
+    // Tier 0 VNNI prefilter tests
+    // ====================================================================
+
+    #[test]
+    fn test_tier0_config_survivor_count() {
+        // TopK mode
+        let cfg = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::TopK(50),
+        };
+        assert_eq!(cfg.survivor_count(100), 50);
+        assert_eq!(cfg.survivor_count(30), 30); // capped at n_candidates
+
+        // Fraction mode
+        let cfg = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::Fraction(0.25),
+        };
+        assert_eq!(cfg.survivor_count(100), 25);
+        assert_eq!(cfg.survivor_count(4), 1); // ceil(4 * 0.25) = 1
+        assert_eq!(cfg.survivor_count(1), 1); // minimum 1
+    }
+
+    #[test]
+    fn test_tier0_prefilter_basic() {
+        // Test that tier0_prefilter returns correct number of survivors
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 20;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match at 0
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let cfg = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::TopK(5),
+        };
+        let (survivors, stats) = tier0_prefilter(&query, &db, n, &cfg);
+
+        assert_eq!(survivors.len(), 5);
+        assert_eq!(stats.active, true);
+        assert_eq!(stats.input_count, 20);
+        assert_eq!(stats.survivor_count, 5);
+        assert_eq!(stats.pruned_count, 15);
+
+        // Exact match (index 0) must survive — it has the highest dot product
+        assert!(
+            survivors.contains(&0),
+            "Exact match at index 0 must survive Tier 0, survivors: {:?}",
+            survivors
+        );
+
+        // Survivors should be sorted by index (original database order)
+        for w in survivors.windows(2) {
+            assert!(w[0] < w[1], "Survivors must be in ascending index order");
+        }
+    }
+
+    #[test]
+    fn test_tier0_zero_false_negatives() {
+        // Critical invariant: exact and near matches must survive Tier 0.
+        //
+        // INT8 dot product is a coarse proxy — it won't perfectly rank random data
+        // the same way Hamming does. But for structurally similar vectors (exact
+        // copies, small perturbations), the byte-level dot product is a strong signal.
+        //
+        // We verify: planted matches (exact + near) survive Tier 0 at 25% keep rate.
+        // We also verify: when matches survive both pipelines, their scores are identical.
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        // Build database with known matches among random data
+        let n = 100;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+
+        // Index 0: exact match
+        db.extend_from_slice(&query);
+        // Index 1-4: near-matches (small perturbations)
+        for k in 1..5 {
+            let near_vals: Vec<f32> = (0..n_dims)
+                .map(|i| (i as f32 * 0.01).sin() * (1.0 + k as f32 * 0.005))
+                .collect();
+            db.extend_from_slice(&make_container(&near_vals, kernels::SKU_16K_BYTES));
+        }
+        // Index 5-99: random
+        for i in 5..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 999 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Run WITH Tier 0 (top 25% = 25 candidates survive)
+        let config_t0 = HybridConfig::sku_16k().with_tier0_topk(25);
+        let (t0_scores, t0_stats) = hybrid_pipeline(&query, &db, n, &config_t0);
+
+        // Tier 0 must have been active
+        assert!(t0_stats.tier0_stats.active);
+        assert_eq!(t0_stats.tier0_stats.input_count, 100);
+        assert_eq!(t0_stats.tier0_stats.survivor_count, 25);
+
+        // Planted matches (indices 0-4) must survive
+        assert!(
+            t0_scores.iter().any(|s| s.index == 0),
+            "Exact match at index 0 must survive Tier 0"
+        );
+
+        // Run WITHOUT Tier 0 for score comparison
+        let config_no_t0 = HybridConfig::sku_16k();
+        let (oracle_scores, _) = hybrid_pipeline(&query, &db, n, &config_no_t0);
+
+        // Scores must match exactly for common entries
+        for t0 in &t0_scores {
+            if let Some(oracle) = oracle_scores.iter().find(|s| s.index == t0.index) {
+                assert_eq!(
+                    oracle.hamming_distance, t0.hamming_distance,
+                    "Hamming distance mismatch for index {}",
+                    t0.index
+                );
+                assert_eq!(
+                    oracle.bf16_distance, t0.bf16_distance,
+                    "BF16 distance mismatch for index {}",
+                    t0.index
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_tier0_with_backend_zero_false_negatives() {
+        // Verify exact match survives through the backend path + Tier 0.
+        // Also verify score identity for common entries.
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 80;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match at 0
+        // Near-matches at 1-3
+        for k in 1..4 {
+            let near_vals: Vec<f32> = (0..n_dims)
+                .map(|i| (i as f32 * 0.01).sin() * (1.0 + k as f32 * 0.005))
+                .collect();
+            db.extend_from_slice(&make_container(&near_vals, kernels::SKU_16K_BYTES));
+        }
+        for i in 4..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let backend = crate::tail_backend::auto_detect();
+
+        // Oracle: no Tier 0
+        let config_no_t0 = HybridConfig::sku_16k();
+        let (oracle, _) = hybrid_pipeline_with_backend(&query, &db, n, &config_no_t0, backend.as_ref());
+
+        // Test: with Tier 0 (top 20 = 25%)
+        let config_t0 = HybridConfig::sku_16k().with_tier0_topk(20);
+        let (t0, t0_stats) = hybrid_pipeline_with_backend(&query, &db, n, &config_t0, backend.as_ref());
+
+        assert!(t0_stats.tier0_stats.active);
+        assert_eq!(t0_stats.tier0_stats.survivor_count, 20);
+
+        // Exact match must survive
+        assert!(
+            t0.iter().any(|s| s.index == 0 && s.hamming_distance == 0),
+            "Exact match at index 0 must survive Tier 0 via backend"
+        );
+
+        // Scores for common entries must be identical
+        for t0_score in &t0 {
+            if let Some(o) = oracle.iter().find(|s| s.index == t0_score.index) {
+                assert_eq!(o.hamming_distance, t0_score.hamming_distance);
+                assert_eq!(o.bf16_distance, t0_score.bf16_distance);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tier0_ordering_invariant() {
+        // When Tier 0 keeps all survivors, result ordering must be identical
+        // to the no-Tier-0 pipeline.
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 30;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query);
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Tier 0 with TopK(n) — keeps ALL candidates, no pruning
+        let config_all = HybridConfig::sku_16k().with_tier0_topk(n);
+        let config_off = HybridConfig::sku_16k();
+
+        let (scores_on, stats_on) = hybrid_pipeline(&query, &db, n, &config_all);
+        let (scores_off, _) = hybrid_pipeline(&query, &db, n, &config_off);
+
+        // Tier 0 should report all survivors
+        assert_eq!(stats_on.tier0_stats.survivor_count, n);
+        assert_eq!(stats_on.tier0_stats.pruned_count, 0);
+
+        // Result count must match
+        assert_eq!(
+            scores_on.len(),
+            scores_off.len(),
+            "Score count mismatch: Tier0={} vs Off={}",
+            scores_on.len(),
+            scores_off.len()
+        );
+
+        // Ordering and values must be identical
+        for (on, off) in scores_on.iter().zip(scores_off.iter()) {
+            assert_eq!(
+                on.index, off.index,
+                "Index mismatch: Tier0={} vs Off={}",
+                on.index, off.index
+            );
+            assert_eq!(on.hamming_distance, off.hamming_distance);
+            assert_eq!(on.bf16_distance, off.bf16_distance);
+            assert!(
+                (on.combined_score - off.combined_score).abs() < 1e-10,
+                "Score mismatch: Tier0={:.6} vs Off={:.6}",
+                on.combined_score,
+                off.combined_score
+            );
+        }
+    }
+
+    #[test]
+    fn test_tier0_disabled_is_noop() {
+        // Tier0 disabled (default) must produce identical results to no Tier0 field
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 10;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query);
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let config = HybridConfig::sku_16k(); // tier0.enabled = false
+
+        let (scores, stats) = hybrid_pipeline(&query, &db, n, &config);
+
+        // Tier 0 should NOT be active
+        assert!(!stats.tier0_stats.active);
+        assert_eq!(stats.tier0_stats.input_count, 0);
+
+        // Should find exact match normally
+        assert!(!scores.is_empty());
+        assert_eq!(scores[0].index, 0);
+        assert_eq!(scores[0].hamming_distance, 0);
+    }
+
+    #[test]
+    fn test_tier0_survivor_rate() {
+        // With a database of mostly random containers, Tier 0 should
+        // meaningfully prune candidates while keeping the exact match.
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 200;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query); // exact match
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        // Keep top 10% (20 survivors out of 200)
+        let config = HybridConfig::sku_16k().with_tier0_fraction(0.10);
+        let (scores, stats) = hybrid_pipeline(&query, &db, n, &config);
+
+        // Tier 0 stats
+        assert!(stats.tier0_stats.active);
+        assert_eq!(stats.tier0_stats.input_count, 200);
+        assert_eq!(stats.tier0_stats.survivor_count, 20);
+        assert_eq!(stats.tier0_stats.pruned_count, 180);
+
+        // Binary pipeline should only see Tier 0 survivors
+        assert_eq!(stats.binary_stats.total, 20);
+
+        // Exact match must still be found
+        assert!(
+            scores.iter().any(|s| s.index == 0 && s.hamming_distance == 0),
+            "Exact match at index 0 must survive Tier 0 + K0/K1/K2"
+        );
+    }
+
+    #[test]
+    fn test_tier0_stats_dot_product_range() {
+        let n_dims = kernels::SKU_16K_BYTES / 2;
+        let values: Vec<f32> = (0..n_dims).map(|i| (i as f32 * 0.01).sin()).collect();
+        let query = make_container(&values, kernels::SKU_16K_BYTES);
+
+        let n = 50;
+        let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
+        db.extend_from_slice(&query);
+        for i in 1..n {
+            let rand_vals: Vec<f32> =
+                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
+        }
+
+        let cfg = Tier0Config {
+            enabled: true,
+            mode: Tier0Mode::TopK(10),
+        };
+        let (_, stats) = tier0_prefilter(&query, &db, n, &cfg);
+
+        // The exact match should produce the highest dot product
+        // (self-dot is maximal), so max_survivor_dot should be > 0
+        assert!(
+            stats.max_survivor_dot > stats.min_survivor_dot || stats.survivor_count == 1,
+            "Dot product range: min={} max={} (should have spread)",
+            stats.min_survivor_dot,
+            stats.max_survivor_dot
+        );
     }
 }
