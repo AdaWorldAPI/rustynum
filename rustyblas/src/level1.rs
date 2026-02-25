@@ -50,6 +50,9 @@ fn scatter_f64(buf: &[f64], dst: &mut [f64], n: usize, inc: usize) {
 pub fn sdot(n: usize, x: &[f32], incx: usize, y: &[f32], incy: usize) -> f32 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy are caller-provided
+        // and satisfy the CBLAS contract: x has at least n*incx elements, y has at
+        // least n*incy elements.
         return unsafe {
             rustynum_core::mkl_ffi::cblas_sdot(
                 n as i32,
@@ -75,6 +78,7 @@ pub fn sdot(n: usize, x: &[f32], incx: usize, y: &[f32], incy: usize) -> f32 {
 pub fn ddot(n: usize, x: &[f64], incx: usize, y: &[f64], incy: usize) -> f64 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy satisfy the CBLAS contract.
         return unsafe {
             rustynum_core::mkl_ffi::cblas_ddot(
                 n as i32,
@@ -103,6 +107,8 @@ pub fn ddot(n: usize, x: &[f64], incx: usize, y: &[f64], incy: usize) -> f64 {
 pub fn saxpy(n: usize, alpha: f32, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy satisfy the CBLAS SAXPY
+        // contract. y is mutable and has at least n*incy elements.
         unsafe {
             rustynum_core::mkl_ffi::cblas_saxpy(
                 n as i32,
@@ -134,6 +140,8 @@ pub fn saxpy(n: usize, alpha: f32, x: &[f32], incx: usize, y: &mut [f32], incy: 
 pub fn daxpy(n: usize, alpha: f64, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy satisfy the CBLAS DAXPY
+        // contract. y is mutable and has at least n*incy elements.
         unsafe {
             rustynum_core::mkl_ffi::cblas_daxpy(
                 n as i32,

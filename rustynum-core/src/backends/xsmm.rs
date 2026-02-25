@@ -369,9 +369,9 @@ impl JitKernel {
     }
 }
 
-// JitKernel holds a function pointer to mmap'd code. Safe across threads
-// (the code is read-only after JIT compilation, protected by LIBXSMM's
-// internal locking during dispatch).
+// SAFETY: JitKernel holds a function pointer to mmap'd code that is read-only
+// after JIT compilation. LIBXSMM uses internal locking during dispatch, so the
+// kernel pointer is safe to share across threads. No mutable state.
 unsafe impl Send for JitKernel {}
 unsafe impl Sync for JitKernel {}
 
@@ -438,6 +438,8 @@ pub struct XsmmBackend {
     archid: i32,
 }
 
+// SAFETY: XsmmBackend holds only a function pointer (popcnt_fn) and an integer
+// (archid). Function pointers are Send+Sync. No mutable state.
 unsafe impl Send for XsmmBackend {}
 unsafe impl Sync for XsmmBackend {}
 
@@ -450,6 +452,8 @@ impl XsmmBackend {
         ensure_init();
         Some(Self {
             popcnt_fn: bf16_hamming::select_bf16_hamming_fn(),
+            // SAFETY: libxsmm_init() was called by ensure_init() above.
+            // Returns an integer arch ID with no other preconditions.
             archid: unsafe { libxsmm_get_target_archid() },
         })
     }
@@ -496,6 +500,10 @@ impl XsmmBackend {
 
                     // SGEMM: C = Candidates^T × Query
                     // transa='T', transb='N', M=N_candidates, N=1, K=dim
+                    // SAFETY: All pointers are from thread-local Vec buffers that
+                    // are live for the duration of this call. Dimensions match the
+                    // widened BF16->f32 data: cbuf has n_candidates*n_dims elements,
+                    // qbuf has n_dims elements, sbuf has n_candidates elements.
                     unsafe {
                         let transa = b'T' as libc::c_char;
                         let transb = b'N' as libc::c_char;
