@@ -16,3 +16,6 @@ members = [
     "bindings/python",
     "jitson",
 ]
+
+[workspace.package]
+rust-version = "1.93"
