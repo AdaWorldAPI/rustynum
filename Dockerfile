@@ -69,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd -m -s /bin/bash oracle
 
 COPY --from=builder /build/out/ /usr/local/bin/
+COPY --from=builder /build/rustynum-oracle/data/ /home/oracle/data/
 
 USER oracle
 WORKDIR /home/oracle
