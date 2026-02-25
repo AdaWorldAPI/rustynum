@@ -8,20 +8,32 @@
 
 ## READ THIS FIRST — Role in the Architecture
 
-rustynum is the **hardware acceleration leaf**. It provides SIMD-dispatched
-kernels that BindSpace (ladybug-rs) calls for distance computation. It
-does NOT know about agents, blackboards, sessions, or storage backends.
+rustynum is the **hardware layer AND the bindspace type owner**. It provides:
+
+1. **SIMD-dispatched kernels** for distance computation (Hamming, BF16, dot)
+2. **The unified bindspace surface types**: `Fingerprint<256>`, `DeltaLayer`,
+   `LayerStack`, `CollapseGate`, `AlignedBuf2K`, `MultiOverlay`
+3. **Holographic containers**: `Overlay`, Gabor wavelets, spectral analysis
+
+All crates compile into **ONE binary**. The bindspace surface is the SAME
+memory — never copied between crates. `Overlay.buffer` (2048 bytes) IS
+`Fingerprint<256>` (256 × u64 = 2048 bytes) viewed through `as_fingerprint_words()`.
+No conversion. No copy. Same pointer.
 
 **Dependency direction (LAW — do not violate):**
 
 ```
-rustynum (this repo) → imported by → BindSpace (ladybug-rs) → Blackboard → Agents
+rustynum-core (types + SIMD)
+    ↑
+rustynum-holo (holographic containers, uses Fingerprint<256> directly)
+    ↑
+ladybug-rs (BindSpace, CollapseGate decisions, storage)
+    ↑
+crewai-rust (Blackboard, agents — reads/writes via TypedSlots)
 ```
 
 rustynum NEVER imports BindSpace, crewai-rust, n8n-rs, or neo4j-rs.
-It is a pure compute leaf with zero IO.
-
-**Read `/home/user/CLAUDE.md` §10 (Driver Model) and §13 (HW Driver Contract).**
+It is a compute + type leaf with zero IO. Arrow points ONE way.
 
 ---
 
@@ -29,14 +41,15 @@ It is a pure compute leaf with zero IO.
 
 ```
 rustynum/
-├── rustynum-core/       # SIMD, BF16, kernels, hybrid pipeline, spatial resonance
+├── rustynum-core/       # SIMD, BF16, kernels, Fingerprint, DeltaLayer, LayerStack, CollapseGate
+├── rustynum-holo/       # Holographic containers: Overlay, MultiOverlay, AlignedBuf2K, Gabor
 ├── rustynum-rs/         # CogRecord, Python bindings bridge, ndarray ops
 ├── rustynum-arrow/      # Arrow bridge, indexed cascade, horizontal sweep
 ├── rustyblas/           # BLAS: GEMM (f32, bf16, int8), level1-3
 ├── rustymkl/            # MKL-like interface (optional)
-├── rustynum-holo/       # Holographic reduced representations
 ├── rustynum-oracle/     # Sweetspot evaluation for 3D vector sizes
 ├── rustynum-clam/       # CLAM integration
+├── qualia_xor/          # Qualia corpus experiments (Nib4/BERT, Cypher VSA, hydrate-agents)
 ├── bindings/python/     # PyO3 bindings
 ├── jitson/              # Cranelift JIT (own workspace — NOT a member)
 │
@@ -180,8 +193,10 @@ and VSACLIP SKU-16K container standard.
 
 ## 6. Public API Contract
 
-All rustynum functions take `&[u8]` or `&[u64]` slices. They NEVER
+All rustynum compute functions take `&[u8]` or `&[u64]` slices. They NEVER
 allocate, NEVER do IO, NEVER access the network. Pure compute.
+
+### Compute Functions
 
 | Function | Input | Output | File |
 |----------|-------|--------|------|
@@ -193,6 +208,32 @@ allocate, NEVER do IO, NEVER access the network. Pure compute.
 | `k2_exact()` | `&[u64],&[u64]` | `EnergyConflict` | kernels.rs |
 | `hybrid_pipeline()` | config + candidates | `Vec<HybridScore>` | hybrid.rs |
 | `SpatialCrystal3D::spo_encode()` | S,P,O | Crystal | spatial_resonance.rs |
+
+### Unified Bindspace Surface Types (rustynum-core)
+
+These types are the SAME surface across all crates. One binary, one memory.
+
+| Type | Size | Purpose | File |
+|------|------|---------|------|
+| `Fingerprint<256>` | 2048 bytes | The universal container = `[u64; 256]` | fingerprint.rs |
+| `DeltaLayer<N>` | Fingerprint + writer_id | XOR delta from ground truth — writer owns `&mut` | delta.rs |
+| `LayerStack<N>` | ground + Vec<DeltaLayer> | Multi-writer concurrent state | layer_stack.rs |
+| `CollapseGate` | enum | Flow/Hold/Block decision | layer_stack.rs |
+
+### Holographic Surface Types (rustynum-holo)
+
+| Type | Size | Purpose | File |
+|------|------|---------|------|
+| `Overlay` | 2048 bytes | IS `Fingerprint<256>` via `as_fingerprint_words()` | holograph.rs |
+| `AlignedBuf2K` | 2048 bytes | `repr(align(8))` buffer with guaranteed zero-copy view | holograph.rs |
+| `MultiOverlay` | N × Overlay | One per agent, conflict via AND+popcount | holograph.rs |
+
+### The Zero-Copy Rule
+
+`Overlay.as_fingerprint_words()` returns `&[u64; 256]` — a pointer reinterpret
+of the same 2048 bytes. **Never copy between these types in-process.**
+`to_bytes()` / `from_bytes()` exist ONLY for wire serialization (disk, network).
+Within the binary, everything is a view.
 
 ---
 
@@ -230,6 +271,21 @@ allocate, NEVER do IO, NEVER access the network. Pure compute.
 | Kernel pipeline (K0/K1/K2) | 17 tests | Passing |
 | Hybrid pipeline | 8 tests | Passing |
 | BF16 awareness | 8 tests | Passing |
+| Blackboard `&self→&mut` UB | Fixed: uses `&mut self` | Sound |
+| u8 matmul `Arc<Mutex>` | Fixed: `parallel_into_slices` + `split_at_mut` | Lock-free |
+| Trait bound copy-paste | Fixed: `NumElement` supertrait | Clean |
+| XOR Delta Layer | Implemented: Fingerprint + DeltaLayer + LayerStack + CollapseGate | 47 tests |
+| Holographic zero-copy | `Overlay.as_fingerprint_words()` = pointer reinterpret | No copy |
+
+### Structural Race Prevention
+
+Race conditions cannot exist by construction:
+- **Ground truth is `&self` forever** during processing cycles
+- **Each writer owns their own delta as `&mut`** — standard Rust ownership
+- **CollapseGate writethrough with bundle**: deltas XOR-composed then committed atomically
+- **`split_at_mut`** for contiguous byte regions (GEMM rows, Z-slabs)
+- **XOR Delta Layers** for scattered binary vector mutations (fingerprints)
+- If a race condition appears, the architecture is wrong — fix the design, not the symptom
 
 ---
 
@@ -268,6 +324,17 @@ unsafe { _mm512_popcnt_epi64(xor_result) }
 ---
 
 ## 9. Key Files
+
+### Bindspace Surface (shared by all crates in one binary)
+
+| File | Purpose |
+|------|---------|
+| `rustynum-core/src/fingerprint.rs` | `Fingerprint<N>` — THE container type, `[u64; N]` |
+| `rustynum-core/src/delta.rs` | `DeltaLayer<N>` — XOR delta, writer owns `&mut`, ground is `&self` |
+| `rustynum-core/src/layer_stack.rs` | `LayerStack<N>` + `CollapseGate` — multi-writer + transparent writethrough with bundle |
+| `rustynum-holo/src/holograph.rs` | `Overlay` (IS `Fingerprint<256>` via `as_fingerprint_words()`), `MultiOverlay`, `AlignedBuf2K` |
+
+### SIMD Compute
 
 | File | Lines | Purpose |
 |------|-------|---------|
@@ -319,6 +386,9 @@ cd bindings/python && cargo test
 
 - **DO NOT** import BindSpace, crewai-rust, n8n-rs, or neo4j-rs
 - **DO NOT** do IO (file, network, database) in rustynum functions
+- **DO NOT** copy between Overlay and Fingerprint<256> — they ARE the same memory, use `as_fingerprint_words()`
+- **DO NOT** use `Arc<Mutex>` for parallel output — use `split_at_mut` or XOR delta layers
+- **DO NOT** use `&self → &mut` (UB) — use `&mut self` with field borrows or delta layers
 - **DO NOT** use `is_x86_feature_detected!()` in hot loops — use dispatch
 - **DO NOT** hardcode AVX-512 in test assertions — use conditional
 - **DO NOT** add `jitson` to workspace members or use `exclude`
@@ -326,6 +396,7 @@ cd bindings/python && cargo test
 - **DO NOT** use nightly features in non-test code (upstream = stable 1.93)
 - **DO NOT** store intermediate BF16 values — accumulate in FP32
 - **DO NOT** use dynamic SKU sizing — K0/K1/K2 are fixed at 16K or 64K
+- **DO NOT** use `RefCell`, `UnsafeCell`, or runtime borrow checks — the algebra handles isolation
 
 ---
 

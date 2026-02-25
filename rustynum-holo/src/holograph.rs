@@ -691,23 +691,9 @@ impl Overlay {
 
     // ---- Zero-copy Fingerprint<256> bridge ----
     // Overlay.buffer (2048 bytes) IS Fingerprint<256> (256 × u64 = 2048 bytes).
-    // Same memory. Same operations. This bridge makes them the EXACT SAME surface.
+    // Same memory. Same operations. One binary — never copy, only view.
 
-    /// Convert overlay buffer to `Fingerprint<256>` — the shared bindspace surface.
-    ///
-    /// All crates (rustynum-holo, ladybug-rs, crewai-rust) operate on the same
-    /// `Fingerprint<256>` type from `rustynum-core`. This method is the bridge.
-    pub fn to_fingerprint(&self) -> Fingerprint<256> {
-        Fingerprint::from_bytes(&self.buffer)
-    }
-
-    /// Set overlay buffer from `Fingerprint<256>`.
-    pub fn from_fingerprint(&mut self, fp: &Fingerprint<256>) {
-        let bytes = fp.to_bytes();
-        self.buffer[..2048].copy_from_slice(&bytes);
-    }
-
-    /// View the overlay buffer as fingerprint words — zero-copy on 8-byte-aligned buffers.
+    /// View the overlay buffer as fingerprint words — zero-copy.
     ///
     /// `Vec<u8>` from the global allocator is always 8-byte aligned on 64-bit systems
     /// for allocations >= 8 bytes. This panics in debug builds if alignment is wrong.
