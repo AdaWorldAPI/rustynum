@@ -748,27 +748,396 @@ impl<A, S, D> Add<&ArrayBase<S2, D>> for &ArrayBase<S, D> {
 2. Avoid allocating a new shape `Vec` on every operation result
 3. Consider using `SmallVec` for shape (most arrays are < 6D)
 
-### 8.2 GEMM Small-Matrix Performance (100x100: 236x slower)
+### 8.2 GEMM: Complete Tiered Strategy (Tiny → Small → Medium → Large)
 
-**Benchmark:** At 100x100, `rustynum-rs::matrix_multiply` takes 9.93 ms vs ndarray's 0.042 ms.
+#### THE CRITICAL BUG: NumArray Doesn't Use rustyblas
 
-**Root cause:** `rustynum-rs/src/num_array/linalg.rs` uses the old transpose-dot approach, not the `rustyblas::sgemm` Goto algorithm.
+**Root cause of 236x slowdown at 100×100:** `rustynum-rs/src/num_array/linalg.rs` uses its **OWN transpose-dot implementation**, NOT `rustyblas::sgemm`. The `SimdOps::matrix_multiply` in `rustynum-rs/src/simd_ops/mod.rs:387-415` transposes B, then does row-by-row dot products — completely bypassing the Goto BLAS in rustyblas.
 
-**Recommendation:** Make `NumArray::matmul()` dispatch to `rustyblas::level3::sgemm` for all sizes, with the simple triple-loop only for tiny matrices (< 4x4).
+```rust
+// CURRENT (rustynum-rs/src/simd_ops/mod.rs:387-415) — NOT using rustyblas!
+fn matrix_multiply(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n: usize) {
+    let mut b_transposed = vec![0.0f32; n * k];  // FULL TRANSPOSE COPY
+    Self::transpose(b, &mut b_transposed, k, n);
+    // ... row-by-row dot products (no cache blocking, no microkernel)
+}
+```
 
-### 8.3 GEMM Cache Blocking Parameters Not Tuned for All CPUs
+**FIX #1 (highest impact, lowest effort):** Route to `rustyblas::level3::sgemm`:
+```rust
+fn matrix_multiply(a: &[f32], b: &[f32], c: &mut [f32], m: usize, k: usize, n: usize) {
+    rustyblas::sgemm(Layout::RowMajor, Transpose::NoTrans, Transpose::NoTrans,
+        m, n, k, 1.0, a, k, b, n, 0.0, c, n);
+}
+```
 
-**Current state:** `rustyblas/src/level3.rs` hardcodes `MC=128, KC=256, NC=4096` tuned for Intel Sapphire Rapids.
+This single change closes the 236x gap immediately.
 
-**ndarray's matrixmultiply crate:** Auto-detects cache sizes and adjusts blocking parameters.
+#### Tiered GEMM Strategy (Do NOT Use One Algorithm For All Sizes)
 
-**Recommendation:** Add runtime cache-size detection (read `/sys/devices/system/cpu/cpu0/cache/`) and adjust MC/KC/NC accordingly.
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ Matrix Size    │ Algorithm               │ Threading  │ Target       │
+├──────────────────────────────────────────────────────────────────────┤
+│ Tiny (≤8×8)   │ Direct register µkernel  │ None       │ ~50 ns       │
+│ Small (≤48)   │ B-gather + SIMD dot      │ None       │ ~5 µs        │
+│ Medium (≤512) │ Blocked Goto BLAS        │ Adaptive   │ ~500 µs      │
+│ Large (>512)  │ Blocked Goto BLAS        │ Full       │ DON'T TOUCH  │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-### 8.4 No SIMD Fallback Path
+##### Tier 1: Tiny (M,N,K ≤ 8) — Direct Register Microkernel, No Packing
 
-**Current state:** If AVX-512 is not available, many SIMD functions will produce incorrect results or crash. The `avx512` feature is default-on with no runtime check in some paths.
+Current: Falls into `sgemm_simple()` which allocates a `b_cols` vec. For 4×4, allocation dominates.
 
-**ndarray approach:** Uses `matrixmultiply` which has AVX2, SSE2, and scalar fallbacks with runtime detection.
+**Recommendation:** Add a direct 4×4/8×8 microkernel that loads from source arrays with no allocation, no packing. Just register-level broadcast-FMA and direct C store. Threshold: `m * n * k < 512`.
+
+##### Tier 2: Small (max dim ≤ 48) — Current `sgemm_simple()` Is Fine
+
+Current threshold `m * n * k < 110,000` is **too high** — includes ~48³ matrices that would benefit from blocking. **Lower to 50,000** (~37³). DO NOT add threading here — thread spawn overhead (~5 µs) exceeds total compute.
+
+##### Tier 3: Medium (48 < max dim ≤ 512) — Blocked + ADAPTIVE Threading
+
+**This is where the biggest improvement opportunity exists.**
+
+Current problems:
+- Parallel threshold `m * n > 65,536` (256²) is too conservative
+- No adaptive thread count — either 1 thread or ALL cores
+- Thread spawn overhead is significant relative to medium-matrix compute
+
+**Recommendation — adaptive thread count based on total FLOPs:**
+```rust
+fn gemm_thread_count(m: usize, n: usize, k: usize) -> usize {
+    let flops = m * n * k * 2;
+    if flops < 200_000       { 1 }                          // ~50×50: single thread
+    else if flops < 2_000_000  { 2.min(available_threads()) } // ~100×100: 2 threads
+    else if flops < 20_000_000 { 4.min(available_threads()) } // ~200×200: 4 threads
+    else                       { available_threads() }        // Full parallelism
+}
+```
+
+**Why:** At 128×128 with 16 threads, each thread gets 8 rows = 131K FLOPs. Thread sync overhead (~2-5 µs) becomes significant vs ~50 µs total compute. 2-4 threads keeps per-thread work meaningful.
+
+**Also:** For medium K < KC (256), skip packing — access A/B with strides directly, as ndarray's `matrixmultiply` does by passing both row and column strides to the microkernel.
+
+##### Tier 4: Large (>512) — DO NOT CHANGE
+
+Already beats ndarray by 1.8x at 1024×1024. See Section 8.7 for what must be preserved.
+
+### 8.3 Microkernel Tile Sizing: Perfect Tiles vs. Tailing vs. AVX-512 Bandwidth
+
+#### Current Tile Architecture
+
+```
+SGEMM: MR=6, NR=16 (f32x16 = one zmm register width)
+  → 6 accumulators × 16 lanes = 96 FMA ops/K-step
+  → 2x K-unrolled → 192 FMA ops per 2 K-steps
+
+DGEMM: MR=6, NR=8 (f64x8 = one zmm register width)
+  → 6 accumulators × 8 lanes = 48 FMA ops/K-step
+  → NOT K-unrolled (should be — see recommendation below)
+```
+
+#### Perfect Tiles (M % MR == 0 AND N % NR == 0) — ALREADY OPTIMAL, DO NOT TOUCH
+
+When both dimensions align:
+- **B-load:** Direct `F32Simd::from_slice()` — single 512-bit load, no branching
+- **FMA loop:** All 6 accumulators active, full pipeline utilization
+- **C-store:** Direct `copy_to_slice()` — single 512-bit store
+- **Prefetch:** T0 hint 4 ahead keeps L1 hot
+
+Matrix sizes that are "perfect" (zero tailing overhead):
+- **M:** 6, 12, 18, 24, ..., 126, 128(MC), 252, 256, 384, 512, 768, 1024
+- **N:** 16, 32, 48, ..., 1024(NC)
+- **K:** 256(KC), 512, 768, 1024
+
+Always benchmark with these sizes first to measure peak, then +1 sizes (129×129) to measure tail overhead.
+
+#### N Tailing (nr < NR=16) — NEEDS IMPROVEMENT
+
+**Current approach** (`level3.rs:521-538`): Zero-pad on stack **per K-step**:
+```rust
+// CURRENT: Stack alloc + copy per K-step (256 times per microkernel!)
+let mut tmp = [0.0f32; SGEMM_NR];
+tmp[..nr].copy_from_slice(&packed_b[b_base0..b_base0 + nr]);
+let b_vec0 = F32Simd::from_slice(&tmp);
+```
+
+**Better — AVX-512 mask registers (eliminates per-K-step overhead):**
+```rust
+let mask: u16 = (1u16 << nr) - 1;  // nr=10 → 0b0000001111111111
+unsafe {
+    // Single masked load: valid lanes loaded, rest zeroed — ONE instruction
+    let b_vec0 = _mm512_maskz_loadu_ps(__mmask16::from(mask), packed_b[b_base0..].as_ptr());
+}
+```
+
+**Also apply mask to C-store** (eliminates scalar fallback for N tails):
+```rust
+// CURRENT: to_array() → scalar loop for nr < 16
+// PROPOSED: Single masked store
+_mm512_mask_storeu_ps(c[base..].as_mut_ptr(), mask, sum);
+```
+
+Estimated 10-20% speedup for non-aligned N dimensions.
+
+#### M Tailing (mr < MR=6) — ACCEPTABLE AS-IS
+
+K-loop iterates `ir in 0..mr.min(MR)` — fewer FMA ops, unused accumulators stay zero. Cost is just wasted register capacity. **DO NOT add separate 4×16 or 2×16 microkernels** — instruction cache and code size cost outweighs the small register saving.
+
+#### AVX-512 Bandwidth: Burst Without Tail Choke
+
+The 512-bit FMA pipeline needs continuous feeding for peak throughput:
+
+```
+AVX-512 FMA (Intel SPR): 2 FMA/cycle, 4-cycle latency
+  → Need 2 × 4 = 8 independent FMA chains to hide latency
+  → MR=6: provides 6 chains → ~75% FMA utilization (good enough)
+  → MR=8: would give 8 chains → 100% (but tighter register budget)
+```
+
+| MR | Accumulators | With 2x Unroll | FMA Chains | Utilization | Verdict |
+|----|-------------|----------------|------------|-------------|---------|
+| 4  | 4 zmm       | 8 zmm          | 4          | 50%         | Too small |
+| 6  | 6 zmm       | 12 zmm         | 6          | 75%         | **KEEP** |
+| 8  | 8 zmm       | 16 zmm         | 8          | 100%        | Consider future |
+| 12 | 12 zmm      | 24 zmm         | 12         | Over-sub    | Spill risk |
+
+**Current MR=6 is a good balance.** Memory bandwidth (not FMA) is the bottleneck for large GEMM. MR=6 leaves room for prefetch hints. **DO NOT increase beyond 8 without benchmarking 1024×1024.**
+
+**NR=16 = one full zmm for f32 = exactly one 64-byte cache line.** This is already optimal. Smaller wastes SIMD lanes. Larger needs multi-register accumulation per row with no benefit.
+
+**DGEMM improvement:** Add 2x K-unrolling (currently absent). SGEMM has it and benefits from latency hiding — DGEMM should too.
+
+#### Packing Buffer Alignment for Burst
+
+packed_a: MR=6 × 4 bytes = 24 bytes — straddles cache line boundaries. **Improvement:** Pad to MR_PADDED=8 in packing (32 bytes = half cache line), compute only 6 rows. Eliminates split-line loads, 33% more buffer but cleaner prefetch:
+
+```rust
+const SGEMM_MR_PADDED: usize = 8;  // Aligned to 32 bytes
+// Pack: fill first 6 with data, pad 2 with zeros per K-step
+```
+
+### 8.4 Software Prefetch: Why Current Parameters Work (DO NOT CHANGE)
+
+**Current** (`level3.rs:510-518`): T0 prefetch 4 K-steps ahead for both A and B panels.
+
+**Why 4 works:**
+- Each K-step: NR=16 f32 = 64 bytes (1 cache line) from B, MR=6 f32 = 24 bytes from A
+- L1 latency: ~4-5 cycles. FMA per K-step: ~12 cycles (6 rows × 2 cycles/FMA)
+- Distance: 4 × 12 = ~48 cycles ahead → comfortably covers L1 latency
+
+**DO NOT change prefetch distance** unless targeting a different µarch (AMD Zen 4 may prefer 6).
+
+**Missing improvement:** Add T1 (L2) prefetch for next C output tile — one macrokernel iteration ahead.
+
+### 8.5 Zero-Cost Slicing & Transpose: ndarray Takeaways
+
+#### Transpose: ndarray = 0.19 ns (Zero-Cost) vs rustynum = O(n) Copy
+
+**ndarray** (`ndarray/src/impl_methods.rs`): Transpose just reverses strides. No data movement:
+```rust
+pub fn t(&self) -> ArrayView<'_, A, D> {
+    // Reverse dimension order and stride order — THREE integer swaps
+    d.slice_mut().reverse();
+    s.slice_mut().reverse();
+    // Returns view pointing to SAME data. Cost: ~0.2 ns.
+}
+```
+
+**rustynum** (`rustynum-rs/src/num_array/manipulation.rs`): Transpose COPIES every element:
+```rust
+pub fn transpose(&self) -> Self {
+    let mut result = vec![T::default(); self.data.len()];  // ALLOCATE
+    // ... copy every element with index swap ...            // O(n) COPY
+    NumArray::new_with_shape(result, new_shape)
+}
+```
+
+**Performance:** ndarray transpose = 0.19 ns (constant). rustynum 1000×1000 transpose = ~4 ms (copies 1M elements). That's **~20,000,000x slower**.
+
+**Fix requires:** Views + stride-based addressing (Sections 1.2, 1.3). Once strides are respected, transpose becomes:
+```rust
+pub fn t(&self) -> ArrayView<'_, T> {
+    ArrayView { data: &self.data, dim: self.dim.reversed(), strides: self.strides.reversed() }
+}
+```
+
+#### Slicing: ndarray = O(1) Pointer Arithmetic vs rustynum = O(n) Copy
+
+**ndarray's core slice operation** (`ndarray/src/dimension/mod.rs:449-495`):
+```rust
+pub fn do_slice(dim: &mut usize, stride: &mut usize, slice: Slice) -> isize {
+    let (start, end, step) = to_abs_slice(*dim, slice);
+    let offset = stride_offset(start, *stride);        // ptr += start * stride
+    *dim = ceil_div(end - start, step.unsigned_abs());  // new length
+    *stride = (*stride as isize * step) as usize;       // new stride (step=-1 reverses)
+    offset
+}
+// THREE integer operations. Zero allocation. Zero copy.
+```
+
+**Key insight:** Negative strides enable reversed iteration with zero copy. `s![..;-1]` just negates the stride and adjusts the base pointer.
+
+**ndarray's contiguity detection** (for choosing fast vs strided path):
+```rust
+// ndarray/src/dimension/mod.rs:687-711
+fn is_layout_c(dim: &D, strides: &D) -> bool {
+    let mut expected = 1;
+    for (&d, &s) in dim.iter().rev().zip(strides.iter().rev()) {
+        if d > 1 && s != expected { return false; }
+        expected *= d;
+    }
+    true
+}
+```
+
+When contiguous → flat slice iteration (vectorizable). When strided → nested stride-aware loops. This is how ndarray's Zip picks optimal iteration for both sliced and unsliced arrays.
+
+**Recommendation for rustynum:** After implementing views (Section 1.2), add:
+1. `is_contiguous()` check on every operation entry point
+2. Fast path: operate on raw `&[T]` slice (current SIMD code works here unchanged)
+3. Strided path: iterate with stride-aware indexing
+4. This preserves rustynum's SIMD performance for contiguous arrays while adding zero-cost slicing
+
+#### ndarray's s![] Macro (Future Goal)
+
+```rust
+let row = matrix.slice(s![2, ..]);       // Zero-copy row view
+let block = matrix.slice(s![1..3, 2..5]); // Zero-copy submatrix
+let rev = matrix.slice(s![..;-1, ..]);    // Reversed rows, zero-copy
+```
+
+The macro tracks input/output dimensions at compile time via `SliceInfo<T, Din, Dout>`.
+
+### 8.6 Median Insight That Could Inspire Standard Deviation
+
+**ndarray's numeric utilities** (`ndarray/src/numeric_util.rs`) use an **8x unrolled fold** for reductions:
+
+```rust
+// 8 independent accumulators for instruction-level parallelism
+let (mut p0, mut p1, mut p2, mut p3, mut p4, mut p5, mut p6, mut p7) =
+    (init(), init(), init(), init(), init(), init(), init(), init());
+while xs.len() >= 8 {
+    p0 = f(p0, xs[0].clone());
+    p1 = f(p1, xs[1].clone());
+    // ... 8x unrolled
+    xs = &xs[8..];
+}
+// Merge: ((p0+p1)+(p2+p3)) + ((p4+p5)+(p6+p7))
+```
+
+**Why this matters for std dev:** Standard deviation requires `Σ(x - mean)²`. The naive two-pass approach (compute mean, then compute variance) requires two full passes over the data. But with 8x unrolled accumulators, you can:
+
+1. **One-pass Welford's algorithm** with SIMD: maintain running mean + M2 (sum of squared deviations) using the numerically stable recurrence, but across 8 parallel lanes
+2. **Two-pass with fused loops**: Use ndarray's unrolled pattern — first pass computes mean with 8 accumulators, second pass computes `Σ(x-mean)²` with 8 accumulators. Each pass is maximally ILP-friendly.
+
+**The key takeaway:** ndarray achieves near-SIMD performance for reductions WITHOUT explicit SIMD — just by exploiting ILP through manual unrolling. This is robust, portable, and should be adopted for any reduction where rustynum doesn't already have a SIMD kernel.
+
+For rustynum, the median sort (`kernels.rs`) should also be improved:
+- Use `sort_unstable_by` with `total_cmp()` (not `partial_cmp`) to handle NaN safely
+- For large arrays, consider `nth_element` / introselect (O(n) average) instead of full sort (O(n log n))
+- ndarray-stats uses `kth_by` from the `ndarray-stats` crate for this
+
+### 8.7 DO NOT CHANGE: Rustynum's Winning Approaches
+
+These components already outperform ndarray. Changing them risks regression.
+
+#### 8.7.1 The 6×16 SGEMM Microkernel with 2x K-Unrolling — KEEP
+
+**File:** `rustyblas/src/level3.rs:477-593`
+
+What makes it fast: 2x K-unrolling hides FMA latency, software prefetch (T0, 4 ahead) keeps L1 hot, `splat()` → `vbroadcastss` (single cycle), direct `from_slice()` → aligned `vmovups` (single cycle).
+
+**DO NOT:** Replace with generic microkernel, reduce unrolling, or change MR/NR without benchmarking 1024×1024 first.
+
+#### 8.7.2 B Panel Sharing Across Threads — KEEP
+
+**File:** `rustyblas/src/level3.rs:294-346`
+
+packed_b packed once, shared via `&packed_b` (immutable reference) to all threads. Each thread packs its own packed_a. No false sharing, no lock contention, no redundant work.
+
+#### 8.7.3 SendMutPtr Thread Partitioning — KEEP (But Add Safety Docs)
+
+**File:** `rustyblas/src/level3.rs:28-45`
+
+Each thread gets exclusive C rows via `split_at_mut()`. Faster than rayon's work-stealing for GEMM (perfectly balanced, zero sync after spawn).
+
+**DO NOT** replace with rayon for GEMM inner loop. **DO** add `// SAFETY:` comments.
+
+#### 8.7.4 Cache Blocking MC=128, KC=256, NC=1024 — KEEP FOR LARGE
+
+Tuned for L1=32KB, L2=256KB, L3=2MB/core:
+- A panel: 128 × 256 × 4 = 128 KB (fits L2)
+- B panel: 256 × 1024 × 4 = 1 MB (fits L3)
+- C tile: 128 × 16 × 4 = 8 KB (fits L1)
+
+**DO NOT change for large matrices.** DO consider separate smaller blocking for medium (see 8.2 Tier 3).
+
+### 8.8 Rustynum-Unique Strengths ndarray CANNOT Match
+
+These are competitive advantages — preserve and extend.
+
+#### 8.8.1 Cascading Dispatch and Early Exit — PRESERVE AND EXTEND
+
+Rustynum's tiered compute dispatch (blackboard → SIMD → BLAS) with early exit on threshold is fundamentally superior to ndarray's flat "always compute everything" model.
+
+**Where:** `rustynum-core/src/kernels.rs` (cascading scoring), `rustynum-core/src/delta.rs` (early exit batch scoring)
+
+**Don't flatten into ndarray-style always-complete.** Instead make robust: add bounds checking per cascade level, return `Result`, document thresholds, test cascade boundary transitions.
+
+#### 8.8.2 BF16 Top-5% GEMM — PRESERVE AND OPTIMIZE
+
+**File:** `rustyblas/src/bf16_gemm.rs`
+
+ndarray has zero BF16 support. Rustynum's BF16 GEMM with top-K extraction is unique for ML inference. Keep intact, but apply mask-register tailing improvements from Section 8.3.
+
+#### 8.8.3 INT8 Quantized GEMM — PRESERVE
+
+**File:** `rustyblas/src/int8_gemm.rs`
+
+ndarray has no integer GEMM. Critical for inference. Keep as-is, consider adding asymmetric quantization (per-channel zero points) and INT4 packing.
+
+#### 8.8.4 Pure Rust LAPACK/FFT/VML — PRESERVE (Fix Bugs)
+
+ndarray depends on external C LAPACK. Rustynum's pure Rust = `cargo install` just works, no C toolchain. Don't replace with C bindings. Fix bugs (Section 6.4/6.5) and bring accuracy to production grade.
+
+#### 8.8.5 Blackboard Zero-Copy Memory Arena — PRESERVE
+
+**File:** `rustynum-core/src/blackboard.rs`
+
+ndarray has no shared memory arena. Fix safety issues (Section 3.1) but keep the architecture.
+
+### 8.9 The Best Possible Mix: Combining SIMD Innovation with ndarray Maturity
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ LAYER 4: API Ergonomics (STEAL from ndarray)                         │
+│   Display, Index, s![], broadcasting, From/Into, error types,        │
+│   property tests, #![warn(missing_docs)]                             │
+├──────────────────────────────────────────────────────────────────────┤
+│ LAYER 3: Memory Safety & Views (STEAL from ndarray)                  │
+│   Storage traits, Dimension types, zero-cost slicing, layout         │
+│   detection, checked_mul, contiguity-based fast path selection       │
+├──────────────────────────────────────────────────────────────────────┤
+│ LAYER 2: Dispatch & Orchestration (KEEP rustynum)                    │
+│   Cascading dispatch, early exit, tiered threading, adaptive thread  │
+│   count, Blackboard arena, BF16/INT8 top-K paths                    │
+├──────────────────────────────────────────────────────────────────────┤
+│ LAYER 1: Compute Kernels (KEEP rustynum, targeted improvements)      │
+│   AVX-512 6×16 µkernel, pure Rust BLAS/LAPACK/FFT/VML, prefetch    │
+│   IMPROVE: mask registers for tailing, DGEMM 2x unroll, tiny-matrix │
+│   direct kernels, medium-matrix adaptive threading                   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Principle:** ndarray is the role model for Layers 3-4 (safe, ergonomic, correct). Rustynum is already superior at Layers 1-2 (fast, specialized, innovative). Bring Layer 3-4 maturity WITHOUT touching Layer 1-2 performance.
+
+### 8.10 No SIMD Fallback Path
+
+**Current state:** If AVX-512 is not available, many SIMD functions produce incorrect results or crash. The `avx512` feature is default-on with no runtime check.
+
+**ndarray approach:** `matrixmultiply` has AVX2, SSE2, and scalar fallbacks with runtime detection.
 
 **Recommendation:** Add `#[cfg]` fallback for every SIMD path:
 ```rust
