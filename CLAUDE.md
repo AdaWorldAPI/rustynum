@@ -282,10 +282,35 @@ Within the binary, everything is a view.
 Race conditions cannot exist by construction:
 - **Ground truth is `&self` forever** during processing cycles
 - **Each writer owns their own delta as `&mut`** — standard Rust ownership
-- **CollapseGate writethrough with bundle**: deltas XOR-composed then committed atomically
 - **`split_at_mut`** for contiguous byte regions (GEMM rows, Z-slabs)
 - **XOR Delta Layers** for scattered binary vector mutations (fingerprints)
 - If a race condition appears, the architecture is wrong — fix the design, not the symptom
+
+### CollapseGate = Airlock (Luftschleuse)
+
+Deltas ARE superposition — they coexist over ground truth without collapsing.
+The CollapseGate is the airlock between superposition and ground truth:
+
+```
+writers produce deltas → superposition exists (bundle of coexisting deltas)
+                              │
+                         CollapseGate (airlock)
+                              │
+                    ┌─────────┼─────────┐
+                  FLOW       HOLD      BLOCK
+                    │         │         │
+               collapse    keep      discard
+               to ground   super-    super-
+               truth       position  position
+```
+
+- **Before the gate**: superposition. Deltas coexist. No race — ground is `&self`.
+- **FLOW**: gate opens, superposition collapses into ground truth (commit).
+- **HOLD**: gate stays closed. Superposition persists. More evidence accumulates.
+- **BLOCK**: contradiction detected. Superposition discarded. Ground unchanged.
+
+The gate evaluates conflict via AND + popcount on the deltas themselves.
+XOR is the algebra. Bundle is the superposition. The gate is the decision.
 
 ---
 
