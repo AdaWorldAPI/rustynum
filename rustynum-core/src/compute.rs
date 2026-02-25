@@ -234,20 +234,32 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_detect_caps() {
         let caps = detect();
-        // On this machine we know AVX-512 is available
-        assert!(caps.avx512f);
-        assert!(caps.avx512vnni);
+        // Verify detection runs without panic and core count is sane
         assert!(caps.num_cores > 0);
+        // AVX-512 fields should be consistent: VNNI implies F
+        if caps.avx512vnni {
+            assert!(caps.avx512f);
+        }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_recommend_tier() {
+        let caps = detect();
+
         let tier = recommend_tier(1024, 1024, 1024, Precision::Approximate);
-        // Should recommend INT8 VNNI since we have it
-        assert_eq!(tier, ComputeTier::Int8Vnni);
+        if caps.avx512vnni {
+            assert_eq!(tier, ComputeTier::Int8Vnni);
+        } else {
+            // Falls through to Fp32Avx512 or Scalar depending on hardware
+            assert!(tier == ComputeTier::Fp32Avx512 || tier == ComputeTier::Scalar);
+        }
 
         let tier = recommend_tier(256, 256, 256, Precision::Full);
-        assert_eq!(tier, ComputeTier::Fp32Avx512);
+        if caps.avx512f {
+            assert_eq!(tier, ComputeTier::Fp32Avx512);
+        } else {
+            assert_eq!(tier, ComputeTier::Scalar);
+        }
     }
 }
