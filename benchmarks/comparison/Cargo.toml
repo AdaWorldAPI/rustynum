@@ -1,0 +1,13 @@
+[package]
+name = "rustynum-ndarray-comparison"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "compare"
+path = "src/main.rs"
+
+[workspace]
+
+[dependencies]
+ndarray = "0.16"
