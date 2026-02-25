@@ -177,11 +177,7 @@ extern "C" fn dot_f32_trampoline(a: *const f32, b: *const f32, len: usize) -> f3
     }
     #[cfg(not(any(feature = "avx512", feature = "avx2")))]
     {
-        a_slice
-            .iter()
-            .zip(b_slice.iter())
-            .map(|(a, b)| a * b)
-            .sum()
+        a_slice.iter().zip(b_slice.iter()).map(|(a, b)| a * b).sum()
     }
 }
 
@@ -206,11 +202,7 @@ pub fn scan_hamming(config: &ScanConfig, data: &[u8]) -> ScanResult {
 
     for i in 0..num_records {
         let record = &data[i * record_size..(i + 1) * record_size];
-        let dist = hamming_trampoline(
-            config.query.as_ptr(),
-            record.as_ptr(),
-            record_size,
-        );
+        let dist = hamming_trampoline(config.query.as_ptr(), record.as_ptr(), record_size);
         if dist <= config.threshold {
             if hits.len() < config.top_k {
                 hits.push((dist, i));
@@ -322,16 +314,16 @@ mod tests {
 
     #[test]
     fn test_hamming_trampoline() {
-        let a = vec![0xFF_u8; 64];
-        let b = vec![0x00_u8; 64];
+        let a = [0xFF_u8; 64];
+        let b = [0x00_u8; 64];
         let dist = hamming_trampoline(a.as_ptr(), b.as_ptr(), 64);
         assert_eq!(dist, 512); // 64 bytes × 8 bits = 512 bit differences
     }
 
     #[test]
     fn test_dot_f32_trampoline() {
-        let a = vec![1.0_f32; 16];
-        let b = vec![2.0_f32; 16];
+        let a = [1.0_f32; 16];
+        let b = [2.0_f32; 16];
         let result = dot_f32_trampoline(a.as_ptr(), b.as_ptr(), 16);
         assert!((result - 32.0).abs() < 1e-6);
     }

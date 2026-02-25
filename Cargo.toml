@@ -14,8 +14,11 @@ members = [
     "rustynum-oracle",
     "rustynum-clam",
     "bindings/python",
-    "jitson",
 ]
+# jitson excluded: requires path deps on AdaWorldAPI/wasmtime fork (../../wasmtime/cranelift/*)
+# which is a separate local clone, not available in CI. Build with:
+#   cargo build --manifest-path jitson/Cargo.toml
+exclude = ["jitson"]
 
 [workspace.package]
 rust-version = "1.93"

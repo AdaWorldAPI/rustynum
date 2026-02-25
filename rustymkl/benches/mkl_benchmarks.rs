@@ -3,7 +3,9 @@ use rustymkl::{fft, vml};
 
 fn bench_vsexp(c: &mut Criterion) {
     let mut group = c.benchmark_group("vsexp");
-    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
+    for &n in &[
+        64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
+    ] {
         let x: Vec<f32> = (0..n).map(|i| (i as f32 * 0.01).min(80.0)).collect();
         let mut out = vec![0.0f32; n];
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {
@@ -32,7 +34,9 @@ fn bench_fft(c: &mut Criterion) {
 
 fn bench_vssqrt(c: &mut Criterion) {
     let mut group = c.benchmark_group("vssqrt");
-    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
+    for &n in &[
+        64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
+    ] {
         let x: Vec<f32> = (1..=n).map(|i| i as f32).collect();
         let mut out = vec![0.0f32; n];
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {

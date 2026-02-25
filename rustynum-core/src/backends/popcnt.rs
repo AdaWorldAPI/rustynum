@@ -8,7 +8,7 @@
 //! and the trait implementation.
 
 use crate::bf16_hamming::{self, BF16Weights};
-use crate::tail_backend::{CompactTailScore, TailBackend, TailScore, compact_score_from_bytes};
+use crate::tail_backend::{compact_score_from_bytes, CompactTailScore, TailBackend, TailScore};
 
 /// POPCNT-based tail backend.
 ///

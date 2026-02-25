@@ -307,10 +307,8 @@ fn sgemm_blocked(
                 std::thread::scope(|s| {
                     let packed_b_ref = &packed_b;
                     // chunks_mut gives each thread a non-overlapping pre-allocated buffer
-                    let chunks: Vec<&mut [f32]> =
-                        all_packed_a.chunks_mut(packed_a_size).collect();
-                    for (packed_a_buf, &(ic, thread_m)) in
-                        chunks.into_iter().zip(work_items.iter())
+                    let chunks: Vec<&mut [f32]> = all_packed_a.chunks_mut(packed_a_size).collect();
+                    for (packed_a_buf, &(ic, thread_m)) in chunks.into_iter().zip(work_items.iter())
                     {
                         let c_ptr = c_send;
                         s.spawn(move || {

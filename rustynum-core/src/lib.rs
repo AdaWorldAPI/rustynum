@@ -12,21 +12,21 @@
 
 #![cfg_attr(any(feature = "avx512", feature = "avx2"), feature(portable_simd))]
 
+pub mod backends;
 pub mod bf16_hamming;
 pub mod blackboard;
 pub mod compute;
 pub mod delta;
-pub mod jit_scan;
-pub mod jitson;
 pub mod fingerprint;
 pub mod hybrid;
+pub mod jit_scan;
+pub mod jitson;
 pub mod kernels;
-pub mod backends;
-pub mod tail_backend;
 pub mod layer_stack;
 pub mod layout;
 pub mod parallel;
 pub mod rng;
+pub mod tail_backend;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
@@ -50,41 +50,37 @@ pub use bf16_hamming::{
 };
 pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
-pub use jit_scan::{DefaultKernelRegistry, ScanConfig, ScanResult, SimdKernelRegistry};
-pub use jitson::{
-    BackendConfig, JitsonError, JitsonTemplate, PipelineStage, PrecompileQueue, from_json,
-};
 pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
+pub use hybrid::{
+    extract_learning_signal, hybrid_pipeline, hybrid_pipeline_with_backend, resonance_decompose,
+    update_hybrid_weights, HybridConfig, HybridScore, HybridStats, LearningSignal, ResonanceResult,
+    ResonantMatch, Tier0Config, Tier0Mode, Tier0Stats,
+};
+pub use jit_scan::{DefaultKernelRegistry, ScanConfig, ScanResult, SimdKernelRegistry};
+pub use jitson::{
+    from_json, BackendConfig, JitsonError, JitsonTemplate, PipelineStage, PrecompileQueue,
+};
+pub use kernels::{
+    bf16_tail_score, full_sweep, kernel_pipeline, kernel_pipeline_bytes, BenchmarkTranscript,
+    EnergyConflict, HdrScore, KernelResult, KernelStage, PipelineStats, SliceGate, SKU_16K_BITS,
+    SKU_16K_BYTES, SKU_16K_WORDS, SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+};
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
 pub use parallel::parallel_for_chunks;
-pub use kernels::{
-    kernel_pipeline, kernel_pipeline_bytes, full_sweep, bf16_tail_score,
-    SliceGate, EnergyConflict, HdrScore, KernelResult, KernelStage,
-    PipelineStats, BenchmarkTranscript,
-    SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
-    SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
-};
-pub use hybrid::{
-    hybrid_pipeline, hybrid_pipeline_with_backend,
-    extract_learning_signal, update_hybrid_weights, resonance_decompose,
-    HybridScore, HybridConfig, HybridStats, LearningSignal,
-    ResonanceResult, ResonantMatch,
-    Tier0Config, Tier0Mode, Tier0Stats,
-};
-pub use tail_backend::{
-    TailBackend, TailScore, BatchTailScore, CompactTailScore, Capabilities,
-    auto_detect as auto_detect_backend, capabilities as backend_capabilities,
-    gemm_backend, gemm_backend_with_scale,
-};
 pub use rng::SplitMix64;
+pub use tail_backend::{
+    auto_detect as auto_detect_backend, capabilities as backend_capabilities, gemm_backend,
+    gemm_backend_with_scale, BatchTailScore, Capabilities, CompactTailScore, TailBackend,
+    TailScore,
+};
 
 // BF16 3D Spatial Resonance — Crystal4K-aligned axis model
 // Wires: SPO grammar + semantic kernel + Jina 1024-D into 3-axis BF16 space
 pub mod spatial_resonance;
 pub use spatial_resonance::{
-    CrystalAxis, SpatialCrystal3D, SpatialDistances, SpatialAxis,
-    SpatialAwareness, SpatialLearningSignal, SpatialMatch,
-    spatial_awareness_decompose, extract_spatial_learning_signal, spatial_sweep,
+    extract_spatial_learning_signal, spatial_awareness_decompose, spatial_sweep, CrystalAxis,
+    SpatialAwareness, SpatialAxis, SpatialCrystal3D, SpatialDistances, SpatialLearningSignal,
+    SpatialMatch,
 };

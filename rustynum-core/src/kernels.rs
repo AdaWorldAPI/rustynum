@@ -40,8 +40,7 @@ pub const SKU_64K_BITS: usize = 65_536;
 pub const SKU_64K_WORDS: usize = 1024;
 pub const SKU_64K_BYTES: usize = 8192;
 
-/// K0 probe width: 1 u64 = 64 bits.
-const K0_WORDS: usize = 1;
+/// K0 probe width: 64 bits.
 const K0_BITS: usize = 64;
 
 /// K1 stats width: 8 u64 = 512 bits.
@@ -333,7 +332,12 @@ fn k2_exact(query: &[u64], candidate: &[u64], n_words: usize) -> EnergyConflict 
     let full_quads = n_words / 4;
     for q in 0..full_quads {
         let base = q * 4;
-        let (qa, qb, qc, qd) = (query[base], query[base + 1], query[base + 2], query[base + 3]);
+        let (qa, qb, qc, qd) = (
+            query[base],
+            query[base + 1],
+            query[base + 2],
+            query[base + 3],
+        );
         let (ca, cb, cc, cd) = (
             candidate[base],
             candidate[base + 1],
@@ -547,7 +551,7 @@ pub fn bf16_tail_score(
     man_weight: f32,
 ) -> f32 {
     assert_eq!(query_bytes.len(), candidate_bytes.len());
-    assert!(query_bytes.len() % 2 == 0);
+    assert!(query_bytes.len().is_multiple_of(2));
 
     let n_dims = query_bytes.len() / 2;
     // FP32 accumulator — Rule 6
@@ -576,7 +580,7 @@ pub fn bf16_tail_score(
 /// Reinterpret a byte slice as u64 words (little-endian).
 #[inline]
 fn bytes_to_u64_words(bytes: &[u8]) -> Vec<u64> {
-    assert!(bytes.len() % 8 == 0);
+    assert!(bytes.len().is_multiple_of(8));
     let n_words = bytes.len() / 8;
     let mut words = Vec::with_capacity(n_words);
     for i in 0..n_words {
@@ -716,7 +720,7 @@ mod tests {
     #[test]
     fn test_k1_stats_identical() {
         let gate = SliceGate::sku_16k();
-        let words: Vec<u64> = (0..8).map(|i| pseudo_word(i)).collect();
+        let words: Vec<u64> = (0..8).map(pseudo_word).collect();
         assert!(k1_stats(&words, &words, &gate));
     }
 
@@ -854,10 +858,7 @@ mod tests {
         let (_, stats) = kernel_pipeline(&query, &db, n, SKU_16K_WORDS, &gate);
 
         assert_eq!(stats.total, n);
-        assert_eq!(
-            stats.k0_rejected + stats.k1_rejected + stats.k2_promoted,
-            n
-        );
+        assert_eq!(stats.k0_rejected + stats.k1_rejected + stats.k2_promoted, n);
 
         // With cold=0.30 gate, random vectors (~50% Hamming) should be
         // rejected heavily since K0_reject = ceil(0.30*64*1.5) = 29 < 32.
@@ -912,11 +913,8 @@ mod tests {
 
     #[test]
     fn test_bytes_to_u64_roundtrip() {
-        let original: Vec<u64> = (0..8).map(|i| pseudo_word(i)).collect();
-        let bytes: Vec<u8> = original
-            .iter()
-            .flat_map(|w| w.to_le_bytes())
-            .collect();
+        let original: Vec<u64> = (0..8).map(pseudo_word).collect();
+        let bytes: Vec<u8> = original.iter().flat_map(|w| w.to_le_bytes()).collect();
         let restored = bytes_to_u64_words(&bytes);
         assert_eq!(original, restored);
     }

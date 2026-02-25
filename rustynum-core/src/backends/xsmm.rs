@@ -49,7 +49,7 @@
 
 use crate::bf16_hamming::{self, BF16Weights};
 use crate::tail_backend::{
-    BatchTailScore, CompactTailScore, TailBackend, TailScore, compact_score_from_bytes,
+    compact_score_from_bytes, BatchTailScore, CompactTailScore, TailBackend, TailScore,
 };
 use std::cell::RefCell;
 use std::sync::Once;
@@ -313,9 +313,9 @@ impl JitKernel {
                 m,
                 n,
                 k,
-                m,  // lda = M (column-major A)
-                k,  // ldb = K
-                m,  // ldc = M
+                m, // lda = M (column-major A)
+                k, // ldb = K
+                m, // ldc = M
                 LibxsmmDatatype::F32,
                 LibxsmmDatatype::F32,
                 LibxsmmDatatype::F32,
@@ -353,7 +353,12 @@ impl JitKernel {
     /// - `a`, `b`, `c` must point to valid memory of the correct sizes
     ///   matching the shape used at dispatch time.
     /// - `c` must be writable.
-    pub unsafe fn call(&self, a: *const libc::c_void, b: *const libc::c_void, c: *mut libc::c_void) {
+    pub unsafe fn call(
+        &self,
+        a: *const libc::c_void,
+        b: *const libc::c_void,
+        c: *mut libc::c_void,
+    ) {
         let param = LibxsmmGemmParam {
             op: LibxsmmMatrixOpArg::default(),
             a: LibxsmmMatrixArg::from_ptr(a),
@@ -593,7 +598,8 @@ impl TailBackend for XsmmBackend {
         }
 
         // Compute GEMM similarities (pre-sort hint, available for future use)
-        let _similarities = self.sgemm_batch_similarities(query_bytes, candidate_slices, n_candidates);
+        let _similarities =
+            self.sgemm_batch_similarities(query_bytes, candidate_slices, n_candidates);
 
         // Exact BF16 structured distances for learning signal
         let mut distances = Vec::with_capacity(n_candidates);

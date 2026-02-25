@@ -33,8 +33,7 @@
 //! or as a packed 2-bit-per-dim vector in the container itself.
 
 use crate::bf16_hamming::{
-    self, AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights,
-    SuperpositionState,
+    self, AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights, SuperpositionState,
 };
 use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SliceGate};
 use crate::tail_backend::TailBackend;
@@ -320,11 +319,7 @@ pub fn tier0_prefilter(
 /// Build a compact database buffer containing only the survivor candidates.
 ///
 /// Returns the compacted bytes and a mapping from compact index to original index.
-fn build_survivor_db(
-    database_bytes: &[u8],
-    survivor_indices: &[usize],
-    n_bytes: usize,
-) -> Vec<u8> {
+fn build_survivor_db(database_bytes: &[u8], survivor_indices: &[usize], n_bytes: usize) -> Vec<u8> {
     let mut compact = Vec::with_capacity(survivor_indices.len() * n_bytes);
     for &idx in survivor_indices {
         let offset = idx * n_bytes;
@@ -387,7 +382,8 @@ pub fn hybrid_pipeline(
     };
 
     #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    let (effective_db, effective_n, index_map) = (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
+    let (effective_db, effective_n, index_map) =
+        (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
 
     // Use compact DB if Tier 0 produced one, otherwise the original
     let db_ref = if effective_db.is_empty() {
@@ -442,8 +438,8 @@ pub fn hybrid_pipeline(
         }
 
         // Combined score: binary + weighted BF16
-        let combined = km.distance as f64 * config.hamming_weight
-            + bf16_dist as f64 * config.bf16_weight;
+        let combined =
+            km.distance as f64 * config.hamming_weight + bf16_dist as f64 * config.bf16_weight;
 
         hybrid_scores.push(HybridScore {
             hamming_distance: km.distance,
@@ -457,7 +453,11 @@ pub fn hybrid_pipeline(
     }
 
     // Sort by combined score (best first)
-    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap_or(std::cmp::Ordering::Equal));
+    hybrid_scores.sort_by(|a, b| {
+        a.combined_score
+            .partial_cmp(&b.combined_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     (hybrid_scores, stats)
 }
@@ -514,7 +514,8 @@ pub fn hybrid_pipeline_with_backend(
     };
 
     #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    let (effective_db, effective_n, index_map) = (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
+    let (effective_db, effective_n, index_map) =
+        (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
 
     let db_ref = if effective_db.is_empty() {
         database_bytes
@@ -623,7 +624,11 @@ pub fn hybrid_pipeline_with_backend(
     }
 
     // Sort by combined score (best first)
-    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap_or(std::cmp::Ordering::Equal));
+    hybrid_scores.sort_by(|a, b| {
+        a.combined_score
+            .partial_cmp(&b.combined_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     (hybrid_scores, stats)
 }
@@ -716,7 +721,9 @@ pub fn resonance_decompose(
 
     // Compute noise floor: if we have enough matches, use the worst top-K score
     let noise_floor = if top.len() >= 3 {
-        top.last().map(|s| s.combined_score * 1.1).unwrap_or(f64::MAX)
+        top.last()
+            .map(|s| s.combined_score * 1.1)
+            .unwrap_or(f64::MAX)
     } else {
         f64::MAX // no noise floor with few matches
     };
@@ -760,7 +767,7 @@ pub fn resonance_decompose(
     }
 
     // Phase 3: Extract learning signal from top-2 matches
-    let learning_signal = if scores.len() >= 1 {
+    let learning_signal = if !scores.is_empty() {
         let mut top_k_bytes: Vec<&[u8]> = Vec::new();
         for hs in scores.iter().take(2) {
             let offset = hs.index * n_bytes;
@@ -906,7 +913,7 @@ pub fn update_hybrid_weights(
     }
     let group_size = n_dims.div_ceil(32);
 
-    for group in 0..32 {
+    for (group, weight) in current_weights.iter_mut().enumerate() {
         let start = group * group_size;
         let end = (start + group_size).min(n_dims);
         if start >= n_dims {
@@ -944,12 +951,11 @@ pub fn update_hybrid_weights(
             0.1 * (1.0 - noise_ratio)
         } else {
             // Mixed → maintain current
-            current_weights[group]
+            *weight
         };
 
         // EMA update
-        current_weights[group] =
-            current_weights[group] * (1.0 - learning_rate) + target * learning_rate;
+        *weight = *weight * (1.0 - learning_rate) + target * learning_rate;
     }
 }
 
@@ -997,8 +1003,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1100,7 +1107,10 @@ mod tests {
             "Sign flips should cause >30% tension, got {}",
             signal.tension_ratio
         );
-        assert!(signal.total_sign_flips > 20, "Should detect many sign flips");
+        assert!(
+            signal.total_sign_flips > 20,
+            "Should detect many sign flips"
+        );
 
         // Tensioned dims should have lower attention weight
         let tensioned_weights: Vec<f32> = signal.attention_weights[..32]
@@ -1184,7 +1194,7 @@ mod tests {
         // packed_states should be compact
         assert_eq!(
             signal.packed_states.len(),
-            (64 + 3) / 4, // ceil(64 dims / 4 dims per byte)
+            64_usize.div_ceil(4), // ceil(64 dims / 4 dims per byte)
             "Packed states should be ceil(n_dims/4) bytes"
         );
 
@@ -1205,8 +1215,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match at index 0
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1244,8 +1255,9 @@ mod tests {
         let n = 50;
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         for i in 0..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 777 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 777 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1298,8 +1310,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match at 0
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1310,7 +1323,7 @@ mod tests {
         let (survivors, stats) = tier0_prefilter(&query, &db, n, &cfg);
 
         assert_eq!(survivors.len(), 5);
-        assert_eq!(stats.active, true);
+        assert!(stats.active);
         assert_eq!(stats.input_count, 20);
         assert_eq!(stats.survivor_count, 5);
         assert_eq!(stats.pruned_count, 15);
@@ -1357,8 +1370,9 @@ mod tests {
         }
         // Index 5-99: random
         for i in 5..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 999 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 999 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1409,7 +1423,7 @@ mod tests {
         let n = 80;
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match at 0
-        // Near-matches at 1-3
+                                      // Near-matches at 1-3
         for k in 1..4 {
             let near_vals: Vec<f32> = (0..n_dims)
                 .map(|i| (i as f32 * 0.01).sin() * (1.0 + k as f32 * 0.005))
@@ -1417,8 +1431,9 @@ mod tests {
             db.extend_from_slice(&make_container(&near_vals, kernels::SKU_16K_BYTES));
         }
         for i in 4..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1426,11 +1441,13 @@ mod tests {
 
         // Oracle: no Tier 0
         let config_no_t0 = HybridConfig::sku_16k();
-        let (oracle, _) = hybrid_pipeline_with_backend(&query, &db, n, &config_no_t0, backend.as_ref());
+        let (oracle, _) =
+            hybrid_pipeline_with_backend(&query, &db, n, &config_no_t0, backend.as_ref());
 
         // Test: with Tier 0 (top 20 = 25%)
         let config_t0 = HybridConfig::sku_16k().with_tier0_topk(20);
-        let (t0, t0_stats) = hybrid_pipeline_with_backend(&query, &db, n, &config_t0, backend.as_ref());
+        let (t0, t0_stats) =
+            hybrid_pipeline_with_backend(&query, &db, n, &config_t0, backend.as_ref());
 
         assert!(t0_stats.tier0_stats.active);
         assert_eq!(t0_stats.tier0_stats.survivor_count, 20);
@@ -1462,8 +1479,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query);
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1516,8 +1534,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query);
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1547,8 +1566,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1567,7 +1587,9 @@ mod tests {
 
         // Exact match must still be found
         assert!(
-            scores.iter().any(|s| s.index == 0 && s.hamming_distance == 0),
+            scores
+                .iter()
+                .any(|s| s.index == 0 && s.hamming_distance == 0),
             "Exact match at index 0 must survive Tier 0 + K0/K1/K2"
         );
     }
@@ -1582,8 +1604,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query);
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1619,14 +1642,14 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match at index 0
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
         let gemm = crate::tail_backend::gemm_backend();
-        let (scores, stats) =
-            hybrid_pipeline_with_backend(&query, &db, n, &config, gemm.as_ref());
+        let (scores, stats) = hybrid_pipeline_with_backend(&query, &db, n, &config, gemm.as_ref());
 
         // GEMM backend should find exact match
         assert!(!scores.is_empty(), "GEMM backend should find matches");
@@ -1662,16 +1685,18 @@ mod tests {
         let weights = crate::bf16_hamming::BF16Weights::default();
 
         let mut batch = Vec::new();
-        batch.extend_from_slice(&query);   // 0: exact
-        batch.extend_from_slice(&near);    // 1: near
-        batch.extend_from_slice(&random);  // 2: random
+        batch.extend_from_slice(&query); // 0: exact
+        batch.extend_from_slice(&near); // 1: near
+        batch.extend_from_slice(&random); // 2: random
 
-        let result = crate::tail_backend::TailBackend::score_batch(
-            &gemm, &query, &batch, 3, &weights,
-        );
+        let result =
+            crate::tail_backend::TailBackend::score_batch(&gemm, &query, &batch, 3, &weights);
 
         // Exact match: distance 0
-        assert_eq!(result.distances[0], 0, "Exact match batch distance should be 0");
+        assert_eq!(
+            result.distances[0], 0,
+            "Exact match batch distance should be 0"
+        );
         // Near match: small distance
         // Random: larger distance
         assert!(
@@ -1736,8 +1761,9 @@ mod tests {
         }
         // Slots 10-29: random
         for i in 10..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 999 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 999 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1757,8 +1783,7 @@ mod tests {
         let query_contrarian = make_container(&contrarian_vals, kernels::SKU_16K_BYTES);
 
         // Agent 2: random — queries random data
-        let rand_query_vals: Vec<f32> =
-            (0..n_dims).map(|j| (j as f32 * 0.123).cos()).collect();
+        let rand_query_vals: Vec<f32> = (0..n_dims).map(|j| (j as f32 * 0.123).cos()).collect();
         let query_random = make_container(&rand_query_vals, kernels::SKU_16K_BYTES);
 
         // === Run 3 rounds of agent exploration ===
@@ -1767,13 +1792,8 @@ mod tests {
         for round in 0..3 {
             for (agent_id, query) in queries.iter().enumerate() {
                 // Phase 1: GEMM-backed recognition
-                let (scores, _stats) = hybrid_pipeline_with_backend(
-                    query,
-                    &db,
-                    n,
-                    &config,
-                    gemm.as_ref(),
-                );
+                let (scores, _stats) =
+                    hybrid_pipeline_with_backend(query, &db, n, &config, gemm.as_ref());
 
                 // Phase 2: Extract learning signal from top-2 results
                 if scores.len() >= 2 {
@@ -1795,8 +1815,10 @@ mod tests {
                     assert!(
                         signal.crystallized_ratio + signal.tension_ratio <= 1.01,
                         "Round {}, Agent {}: ratios sum > 1.0 (c={}, t={})",
-                        round, agent_id,
-                        signal.crystallized_ratio, signal.tension_ratio
+                        round,
+                        agent_id,
+                        signal.crystallized_ratio,
+                        signal.tension_ratio
                     );
                 }
             }
@@ -1805,7 +1827,10 @@ mod tests {
         // === Verify convergence ===
 
         // After 3 rounds × 3 agents = 9 weight updates, weights should have moved
-        let moved = shared_weights.iter().filter(|&&w| (w - 0.5).abs() > 0.01).count();
+        let moved = shared_weights
+            .iter()
+            .filter(|&&w| (w - 0.5).abs() > 0.01)
+            .count();
         assert!(
             moved > 0,
             "Some weights should have moved from initial 0.5 after 9 updates: {:?}",
@@ -1814,11 +1839,7 @@ mod tests {
 
         // All weights should be in valid range [0, 1]
         for (i, &w) in shared_weights.iter().enumerate() {
-            assert!(
-                w >= 0.0 && w <= 1.0,
-                "Weight {} out of range: {}",
-                i, w
-            );
+            assert!((0.0..=1.0).contains(&w), "Weight {} out of range: {}", i, w);
         }
     }
 
@@ -1840,8 +1861,9 @@ mod tests {
             db.extend_from_slice(&query); // copies
         }
         for i in 10..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 777 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 777 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1881,7 +1903,8 @@ mod tests {
         assert!(
             avg_a >= avg_b,
             "Crystallized agent should have >= avg weight than noisy: A={:.3} B={:.3}",
-            avg_a, avg_b
+            avg_a,
+            avg_b
         );
     }
 
@@ -1900,8 +1923,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query); // exact match at 0
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 
@@ -1938,7 +1962,7 @@ mod tests {
 
         let n = 2;
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
-        db.extend_from_slice(&query);     // exact at 0
+        db.extend_from_slice(&query); // exact at 0
         db.extend_from_slice(&candidate); // sign-flipped at 1
 
         let result = resonance_decompose(&query, &db, n, &config, 5);
@@ -1953,7 +1977,7 @@ mod tests {
         // The important thing is the learning signal captures it
         if let Some(ref signal) = result.learning_signal {
             // Learning signal should exist regardless
-            assert!(signal.attention_weights.len() > 0);
+            assert!(!signal.attention_weights.is_empty());
         }
     }
 
@@ -1977,8 +2001,14 @@ mod tests {
 
         let result = resonance_decompose(&query, &db, n, &config, 5);
 
-        let signal = result.learning_signal.as_ref().expect("Should have learning signal");
-        assert!(signal.crystallized_ratio > 0.5, "Near-matches should be mostly crystallized");
+        let signal = result
+            .learning_signal
+            .as_ref()
+            .expect("Should have learning signal");
+        assert!(
+            signal.crystallized_ratio > 0.5,
+            "Near-matches should be mostly crystallized"
+        );
         assert!(!signal.attention_weights.is_empty());
         assert!(!signal.packed_states.is_empty());
     }
@@ -1994,8 +2024,9 @@ mod tests {
         let mut db = Vec::with_capacity(n * kernels::SKU_16K_BYTES);
         db.extend_from_slice(&query);
         for i in 1..n {
-            let rand_vals: Vec<f32> =
-                (0..n_dims).map(|j| ((i * 1000 + j) as f32 * 0.037).cos()).collect();
+            let rand_vals: Vec<f32> = (0..n_dims)
+                .map(|j| ((i * 1000 + j) as f32 * 0.037).cos())
+                .collect();
             db.extend_from_slice(&make_container(&rand_vals, kernels::SKU_16K_BYTES));
         }
 

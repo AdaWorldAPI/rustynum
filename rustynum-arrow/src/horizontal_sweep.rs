@@ -126,7 +126,11 @@ pub fn horizontal_sweep(
 ) -> HorizontalSweepResult {
     let n = column.len();
     let vec_bytes = column.value_length() as usize;
-    assert_eq!(query.len(), vec_bytes, "query length must match column element size");
+    assert_eq!(
+        query.len(),
+        vec_bytes,
+        "query length must match column element size"
+    );
 
     if n == 0 {
         return HorizontalSweepResult {
@@ -178,15 +182,10 @@ pub fn horizontal_sweep(
         words_examined = word_idx + 1;
 
         // Progressive early exit check at configured intervals.
-        let should_check = if word_idx + 1 == config.first_check_words {
-            true
-        } else if words_examined > config.first_check_words
-            && (words_examined - config.first_check_words) % config.check_interval == 0
-        {
-            true
-        } else {
-            word_idx + 1 == total_words // always check on last word
-        };
+        let should_check = word_idx + 1 == config.first_check_words
+            || (words_examined > config.first_check_words
+                && (words_examined - config.first_check_words) % config.check_interval == 0)
+            || word_idx + 1 == total_words; // always check on last word
 
         if should_check {
             // Scale threshold proportionally to words examined so far.
@@ -265,7 +264,11 @@ pub fn horizontal_sweep_filtered(
 ) -> HorizontalSweepResult {
     let n = candidate_rows.len();
     let vec_bytes = column.value_length() as usize;
-    assert_eq!(query.len(), vec_bytes, "query length must match column element size");
+    assert_eq!(
+        query.len(),
+        vec_bytes,
+        "query length must match column element size"
+    );
 
     if n == 0 {
         return HorizontalSweepResult {
@@ -309,15 +312,10 @@ pub fn horizontal_sweep_filtered(
 
         words_examined = word_idx + 1;
 
-        let should_check = if word_idx + 1 == config.first_check_words {
-            true
-        } else if words_examined > config.first_check_words
-            && (words_examined - config.first_check_words) % config.check_interval == 0
-        {
-            true
-        } else {
-            word_idx + 1 == total_words
-        };
+        let should_check = word_idx + 1 == config.first_check_words
+            || (words_examined > config.first_check_words
+                && (words_examined - config.first_check_words) % config.check_interval == 0)
+            || word_idx + 1 == total_words;
 
         if should_check {
             let fraction = (words_examined as f64 * word_bytes as f64 * 8.0) / total_bits;
@@ -508,9 +506,7 @@ mod tests {
     fn test_horizontal_sweep_no_false_negatives() {
         // Create 100 random-ish records, plant 3 close ones.
         let query = vec![0u8; 2048];
-        let mut rows: Vec<Vec<u8>> = (0..100)
-            .map(|i| vec![(i % 256) as u8; 2048])
-            .collect();
+        let mut rows: Vec<Vec<u8>> = (0..100).map(|i| vec![(i % 256) as u8; 2048]).collect();
 
         // Records 10, 50, 90 are close (val=1, Hamming dist=2048)
         rows[10] = vec![1u8; 2048];
@@ -621,9 +617,7 @@ mod tests {
     #[test]
     fn test_horizontal_sweep_filtered() {
         let query = vec![0u8; 2048];
-        let mut rows: Vec<Vec<u8>> = (0..50)
-            .map(|i| vec![(i % 256) as u8; 2048])
-            .collect();
+        let mut rows: Vec<Vec<u8>> = (0..50).map(|i| vec![(i % 256) as u8; 2048]).collect();
         rows[25] = vec![0u8; 2048]; // exact match
 
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
@@ -647,12 +641,8 @@ mod tests {
         let hdc_query = vec![0u8; 2048];
         let dense_query = vec![0u8; 512]; // smaller dense embedding
 
-        let mut hdc_rows: Vec<Vec<u8>> = (0..30)
-            .map(|i| vec![(i % 256) as u8; 2048])
-            .collect();
-        let mut dense_rows: Vec<Vec<u8>> = (0..30)
-            .map(|i| vec![(i % 256) as u8; 512])
-            .collect();
+        let mut hdc_rows: Vec<Vec<u8>> = (0..30).map(|i| vec![(i % 256) as u8; 2048]).collect();
+        let mut dense_rows: Vec<Vec<u8>> = (0..30).map(|i| vec![(i % 256) as u8; 512]).collect();
 
         // Row 15: close in both HDC and dense
         hdc_rows[15] = vec![1u8; 2048];
@@ -684,7 +674,11 @@ mod tests {
 
         // Row 15 should survive both stages
         let found: Vec<usize> = result.hits.iter().map(|h| h.0).collect();
-        assert!(found.contains(&15), "row 15 close in both, found {:?}", found);
+        assert!(
+            found.contains(&15),
+            "row 15 close in both, found {:?}",
+            found
+        );
 
         // Row 20 should be filtered by dense stage (0xFF vs 0x00 = max distance)
         assert!(
