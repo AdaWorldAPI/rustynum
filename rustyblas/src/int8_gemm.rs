@@ -461,6 +461,7 @@ pub fn int8_gemm_f32(
     zero_point_a: i32,
     scale_b: f32,
 ) {
+    assert!(c.len() >= m * n, "output buffer too small: {} < {}", c.len(), m * n);
     // Compute raw i32 GEMM
     let mut c_i32 = vec![0i32; m * n];
     int8_gemm_i32(a, b, &mut c_i32, m, n, k);
@@ -504,6 +505,10 @@ pub fn int8_gemm_per_channel_f32(
     a_zero_points: &[i32], // M zero points
     b_scales: &[f32],      // N scales
 ) {
+    assert!(c.len() >= m * n, "output buffer too small: {} < {}", c.len(), m * n);
+    assert!(a_scales.len() >= m, "a_scales too short: {} < {}", a_scales.len(), m);
+    assert!(a_zero_points.len() >= m, "a_zero_points too short: {} < {}", a_zero_points.len(), m);
+    assert!(b_scales.len() >= n, "b_scales too short: {} < {}", b_scales.len(), n);
     let mut c_i32 = vec![0i32; m * n];
     int8_gemm_i32(a, b, &mut c_i32, m, n, k);
 

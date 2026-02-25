@@ -11,17 +11,14 @@ impl<T, Ops> NumArray<T, Ops>
 where
     T: Copy + Debug + Default + Clone,
 {
-    /// Transposes a 2D matrix from row-major to column-major format.
-    /// The transpose operation reorders the data into a new contiguous `Vec<T>`.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance that is the transpose of the original matrix.
-    /// with newly computed C-contiguous strides.
-    pub fn transpose(&self) -> Self {
-        assert!(
-            self.shape.len() == 2,
-            "Transpose is only valid for 2D matrices."
-        );
+    /// Fallible transpose: returns `Err` if the array is not 2D.
+    pub fn try_transpose(&self) -> Result<Self, crate::NumError> {
+        if self.shape.len() != 2 {
+            return Err(crate::NumError::DimensionMismatch(format!(
+                "transpose requires 2D array, got {}D",
+                self.shape.len()
+            )));
+        }
 
         let rows = self.shape[0];
         let cols = self.shape[1];
@@ -33,16 +30,33 @@ where
             }
         }
 
-        NumArray::new_with_shape(transposed_data, vec![cols, rows])
+        Ok(NumArray::new_with_shape(transposed_data, vec![cols, rows]))
+    }
+
+    /// Transposes a 2D matrix from row-major to column-major format.
+    ///
+    /// # Panics
+    /// Panics if the array is not 2D.
+    pub fn transpose(&self) -> Self {
+        match self.try_transpose() {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Fallible reshape: returns `Err` if the new shape is not compatible with the data size.
+    pub fn try_reshape(&self, new_shape: &[usize]) -> Result<Self, crate::NumError> {
+        let new_size: usize = new_shape.iter().product();
+        if new_size != self.data.len() {
+            return Err(crate::NumError::ShapeMismatch {
+                data_len: self.data.len(),
+                shape_product: new_size,
+            });
+        }
+        Ok(NumArray::new_with_shape(self.data.clone(), new_shape.to_owned()))
     }
 
     /// Reshapes the array to a new shape.
-    ///
-    /// # Parameters
-    /// * `new_shape` - A vector of dimensions defining the new shape of the array.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance with the specified shape.
     ///
     /// # Panics
     /// Panics if the new shape is not compatible with the data size.
@@ -56,14 +70,10 @@ where
     /// println!("Reshaped array: {:?}", reshaped_array.get_data());
     /// ```
     pub fn reshape(&self, new_shape: &[usize]) -> Self {
-        let new_size: usize = new_shape.iter().product();
-        assert_eq!(
-            new_size,
-            self.data.len(),
-            "New shape must be compatible with data size."
-        );
-
-        NumArray::new_with_shape(self.data.clone(), new_shape.to_owned())
+        match self.try_reshape(new_shape) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
     }
 
     /// Reverses the elements along the specified axis or axis.
@@ -189,33 +199,26 @@ where
         }
     }
 
-    /// Creates a slice of the array.
-    ///
-    /// # Parameters
-    /// * `start` - The start index of the slice.
-    /// * `end` - The end index of the slice.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance representing the slice.
-    ///
-    /// # Panics
-    /// Panics if the start index exceeds the end index or if the end index exceeds the data length.
-    ///
-    /// # Example
-    /// ```
-    /// use rustynum_rs::NumArrayF32;
-    /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
-    /// let sliced_array = array.slice(1, 0, 2);
-    /// println!("Sliced array: {:?}", sliced_array.get_data());
-    /// ```
-    pub fn slice(&self, axis: usize, start: usize, end: usize) -> Self {
-        assert!(axis < self.shape.len(), "Axis out of bounds");
-        assert!(start <= end, "Start index must not exceed end index.");
-        assert!(
-            end <= self.shape[axis],
-            "End index must not exceed the size of the specified axis."
-        );
+    /// Fallible slice: returns `Err` on axis out of bounds or invalid range.
+    pub fn try_slice(&self, axis: usize, start: usize, end: usize) -> Result<Self, crate::NumError> {
+        if axis >= self.shape.len() {
+            return Err(crate::NumError::AxisOutOfBounds {
+                axis,
+                ndim: self.shape.len(),
+            });
+        }
+        if start > end {
+            return Err(crate::NumError::InvalidParameter(format!(
+                "start index {} must not exceed end index {}",
+                start, end
+            )));
+        }
+        if end > self.shape[axis] {
+            return Err(crate::NumError::InvalidParameter(format!(
+                "end index {} exceeds axis {} size {}",
+                end, axis, self.shape[axis]
+            )));
+        }
 
         let mut new_shape = self.shape.clone();
         new_shape[axis] = end - start;
@@ -234,11 +237,31 @@ where
             }
         }
 
-        Self {
+        Ok(Self {
             data: new_data,
             shape: new_shape.clone(),
             strides: Self::compute_strides(&new_shape),
             _ops: PhantomData,
+        })
+    }
+
+    /// Creates a slice of the array.
+    ///
+    /// # Panics
+    /// Panics if axis is out of bounds, start > end, or end exceeds the axis size.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
+    /// let sliced_array = array.slice(1, 0, 2);
+    /// println!("Sliced array: {:?}", sliced_array.get_data());
+    /// ```
+    pub fn slice(&self, axis: usize, start: usize, end: usize) -> Self {
+        match self.try_slice(axis, start, end) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
         }
     }
 }
