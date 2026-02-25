@@ -1,6 +1,6 @@
 # RustyNum vs ndarray: Comprehensive Comparison
 
-**Date:** February 25, 2026
+**Date:** February 25, 2026 (updated post-PR #60 + hardening commit)
 **Environment:** Linux 4.4.0, Rust nightly 1.95.0, stable 1.93.1, x86_64
 
 ---
@@ -12,6 +12,77 @@
 **RustyNum** is a specialized, pre-release numerical computation ecosystem (v0.1.0, 0 stars) focused on pure Rust SIMD (AVX-512/VNNI), BLAS/LAPACK/FFT replacement, and Hyperdimensional Computing (HDC/VSA) primitives -- all sharing zero-copy memory via a Blackboard architecture.
 
 They overlap on basic array operations but serve fundamentally different niches.
+
+---
+
+## 0. Quality Score: 7.5 → 8.4 Roadmap
+
+This section tracks the surgical improvements needed to raise rustynum's code quality from ~7.5/10 to the 8.4/10 bar.
+
+### Scoring Dimensions
+
+| Dimension | Before (7.5) | After Hardening | Target (8.4) | Gap |
+|-----------|-------------|----------------|--------------|-----|
+| **Error handling** | Panics on bad input; no Result types except linalg | `NumError` enum + `try_*` for transpose/reshape/slice/arange/matmul; GEMM bounds checks | Remaining 26 panic sites in array_struct/statistics/bitwise/view | 0.3 |
+| **API consistency** | exp/log/sigmoid returned bare types in Python bindings | All 6 functions now return `PyResult<T>` | Macro-dedup f32/f64 bindings (~600→150 LOC) | 0.1 |
+| **Test coverage** | ~1,087 tests, no edge-case coverage for core array ops | 1,330 test annotations; 12 new edge-case tests (empty, NaN, SIMD boundary, try_* error paths, f64 precision) | Add property tests for SIMD paths; fuzz arithmetic ops | 0.2 |
+| **Unsafe discipline** | 146 unsafe blocks, 7 debug_assert in SIMD paths | int8_gemm bounds checks added | debug_assert→assert in core SIMD (N5 from debt ledger) | 0.1 |
+| **Documentation** | README only, no rustdoc | — | Add `#[doc]` to public API surface | 0.2 |
+| **Duplication** | 5,343 byte-identical lines across carrier/focus/phase | — | Extract to rustynum-common crate | 0.1 |
+
+### What Was Done This Session
+
+| Priority | Item | Status | Commit |
+|----------|------|--------|--------|
+| **P0a** | Expand `NumError` with `AxisOutOfBounds` + `BroadcastError`; add `try_transpose`, `try_reshape`, `try_slice` | **DONE** | `6965446` |
+| **P0b** | Add output buffer + scale/zero-point bounds checks to `int8_gemm_f32` and `int8_gemm_per_channel_f32` | **DONE** | `6965446` |
+| **P1b** | Fix `exp/log/sigmoid` f32+f64 Python bindings to return `PyResult` | **DONE** | `6965446` |
+| **P2** | Add 12 edge-case integration tests (empty, NaN, single-element, try_* error paths, SIMD boundary 1025-element, f64 precision 100K) | **DONE** | `6965446` |
+
+**Test result after changes:** 57/57 rustynum-rs tests pass (was 45 before).
+
+### Remaining to Reach 8.4
+
+| Priority | Item | Est. Effort | Score Impact |
+|----------|------|-------------|--------------|
+| **P0c** | `try_*` for remaining 26 panic sites: `new_with_shape`, `item`, `dot` dimension check, `min_axis`, `max_axis`, `log` domain check, `argmin`/`argmax` empty, `top_k`, `flip_axis`, `squeeze`, `percentile`, bitwise shape checks, `ArrayView::slice_axis`/`flip_axis` | 2-3 hours | +0.3 |
+| **P0d** | `debug_assert_eq!` → `assert_eq!` in 7 SIMD functions (N5 from debt ledger) | 5 minutes | +0.1 |
+| **P1a** | Macro-dedup Python bindings: `array_f32.rs`/`array_f64.rs` (~600 LOC → ~150 LOC via macro) | 1 hour | +0.1 |
+| **P3** | `#[doc]` for public API: NumArray methods, NumError, SimdOps trait | 2 hours | +0.2 |
+| **P4** | Extract carrier/focus/phase to rustynum-common crate (5,343 dedup lines) | 3 hours | +0.1 |
+
+**Estimated total to 8.4: ~8 hours of focused work.**
+
+### Detailed Panic Site Inventory (26 remaining)
+
+**array_struct.rs** (9 sites):
+- `new_with_shape()`: ShapeMismatch panic (line 239)
+- `item()`: assert data.len() == 1 (line 339)
+- `dot()`: 2 dimension mismatch asserts (lines 388, 395)
+- `min_axis()`: axis bounds assert (line 430)
+- `log()`: positive-value assert (line 537)
+- `argmin()`/`argmax()`: empty array asserts (lines 600, 630)
+- `top_k()`: k <= len assert (line 664)
+- `max_axis()`: axis bounds assert (line 898)
+
+**statistics.rs** (5 sites):
+- `mean_axis()`, `sum_axis()`, `var_axis()`: axis bounds asserts
+- `percentile()`: empty array + range [0,100] asserts
+- `percentile_axis()`: axis bounds assert
+
+**bitwise.rs** (6 sites):
+- `bitand`, `bitxor`, `bitor` (owned + ref): shape equality asserts
+
+**manipulation.rs** (3 sites — not yet covered):
+- `flip_axis()`: axis bounds assert
+- `squeeze()`: axis bounds + dim==1 asserts
+
+**operations.rs** (1 site):
+- `div` broadcast: shape not broadcastable panic
+
+**view.rs** (2 sites):
+- `slice_axis()`: axis + range bounds asserts
+- `flip_axis()`: axis bounds assert
 
 ---
 
@@ -27,13 +98,14 @@ They overlap on basic array operations but serve fundamentally different niches.
 | **BLAS** | Optional via `cblas-sys` (pluggable: OpenBLAS, MKL, etc.) | Built-in pure Rust (`rustyblas`): cache-blocked Goto GEMM |
 | **Dependencies** | `matrixmultiply`, `rawpointer`, `num-traits`, `num-complex` | Zero runtime deps (core crates); `smallvec` only |
 | **Rust edition** | Stable Rust 1.64+ | Nightly only (`#![feature(portable_simd)]`) |
+| **Error handling** | Panics on shape mismatch (ShapeError type exists but not widely used) | `NumError` enum with 5 variants + `try_*` fallible API for 7 operations; remaining ops panic |
 | **License** | MIT/Apache-2.0 | Apache-2.0 |
 
 ### Key Architectural Differences
 
 **ndarray** uses a sophisticated type system with `ArrayBase<S, D>` where `S` controls ownership (owned, view, shared) and `D` controls dimensionality. This enables zero-cost abstractions: slicing returns views without copying, transpose is a stride manipulation, and the compiler enforces dimension correctness.
 
-**RustyNum** uses a flat `Vec<T>` with runtime shape checking and dispatches to explicit SIMD kernels. It trades compile-time dimension safety for explicit hardware control (AVX-512 microkernels, VNNI int8 paths, VPOPCNTDQ hamming).
+**RustyNum** uses a flat `Vec<T>` with runtime shape checking and dispatches to explicit SIMD kernels. It trades compile-time dimension safety for explicit hardware control (AVX-512 microkernels, VNNI int8 paths, VPOPCNTDQ hamming). The `try_*` fallible API pattern (established for `try_reshape`, `try_transpose`, `try_slice`, `try_arange`, `try_matrix_multiply`, `try_matrix_vector_multiply`, `try_matrix_matrix_multiply`) returns `Result<T, NumError>` while convenience methods delegate with panic-on-error.
 
 ---
 
@@ -75,6 +147,7 @@ They overlap on basic array operations but serve fundamentally different niches.
 - **Zero-copy Blackboard** (64-byte aligned shared memory with split-borrow)
 - **Tiered compute dispatch** (INT8 -> BF16 -> FP32 -> GPU, runtime HW detection)
 - **CogRecord** (domain-specific 8KB container for holographic memory)
+- **Fallible API** (`try_reshape`, `try_transpose`, `try_slice`, `try_arange`, `try_matrix_multiply` — returns `Result<T, NumError>`)
 - **Python bindings** (via PyO3)
 
 ---
@@ -223,7 +296,7 @@ azip!((a in &a, b in &b) { ... });   // Lock-step iteration
 ### RustyNum (Performance-first, SIMD-explicit)
 
 ```rust
-use rustynum_rs::NumArrayF32;
+use rustynum_rs::{NumArrayF32, NumError};
 
 let a = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
 let b = NumArrayF32::new(vec![4.0, 5.0, 6.0]);
@@ -231,13 +304,19 @@ let c = &a + &b;                      // SIMD addition
 let dot = a.dot(&b);                   // SIMD dot product
 let mean = a.mean();                   // SIMD reduction
 
+// Fallible API (new)
+let m = NumArrayF32::new_with_shape(vec![1.0; 6], vec![2, 3]);
+let t = m.try_transpose()?;           // Returns Result<NumArray, NumError>
+let r = m.try_reshape(&[3, 2])?;      // Returns Result<NumArray, NumError>
+let s = m.try_slice(0, 0, 1)?;        // Returns Result<NumArray, NumError>
+
 // HDC operations (no ndarray equivalent)
 use rustynum_rs::NumArrayU8;
 let bound = a_hdc ^ b_hdc;            // XOR bind
 let dist = a_hdc.hamming_distance(&b); // VPOPCNTDQ
 ```
 
-**Strengths:** Explicit SIMD control, HDC/VSA primitives, INT8/BF16 quantized ops, zero external dependencies.
+**Strengths:** Explicit SIMD control, HDC/VSA primitives, INT8/BF16 quantized ops, zero external dependencies, fallible error handling via `NumError`.
 
 ---
 
@@ -253,9 +332,13 @@ let dist = a_hdc.hamming_distance(&b); // VPOPCNTDQ
 | **First commit** | ~2015 | 2024 |
 | **Requires nightly** | No (stable Rust 1.64+) | Yes (`portable_simd`) |
 | **Documentation** | docs.rs, extensive | README only |
-| **Test coverage** | Comprehensive | ~3,000+ test annotations |
+| **Test coverage** | Comprehensive | 1,330 test annotations across 84 files |
 | **CI/CD** | GitHub Actions | GitHub Actions + Miri |
 | **`no_std` support** | Yes | No |
+| **Error handling** | ShapeError (limited use) | `NumError` enum (5 variants) + `try_*` (7 operations) |
+| **Unsafe blocks** | Minimal (behind BLAS FFI) | 146 blocks across 23 files (SIMD intrinsics, FFI) |
+| **Workspace crates** | 1 | 13 |
+| **Total .rs lines** | ~15K (core) | ~72K (full workspace), ~14K active |
 
 ---
 
@@ -309,12 +392,25 @@ The two libraries can be used together. RustyNum's benchmark suite already depen
 
 ---
 
-## 8. Conclusion
+## 8. Burn Backend Integration
+
+A comprehensive plan for implementing `burn::Backend` backed by RustyNum has been produced (see `burn/docs/RUSTYNUM_BACKEND_PLAN.md`). Key points:
+
+- **Crate**: `burn-rustynum` implementing `Backend`, `FloatTensorOps`, `IntTensorOps`, `BoolTensorOps`
+- **Tensor primitive**: `RustyNumTensor<E>` wrapping `NumArray<E, S>` with Arc for clone-cheapness
+- **GEMM call path**: `float_matmul` → `rustyblas::level3::sgemm` (Goto algorithm, multithreaded)
+- **Quantization**: `QTensorOps` via `int8_gemm` (VNNI) and `bf16_gemm`
+- **Upstream patterns harvested**: Candle (Storage enum + Layout), Ort (zero-copy `_backing` guard), Polars (Arrow chunking)
+- **5-phase roadmap**: scaffold → FloatTensorOps → IntTensor+BoolTensor → QTensor → benchmarks
+
+---
+
+## 9. Conclusion
 
 **ndarray** and **RustyNum** are not direct competitors but complementary tools:
 
 - **ndarray** is the de facto standard for N-dimensional arrays in Rust. It offers mature, well-tested, ergonomic array operations with excellent memory management (views, broadcasting) and works on stable Rust. For most general-purpose numerical computing in Rust, ndarray is the right choice.
 
-- **RustyNum** is a specialized performance toolkit focused on explicit SIMD, quantized computation, and domain-specific operations (HDC/VSA). Its strengths are in hot-path operations where explicit hardware control matters: dot products (1.4x faster), mean (1.7x faster), matrix-vector multiply (2.3x faster), and entirely unique capabilities like INT8 GEMM, adaptive cascade search, and HDC primitives. However, it requires nightly Rust, lacks ndarray's type safety and ergonomics, and is pre-release.
+- **RustyNum** is a specialized performance toolkit focused on explicit SIMD, quantized computation, and domain-specific operations (HDC/VSA). Its strengths are in hot-path operations where explicit hardware control matters: dot products (1.4x faster), mean (1.7x faster), matrix-vector multiply (2.3x faster), and entirely unique capabilities like INT8 GEMM, adaptive cascade search, and HDC primitives. The recent hardening work (fallible `try_*` API, GEMM bounds checks, edge-case tests) moves the error-handling model closer to production quality. However, it requires nightly Rust, lacks ndarray's type safety and ergonomics, and is pre-release.
 
-The ideal architecture for a high-performance numerical application in Rust might use ndarray for data management and general computation while calling into RustyNum/rustyblas for performance-critical inner loops and specialized operations.
+The ideal architecture for a high-performance numerical application in Rust might use ndarray for data management and general computation while calling into RustyNum/rustyblas for performance-critical inner loops and specialized operations. The planned Burn backend integration would formalize this by making RustyNum a drop-in Backend alongside ndarray, Candle, and WGPU in the Burn ML framework.

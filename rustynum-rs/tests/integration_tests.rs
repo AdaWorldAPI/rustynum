@@ -1,4 +1,4 @@
-use rustynum_rs::{NumArrayF32, NumArrayF64};
+use rustynum_rs::{NumArrayF32, NumArrayF64, NumError};
 
 #[test]
 fn test_num_array_creation_and_dot_product() {
@@ -75,5 +75,183 @@ fn test_complex_operations() {
         expected_result,
         dot_product_result,
         actual_error
+    );
+}
+
+// ============================================================================
+// Edge-case tests: empty arrays
+// ============================================================================
+
+#[test]
+fn test_empty_array_mean() {
+    let a = NumArrayF32::new(vec![]);
+    // mean of empty array returns 0/0 = NaN
+    let m = a.mean().item();
+    assert!(m.is_nan(), "mean of empty array should be NaN, got {}", m);
+}
+
+#[test]
+fn test_empty_array_dot() {
+    let a = NumArrayF32::new(vec![]);
+    let b = NumArrayF32::new(vec![]);
+    let d = a.dot(&b);
+    assert_eq!(d.get_data(), &[0.0], "dot of empty arrays should be 0");
+}
+
+// ============================================================================
+// Edge-case tests: NaN propagation
+// ============================================================================
+
+#[test]
+fn test_nan_propagation_sum() {
+    let a = NumArrayF32::new(vec![1.0, f32::NAN, 3.0]);
+    let s: f32 = a.mean().item();
+    assert!(s.is_nan(), "mean with NaN input should propagate NaN");
+}
+
+#[test]
+fn test_nan_propagation_dot() {
+    let a = NumArrayF32::new(vec![1.0, f32::NAN, 3.0]);
+    let b = NumArrayF32::new(vec![4.0, 5.0, 6.0]);
+    let d = a.dot(&b).item();
+    assert!(d.is_nan(), "dot with NaN input should propagate NaN");
+}
+
+// ============================================================================
+// Edge-case tests: single-element arrays
+// ============================================================================
+
+#[test]
+fn test_single_element_operations() {
+    let a = NumArrayF32::new(vec![42.0]);
+    let b = NumArrayF32::new(vec![2.0]);
+
+    assert_eq!(a.mean().item(), 42.0);
+    assert_eq!(a.median().item(), 42.0);
+    assert_eq!(a.dot(&b).item(), 84.0);
+    assert_eq!((&a + &b).get_data(), &[44.0]);
+    assert_eq!((&a * &b).get_data(), &[84.0]);
+}
+
+// ============================================================================
+// Edge-case tests: fallible API (try_*)
+// ============================================================================
+
+#[test]
+fn test_try_reshape_mismatch() {
+    let a = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let result = a.try_reshape(&[2, 4]); // 2*4=8 != 6
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    match err {
+        NumError::ShapeMismatch { data_len, shape_product } => {
+            assert_eq!(data_len, 6);
+            assert_eq!(shape_product, 8);
+        }
+        e => panic!("Expected ShapeMismatch, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_try_reshape_ok() {
+    let a = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let result = a.try_reshape(&[2, 3]);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().shape(), &[2, 3]);
+}
+
+#[test]
+fn test_try_transpose_non_2d() {
+    let a = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+    let result = a.try_transpose();
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_try_transpose_ok() {
+    let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let result = a.try_transpose();
+    assert!(result.is_ok());
+    let t = result.unwrap();
+    assert_eq!(t.shape(), &[3, 2]);
+    assert_eq!(t.get_data(), &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+}
+
+#[test]
+fn test_try_slice_axis_oob() {
+    let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let result = a.try_slice(5, 0, 1); // axis 5 on 2D
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    match err {
+        NumError::AxisOutOfBounds { axis, ndim } => {
+            assert_eq!(axis, 5);
+            assert_eq!(ndim, 2);
+        }
+        e => panic!("Expected AxisOutOfBounds, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_try_arange_zero_step() {
+    let result = NumArrayF32::try_arange(0.0, 10.0, 0.0);
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    match err {
+        NumError::InvalidParameter(_) => {}
+        e => panic!("Expected InvalidParameter, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_try_matrix_multiply_dimension_mismatch() {
+    use rustynum_rs::num_array::linalg::try_matrix_multiply;
+
+    let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let result = try_matrix_multiply(&a, &b);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_try_matrix_multiply_ok() {
+    use rustynum_rs::num_array::linalg::try_matrix_multiply;
+
+    let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let b = NumArrayF32::new_with_shape(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], vec![3, 2]);
+    let result = try_matrix_multiply(&a, &b);
+    assert!(result.is_ok());
+    let c = result.unwrap();
+    assert_eq!(c.shape(), &[2, 2]);
+    assert_eq!(c.get_data(), &[58.0, 64.0, 139.0, 154.0]);
+}
+
+// ============================================================================
+// Edge-case tests: large arrays (SIMD boundary crossing)
+// ============================================================================
+
+#[test]
+fn test_large_array_dot_product() {
+    // 1025 elements: crosses SIMD lane boundaries (16, 32, 64 lanes)
+    let n = 1025;
+    let a = NumArrayF32::new(vec![1.0; n]);
+    let b = NumArrayF32::new(vec![2.0; n]);
+    let result = a.dot(&b).item();
+    assert_eq!(result, 2050.0, "dot of 1025 ones * 2s should be 2050");
+}
+
+#[test]
+fn test_f64_precision() {
+    // Kahan-sensitive: sum of many small numbers
+    let n = 100_000;
+    let val = 1e-8_f64;
+    let a = NumArrayF64::new(vec![val; n]);
+    let expected = val * n as f64;
+    let result = a.mean().item() * n as f64;
+    let rel_err = (result - expected).abs() / expected;
+    assert!(
+        rel_err < 1e-6,
+        "f64 sum of 100k * 1e-8 should be accurate, rel_err={}",
+        rel_err
     );
 }

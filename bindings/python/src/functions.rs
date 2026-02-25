@@ -124,24 +124,24 @@ pub fn max_axis_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumA
 }
 
 #[pyfunction]
-pub fn exp_f32(a: &PyNumArrayF32) -> PyNumArrayF32 {
-    PyNumArrayF32 {
+pub fn exp_f32(a: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
+    Ok(PyNumArrayF32 {
         inner: a.inner.exp(),
-    }
+    })
 }
 
 #[pyfunction]
-pub fn log_f32(a: &PyNumArrayF32) -> PyNumArrayF32 {
-    PyNumArrayF32 {
+pub fn log_f32(a: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
+    Ok(PyNumArrayF32 {
         inner: a.inner.log(),
-    }
+    })
 }
 
 #[pyfunction]
-pub fn sigmoid_f32(a: &PyNumArrayF32) -> PyNumArrayF32 {
-    PyNumArrayF32 {
+pub fn sigmoid_f32(a: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
+    Ok(PyNumArrayF32 {
         inner: a.inner.sigmoid(),
-    }
+    })
 }
 
 #[pyfunction]
@@ -267,24 +267,24 @@ pub fn max_axis_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumA
 }
 
 #[pyfunction]
-pub fn exp_f64(a: &PyNumArrayF64) -> PyNumArrayF64 {
-    PyNumArrayF64 {
+pub fn exp_f64(a: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
+    Ok(PyNumArrayF64 {
         inner: a.inner.exp(),
-    }
+    })
 }
 
 #[pyfunction]
-pub fn log_f64(a: &PyNumArrayF64) -> PyNumArrayF64 {
-    PyNumArrayF64 {
+pub fn log_f64(a: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
+    Ok(PyNumArrayF64 {
         inner: a.inner.log(),
-    }
+    })
 }
 
 #[pyfunction]
-pub fn sigmoid_f64(a: &PyNumArrayF64) -> PyNumArrayF64 {
-    PyNumArrayF64 {
+pub fn sigmoid_f64(a: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
+    Ok(PyNumArrayF64 {
         inner: a.inner.sigmoid(),
-    }
+    })
 }
 
 #[pyfunction]

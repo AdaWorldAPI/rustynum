@@ -21,6 +21,10 @@ pub enum NumError {
     DimensionMismatch(String),
     /// Invalid parameter (e.g., step == 0 in arange)
     InvalidParameter(String),
+    /// Axis out of bounds for the given array dimensionality
+    AxisOutOfBounds { axis: usize, ndim: usize },
+    /// Shapes are not broadcastable for the requested operation
+    BroadcastError { lhs: Vec<usize>, rhs: Vec<usize> },
 }
 
 impl std::fmt::Display for NumError {
@@ -38,6 +42,12 @@ impl std::fmt::Display for NumError {
             }
             NumError::DimensionMismatch(msg) => write!(f, "dimension mismatch: {}", msg),
             NumError::InvalidParameter(msg) => write!(f, "invalid parameter: {}", msg),
+            NumError::AxisOutOfBounds { axis, ndim } => {
+                write!(f, "axis {} out of bounds for array with {} dimensions", axis, ndim)
+            }
+            NumError::BroadcastError { lhs, rhs } => {
+                write!(f, "shapes not broadcastable: {:?} vs {:?}", lhs, rhs)
+            }
         }
     }
 }
