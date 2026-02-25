@@ -427,6 +427,8 @@ pub fn dcopy(n: usize, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
 pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid mutable slices. n, incx, incy satisfy the
+        // CBLAS SSWAP contract. x and y are distinct mutable borrows (Rust enforces this).
         unsafe {
             rustynum_core::mkl_ffi::cblas_sswap(
                 n as i32,
@@ -452,6 +454,8 @@ pub fn sswap(n: usize, x: &mut [f32], incx: usize, y: &mut [f32], incy: usize) {
 pub fn dswap(n: usize, x: &mut [f64], incx: usize, y: &mut [f64], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid mutable slices. n, incx, incy satisfy the
+        // CBLAS DSWAP contract. x and y are distinct mutable borrows (Rust enforces this).
         unsafe {
             rustynum_core::mkl_ffi::cblas_dswap(
                 n as i32,

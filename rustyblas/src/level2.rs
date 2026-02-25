@@ -56,6 +56,8 @@ pub fn sgemv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS SGEMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_sgemv(
                 layout as i32,
@@ -201,6 +203,8 @@ pub fn dgemv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS DGEMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dgemv(
                 layout as i32,
@@ -343,6 +347,8 @@ pub fn sger(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, incx, incy, lda are caller-provided
+        // and satisfy the CBLAS SGER contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_sger(
                 layout as i32,
@@ -418,6 +424,8 @@ pub fn dger(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, incx, incy, lda are caller-provided
+        // and satisfy the CBLAS DGER contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dger(
                 layout as i32,
@@ -499,6 +507,8 @@ pub fn ssymv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS SSYMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_ssymv(
                 layout as i32,
@@ -601,6 +611,8 @@ pub fn dsymv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS DSYMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dsymv(
                 layout as i32,
@@ -703,6 +715,9 @@ pub fn strmv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx are caller-provided
+        // and satisfy the CBLAS STRMV contract. A is triangular (read-only),
+        // x is overwritten in-place.
         unsafe {
             rustynum_core::mkl_ffi::cblas_strmv(
                 layout as i32,
@@ -822,6 +837,9 @@ pub fn strsv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx are caller-provided
+        // and satisfy the CBLAS STRSV contract. A is triangular (read-only),
+        // x is overwritten with the solution in-place.
         unsafe {
             rustynum_core::mkl_ffi::cblas_strsv(
                 layout as i32,
