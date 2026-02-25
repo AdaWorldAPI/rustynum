@@ -176,6 +176,7 @@ pub fn daxpy(n: usize, alpha: f64, x: &[f64], incx: usize, y: &mut [f64], incy: 
 pub fn sscal(n: usize, alpha: f32, x: &mut [f32], incx: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid mutable slice. n, incx satisfy the CBLAS SSCAL contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_sscal(n as i32, alpha, x.as_mut_ptr(), incx as i32);
         }
@@ -196,6 +197,7 @@ pub fn sscal(n: usize, alpha: f32, x: &mut [f32], incx: usize) {
 pub fn dscal(n: usize, alpha: f64, x: &mut [f64], incx: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid mutable slice. n, incx satisfy the CBLAS DSCAL contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dscal(n as i32, alpha, x.as_mut_ptr(), incx as i32);
         }
@@ -219,6 +221,7 @@ pub fn dscal(n: usize, alpha: f64, x: &mut [f64], incx: usize) {
 pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS SNRM2 contract.
         return unsafe { rustynum_core::mkl_ffi::cblas_snrm2(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
@@ -234,6 +237,7 @@ pub fn snrm2(n: usize, x: &[f32], incx: usize) -> f32 {
 pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS DNRM2 contract.
         return unsafe { rustynum_core::mkl_ffi::cblas_dnrm2(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
@@ -253,6 +257,7 @@ pub fn dnrm2(n: usize, x: &[f64], incx: usize) -> f64 {
 pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS SASUM contract.
         return unsafe { rustynum_core::mkl_ffi::cblas_sasum(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
@@ -268,6 +273,7 @@ pub fn sasum(n: usize, x: &[f32], incx: usize) -> f32 {
 pub fn dasum(n: usize, x: &[f64], incx: usize) -> f64 {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS DASUM contract.
         return unsafe { rustynum_core::mkl_ffi::cblas_dasum(n as i32, x.as_ptr(), incx as i32) };
     }
     if incx == 1 {
@@ -291,6 +297,7 @@ pub fn dasum(n: usize, x: &[f64], incx: usize) -> f64 {
 pub fn isamax(n: usize, x: &[f32], incx: usize) -> usize {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS ISAMAX contract.
         return unsafe {
             rustynum_core::mkl_ffi::cblas_isamax(n as i32, x.as_ptr(), incx as i32) as usize
         };
@@ -326,6 +333,7 @@ pub fn isamax(n: usize, x: &[f32], incx: usize) -> usize {
 pub fn idamax(n: usize, x: &[f64], incx: usize) -> usize {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointer from valid slice. n, incx satisfy the CBLAS IDAMAX contract.
         return unsafe {
             rustynum_core::mkl_ffi::cblas_idamax(n as i32, x.as_ptr(), incx as i32) as usize
         };
@@ -363,6 +371,7 @@ pub fn idamax(n: usize, x: &[f64], incx: usize) -> usize {
 pub fn scopy(n: usize, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy satisfy the CBLAS SCOPY contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_scopy(
                 n as i32,
@@ -388,6 +397,7 @@ pub fn scopy(n: usize, x: &[f32], incx: usize, y: &mut [f32], incy: usize) {
 pub fn dcopy(n: usize, x: &[f64], incx: usize, y: &mut [f64], incy: usize) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, incx, incy satisfy the CBLAS DCOPY contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dcopy(
                 n as i32,
