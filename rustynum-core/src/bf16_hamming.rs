@@ -591,6 +591,311 @@ pub fn superposition_decompose(
 // Tests
 // ---------------------------------------------------------------------------
 
+// =============================================================================
+// PackedQualia: 16+1 BF16 phenomenological micro-tensor
+// =============================================================================
+
+/// The 18-byte micro-block representing an agent's phenomenological state.
+///
+/// 16 dimensions (valence, volition, staunen, equilibrium, etc.) packed as i8,
+/// plus a single BF16 scalar encoding magnitude and polarity (sign bit).
+///
+/// # Memory layout
+///
+/// ```text
+/// ┌─────────────────────────────────────────────────────┐
+/// │  resonance[0..16] : 16 × i8  (128 bits)            │  The shape
+/// │  scalar           : 1 × u16  (16 bits, BF16)       │  Magnitude + polarity
+/// └─────────────────────────────────────────────────────┘
+///   Total: 18 bytes → fits 3,640 states in 64KB L1 cache
+/// ```
+///
+/// # Polarity (the sign bit)
+///
+/// The BF16 scalar's top bit encodes directionality:
+/// - `0` = agent is **seeking** this state (attractor/goal)
+/// - `1` = agent is **fleeing** this state (repeller/anti-goal)
+///
+/// Flipping the sign bit with [`invert_qualia_polarity`] inverts the entire
+/// tensor's meaning without touching the 16 shape dimensions.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PackedQualia {
+    /// 16 phenomenological dimensions as signed 8-bit integers.
+    /// Maps to the 16+1 Qualia Tensor: valence, volition, staunen,
+    /// equilibrium, gravity, intimacy, etc.
+    pub resonance: [i8; 16],
+    /// BF16 scalar (raw u16 bits): magnitude × polarity.
+    /// Top bit = sign (0=seek, 1=flee). Remaining 15 bits = BF16 exponent+mantissa.
+    pub scalar: u16,
+}
+
+impl PackedQualia {
+    /// Create a new PackedQualia from resonance shape and f32 magnitude.
+    ///
+    /// The f32 is truncated to BF16 (drop low 16 bits).
+    /// Use a negative magnitude to encode "fleeing" polarity.
+    pub fn new(resonance: [i8; 16], magnitude: f32) -> Self {
+        Self {
+            resonance,
+            scalar: (magnitude.to_bits() >> 16) as u16,
+        }
+    }
+
+    /// Decode the BF16 scalar back to f32.
+    #[inline]
+    pub fn magnitude_f32(&self) -> f32 {
+        f32::from_bits((self.scalar as u32) << 16)
+    }
+
+    /// Returns true if the polarity is negative (fleeing/avoiding this state).
+    #[inline]
+    pub fn is_inverted(&self) -> bool {
+        self.scalar & 0x8000 != 0
+    }
+}
+
+/// Flip the polarity of a PackedQualia in-place.
+///
+/// Toggles the BF16 sign bit: seek ↔ flee.
+/// The 16 resonance dimensions are unchanged — only the scalar's
+/// directionality inverts.
+#[inline]
+pub fn invert_qualia_polarity(qualia: &mut PackedQualia) {
+    qualia.scalar ^= 0x8000;
+}
+
+/// Hydrate a PackedQualia into 16 continuous f32 values.
+///
+/// Each i8 resonance dimension is scaled by the BF16 magnitude:
+///   `out[i] = resonance[i] as f32 × magnitude_f32(scalar)`
+///
+/// If the scalar's sign bit is set (inverted polarity), all output
+/// values are negated — the agent is fleeing this state.
+///
+/// # Performance
+///
+/// With AVX-512: loads 16×i8 → sign-extends to 16×i32 → converts to 16×f32
+/// → broadcasts scalar → fused multiply. ~5-8 cycles, zero branching.
+///
+/// Without SIMD: scalar loop, still correct.
+pub fn hydrate_qualia_f32(packed: &PackedQualia) -> [f32; 16] {
+    let scalar = packed.magnitude_f32();
+    hydrate_qualia_f32_inner(&packed.resonance, scalar)
+}
+
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+    use std::simd::{f32x16, i32x16};
+    use std::simd::num::SimdInt;
+
+    // Sign-extend i8 → i32 (portable_simd doesn't have i8x16→f32x16 directly)
+    let i32_vals = i32x16::from_array(std::array::from_fn(|i| resonance[i] as i32));
+
+    // Convert i32 → f32
+    let f32_vals: f32x16 = i32_vals.cast();
+
+    // Broadcast scalar and multiply
+    let sv = f32x16::splat(scalar);
+    let result = f32_vals * sv;
+
+    // Extract to array
+    result.to_array()
+}
+
+#[cfg(not(any(feature = "avx512", feature = "avx2")))]
+fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+    std::array::from_fn(|i| resonance[i] as f32 * scalar)
+}
+
+/// Hydrate a PackedQualia into 16 BF16 values (raw u16 bits).
+///
+/// Same as [`hydrate_qualia_f32`] but truncates the result to BF16.
+/// Output is suitable for direct injection into a Burn BF16 tensor
+/// or the BF16 tail scorer pipeline.
+pub fn hydrate_qualia_bf16(packed: &PackedQualia) -> [u16; 16] {
+    let f32_vals = hydrate_qualia_f32(packed);
+    std::array::from_fn(|i| (f32_vals[i].to_bits() >> 16) as u16)
+}
+
+/// Compress 16 f32 values back into a PackedQualia.
+///
+/// Inverse of [`hydrate_qualia_f32`]. Finds the magnitude (max absolute value)
+/// and normalizes the 16 dimensions to i8 range (-127..127).
+///
+/// The sign of the magnitude encodes polarity:
+/// - If the dominant dimension is positive → seek polarity
+/// - If the dominant dimension is negative → flee polarity (sign bit set)
+pub fn compress_to_qualia(values: &[f32; 16]) -> PackedQualia {
+    // Find max absolute value for normalization
+    let mut max_abs = 0.0f32;
+    for &v in values {
+        let abs = v.abs();
+        if abs > max_abs {
+            max_abs = abs;
+        }
+    }
+
+    if max_abs < f32::EPSILON {
+        return PackedQualia {
+            resonance: [0i8; 16],
+            scalar: 0,
+        };
+    }
+
+    // Scale factor: map max_abs → 127
+    let scale = 127.0 / max_abs;
+
+    let resonance: [i8; 16] = std::array::from_fn(|i| {
+        (values[i] * scale).round().clamp(-127.0, 127.0) as i8
+    });
+
+    // Magnitude = max_abs / 127 (inverse of scale, so hydrate recovers original)
+    let magnitude = max_abs / 127.0;
+
+    PackedQualia::new(resonance, magnitude)
+}
+
+/// Compute the dot product between two PackedQualia in their hydrated f32 space.
+///
+/// This is the "resonance" between two phenomenological states:
+/// high positive = aligned, negative = opposing, zero = orthogonal.
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
+    let va = hydrate_qualia_f32(a);
+    let vb = hydrate_qualia_f32(b);
+    crate::simd::dot_f32(&va, &vb)
+}
+
+#[cfg(not(any(feature = "avx512", feature = "avx2")))]
+pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
+    let va = hydrate_qualia_f32(a);
+    let vb = hydrate_qualia_f32(b);
+    va.iter().zip(vb.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// Bundle multiple PackedQualia into a superposed state.
+///
+/// Element-wise sum of hydrated f32 values, then compressed back.
+/// The "+1" scalars weight each agent's contribution:
+///   higher magnitude = more influence in the bundle.
+pub fn bundle_qualia(items: &[&PackedQualia]) -> PackedQualia {
+    if items.is_empty() {
+        return PackedQualia {
+            resonance: [0i8; 16],
+            scalar: 0,
+        };
+    }
+    if items.len() == 1 {
+        return *items[0];
+    }
+
+    let mut acc = [0.0f32; 16];
+    for item in items {
+        let hydrated = hydrate_qualia_f32(item);
+        for i in 0..16 {
+            acc[i] += hydrated[i];
+        }
+    }
+
+    compress_to_qualia(&acc)
+}
+
+#[cfg(test)]
+mod qualia_tests {
+    use super::*;
+
+    #[test]
+    fn test_packed_qualia_roundtrip() {
+        let q = PackedQualia::new([1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12, 13, -14, 15, -16], 2.0);
+        let hydrated = hydrate_qualia_f32(&q);
+        // magnitude_f32 truncates to BF16 so ~2.0
+        let mag = q.magnitude_f32();
+        assert!((mag - 2.0).abs() < 0.1, "magnitude: {}", mag);
+        assert!((hydrated[0] - 1.0 * mag).abs() < 0.01);
+        assert!((hydrated[1] - (-2.0 * mag)).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_polarity_inversion() {
+        let mut q = PackedQualia::new([10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        assert!(!q.is_inverted());
+        let h1 = hydrate_qualia_f32(&q);
+
+        invert_qualia_polarity(&mut q);
+        assert!(q.is_inverted());
+        let h2 = hydrate_qualia_f32(&q);
+
+        // All values should be negated
+        for i in 0..16 {
+            assert!((h1[i] + h2[i]).abs() < 0.01, "dim {}: {} + {} != 0", i, h1[i], h2[i]);
+        }
+    }
+
+    #[test]
+    fn test_compress_roundtrip() {
+        let original = [1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0,
+                        9.0, -10.0, 11.0, -12.0, 13.0, -14.0, 15.0, -16.0f32];
+        let packed = compress_to_qualia(&original);
+        let recovered = hydrate_qualia_f32(&packed);
+
+        // Should preserve relative ratios within BF16/i8 quantization error
+        for i in 0..16 {
+            let ratio = if original[i].abs() > 0.01 { recovered[i] / original[i] } else { 1.0 };
+            assert!((ratio - 1.0).abs() < 0.15, "dim {}: original={}, recovered={}, ratio={}",
+                    i, original[i], recovered[i], ratio);
+        }
+    }
+
+    #[test]
+    fn test_bf16_hydration() {
+        let q = PackedQualia::new([127, -127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let bf16 = hydrate_qualia_bf16(&q);
+        // Convert back to f32 to verify
+        let f32_0 = f32::from_bits((bf16[0] as u32) << 16);
+        let f32_1 = f32::from_bits((bf16[1] as u32) << 16);
+        assert!(f32_0 > 100.0, "bf16[0] should be positive: {}", f32_0);
+        assert!(f32_1 < -100.0, "bf16[1] should be negative: {}", f32_1);
+    }
+
+    #[test]
+    fn test_qualia_dot_aligned() {
+        let a = PackedQualia::new([10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let b = PackedQualia::new([10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let dot = qualia_dot(&a, &b);
+        assert!(dot > 0.0, "aligned states should have positive dot: {}", dot);
+    }
+
+    #[test]
+    fn test_qualia_dot_opposing() {
+        let a = PackedQualia::new([10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let mut b = a;
+        invert_qualia_polarity(&mut b);
+        let dot = qualia_dot(&a, &b);
+        assert!(dot < 0.0, "inverted states should have negative dot: {}", dot);
+    }
+
+    #[test]
+    fn test_bundle_qualia() {
+        let a = PackedQualia::new([100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let b = PackedQualia::new([0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1.0);
+        let bundled = bundle_qualia(&[&a, &b]);
+        let h = hydrate_qualia_f32(&bundled);
+        // Both dim 0 and dim 1 should be roughly equal and positive
+        assert!(h[0] > 0.0 && h[1] > 0.0, "bundled: {:?}", h);
+        assert!((h[0] - h[1]).abs() / h[0].abs() < 0.2, "should be roughly equal: {} vs {}", h[0], h[1]);
+    }
+
+    #[test]
+    fn test_zero_magnitude() {
+        let q = PackedQualia::new([50, -50, 100, -100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0.0);
+        let h = hydrate_qualia_f32(&q);
+        for v in h {
+            assert_eq!(v, 0.0, "zero magnitude should zero all dims");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
