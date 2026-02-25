@@ -232,7 +232,10 @@ where
     pub fn new_with_shape(data: Vec<T>, shape: Vec<usize>) -> Self {
         match Self::try_new_with_shape(data, shape) {
             Ok(arr) => arr,
-            Err(crate::NumError::ShapeMismatch { data_len, shape_product }) => {
+            Err(crate::NumError::ShapeMismatch {
+                data_len,
+                shape_product,
+            }) => {
                 panic!(
                     "Data length ({}) does not match the number of elements required by shape ({})",
                     data_len, shape_product

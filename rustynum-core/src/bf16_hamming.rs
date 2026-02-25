@@ -418,7 +418,7 @@ impl Default for AwarenessThresholds {
 /// 4 states per byte, MSB first:
 /// `byte = (state[4i] << 6) | (state[4i+1] << 4) | (state[4i+2] << 2) | state[4i+3]`
 pub fn pack_awareness_states(states: &[AwarenessState]) -> Vec<u8> {
-    let n_bytes = (states.len() + 3) / 4;
+    let n_bytes = states.len().div_ceil(4);
     let mut packed = vec![0u8; n_bytes];
     for (i, &s) in states.iter().enumerate() {
         let byte_idx = i / 4;
@@ -459,7 +459,7 @@ pub fn superposition_decompose(
 ) -> SuperpositionState {
     let n_vecs = vectors.len();
     assert!(
-        n_vecs >= 2 && n_vecs <= 3,
+        (2..=3).contains(&n_vecs),
         "superposition_decompose requires 2-3 vectors, got {}",
         n_vecs
     );
@@ -473,7 +473,7 @@ pub fn superposition_decompose(
         );
     }
     assert!(
-        byte_len % 2 == 0,
+        byte_len.is_multiple_of(2),
         "BF16 data must be an even number of bytes"
     );
 
@@ -526,7 +526,11 @@ pub fn superposition_decompose(
 
         // Sign consensus: map agreements/n_pairs to 0..255
         let consensus: u8 = if n_pairs == 1 {
-            if sign_agreements == 1 { 255 } else { 0 }
+            if sign_agreements == 1 {
+                255
+            } else {
+                0
+            }
         } else {
             // n_pairs == 3
             match sign_agreements {
@@ -902,7 +906,12 @@ mod tests {
         let a = fp32_to_bf16_bytes(&[1.0, -2.0, 3.0, 4.0]);
         let b = fp32_to_bf16_bytes(&[-1.0, 2.0, 3.0, 4.0]);
         let state = superposition_decompose(&[&a, &b], &AwarenessThresholds::default());
-        let total = state.crystallized_pct + state.tensioned_pct + state.uncertain_pct + state.noise_pct;
-        assert!((total - 1.0).abs() < 0.01, "Percentages should sum to ~1.0, got {}", total);
+        let total =
+            state.crystallized_pct + state.tensioned_pct + state.uncertain_pct + state.noise_pct;
+        assert!(
+            (total - 1.0).abs() < 0.01,
+            "Percentages should sum to ~1.0, got {}",
+            total
+        );
     }
 }

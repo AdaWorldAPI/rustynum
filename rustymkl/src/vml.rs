@@ -888,10 +888,18 @@ mod tests {
         let mut out = vec![0.0f32; 4];
         vsexp(&x, &mut out);
 
-        assert!(out[0].is_infinite() && out[0] > 0.0, "exp(+Inf) must be +Inf, got {}", out[0]);
+        assert!(
+            out[0].is_infinite() && out[0] > 0.0,
+            "exp(+Inf) must be +Inf, got {}",
+            out[0]
+        );
         assert_eq!(out[1], 0.0, "exp(-Inf) must be 0.0, got {}", out[1]);
         assert!(out[2].is_nan(), "exp(NaN) must be NaN, got {}", out[2]);
-        assert!((out[3] - 1.0).abs() < 1e-6, "exp(0) must be 1.0, got {}", out[3]);
+        assert!(
+            (out[3] - 1.0).abs() < 1e-6,
+            "exp(0) must be 1.0, got {}",
+            out[3]
+        );
     }
 
     #[test]
@@ -900,8 +908,16 @@ mod tests {
         let mut out = vec![0.0f32; 4];
         vsln(&x, &mut out);
 
-        assert!(out[0].is_infinite() && out[0] < 0.0, "ln(0) must be -Inf, got {}", out[0]);
-        assert!(out[1].is_infinite() && out[1] > 0.0, "ln(+Inf) must be +Inf, got {}", out[1]);
+        assert!(
+            out[0].is_infinite() && out[0] < 0.0,
+            "ln(0) must be -Inf, got {}",
+            out[0]
+        );
+        assert!(
+            out[1].is_infinite() && out[1] > 0.0,
+            "ln(+Inf) must be +Inf, got {}",
+            out[1]
+        );
         assert!(out[2].is_nan(), "ln(NaN) must be NaN, got {}", out[2]);
         assert!(out[3].abs() < 1e-6, "ln(1) must be 0.0, got {}", out[3]);
     }
@@ -923,7 +939,10 @@ mod tests {
         let mut out = vec![0.0f64; 4];
         vdexp(&x, &mut out);
 
-        assert!(out[0].is_infinite() && out[0] > 0.0, "exp(+Inf) must be +Inf");
+        assert!(
+            out[0].is_infinite() && out[0] > 0.0,
+            "exp(+Inf) must be +Inf"
+        );
         assert_eq!(out[1], 0.0, "exp(-Inf) must be 0.0");
         assert!(out[2].is_nan(), "exp(NaN) must be NaN");
         assert!((out[3] - 1.0).abs() < 1e-12, "exp(0) must be 1.0");
@@ -936,7 +955,10 @@ mod tests {
         vdln(&x, &mut out);
 
         assert!(out[0].is_infinite() && out[0] < 0.0, "ln(0) must be -Inf");
-        assert!(out[1].is_infinite() && out[1] > 0.0, "ln(+Inf) must be +Inf");
+        assert!(
+            out[1].is_infinite() && out[1] > 0.0,
+            "ln(+Inf) must be +Inf"
+        );
         assert!(out[2].is_nan(), "ln(NaN) must be NaN");
         assert!(out[3].abs() < 1e-12, "ln(1) must be 0.0");
     }

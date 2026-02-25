@@ -34,7 +34,7 @@ use std::fmt::Debug;
 pub struct ArrayView<'a, T> {
     data: &'a [T],
     shape: Vec<usize>,
-    strides: Vec<isize>,  // signed: negative = reversed axis
+    strides: Vec<isize>, // signed: negative = reversed axis
     offset: usize,
 }
 
@@ -54,8 +54,18 @@ pub struct ArrayViewMut<'a, T> {
 
 impl<'a, T: Copy + Debug> ArrayView<'a, T> {
     /// Create a new view from raw parts.
-    pub(crate) fn new(data: &'a [T], shape: Vec<usize>, strides: Vec<isize>, offset: usize) -> Self {
-        Self { data, shape, strides, offset }
+    pub(crate) fn new(
+        data: &'a [T],
+        shape: Vec<usize>,
+        strides: Vec<isize>,
+        offset: usize,
+    ) -> Self {
+        Self {
+            data,
+            shape,
+            strides,
+            offset,
+        }
     }
 
     /// Shape of the view.
@@ -123,7 +133,12 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
         let mut strides = self.strides.clone();
         shape.reverse();
         strides.reverse();
-        ArrayView { data: self.data, shape, strides, offset: self.offset }
+        ArrayView {
+            data: self.data,
+            shape,
+            strides,
+            offset: self.offset,
+        }
     }
 
     /// Swap two axes — O(1).
@@ -132,7 +147,12 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
         let mut strides = self.strides.clone();
         shape.swap(a, b);
         strides.swap(a, b);
-        ArrayView { data: self.data, shape, strides, offset: self.offset }
+        ArrayView {
+            data: self.data,
+            shape,
+            strides,
+            offset: self.offset,
+        }
     }
 
     /// Slice along one axis — O(1). Returns a narrower view.
@@ -249,8 +269,18 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
 
 impl<'a, T: Copy + Debug> ArrayViewMut<'a, T> {
     /// Create a new mutable view from raw parts.
-    pub(crate) fn new(data: &'a mut [T], shape: Vec<usize>, strides: Vec<isize>, offset: usize) -> Self {
-        Self { data, shape, strides, offset }
+    pub(crate) fn new(
+        data: &'a mut [T],
+        shape: Vec<usize>,
+        strides: Vec<isize>,
+        offset: usize,
+    ) -> Self {
+        Self {
+            data,
+            shape,
+            strides,
+            offset,
+        }
     }
 
     /// Shape of the view.
@@ -310,7 +340,15 @@ impl<'a, T: Copy + Debug> ArrayViewMut<'a, T> {
         flat as usize
     }
 
-    fn fill_recursive(&mut self, value: T, dim: usize, current_offset: usize, shape: &[usize], strides: &[isize], _len: usize) {
+    fn fill_recursive(
+        &mut self,
+        value: T,
+        dim: usize,
+        current_offset: usize,
+        shape: &[usize],
+        strides: &[isize],
+        _len: usize,
+    ) {
         if dim == shape.len() {
             self.data[current_offset] = value;
             return;
@@ -462,13 +500,21 @@ where
 
 impl<T: Copy + Debug> std::fmt::Debug for ArrayView<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ArrayView(shape={:?}, strides={:?})", self.shape, self.strides)
+        write!(
+            f,
+            "ArrayView(shape={:?}, strides={:?})",
+            self.shape, self.strides
+        )
     }
 }
 
 impl<T: Copy + Debug> std::fmt::Debug for ArrayViewMut<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ArrayViewMut(shape={:?}, strides={:?})", self.shape, self.strides)
+        write!(
+            f,
+            "ArrayViewMut(shape={:?}, strides={:?})",
+            self.shape, self.strides
+        )
     }
 }
 
@@ -591,14 +637,12 @@ mod tests {
     #[test]
     fn test_view_chained_ops() {
         // Chain: view → slice → transpose → flip → all O(1)
-        let a = NumArrayF32::new_with_shape(
-            (1..=12).map(|i| i as f32).collect(),
-            vec![3, 4],
-        );
-        let v = a.view()
-            .slice_axis(0, 0, 2)    // rows 0,1 → 2×4
-            .t()                      // → 4×2
-            .flip_axis(0);            // reverse rows → 4×2
+        let a = NumArrayF32::new_with_shape((1..=12).map(|i| i as f32).collect(), vec![3, 4]);
+        let v = a
+            .view()
+            .slice_axis(0, 0, 2) // rows 0,1 → 2×4
+            .t() // → 4×2
+            .flip_axis(0); // reverse rows → 4×2
 
         assert_eq!(v.shape(), &[4, 2]);
         // Original rows 0,1: [1,2,3,4], [5,6,7,8]
@@ -630,10 +674,7 @@ mod tests {
 
     #[test]
     fn test_view_3d() {
-        let a = NumArrayF32::new_with_shape(
-            (1..=24).map(|i| i as f32).collect(),
-            vec![2, 3, 4],
-        );
+        let a = NumArrayF32::new_with_shape((1..=24).map(|i| i as f32).collect(), vec![2, 3, 4]);
         let v = a.view();
         assert_eq!(v.get(&[0, 0, 0]), 1.0);
         assert_eq!(v.get(&[0, 0, 3]), 4.0);

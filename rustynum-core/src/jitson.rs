@@ -123,7 +123,11 @@ pub struct ParseError {
 
 impl core::fmt::Display for ParseError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "JITSON parse error at byte {}: {}", self.offset, self.message)
+        write!(
+            f,
+            "JITSON parse error at byte {}: {}",
+            self.offset, self.message
+        )
     }
 }
 
@@ -189,9 +193,11 @@ impl<'a> Parser<'a> {
     fn expect(&mut self, expected: u8) -> Result<(), ParseError> {
         match self.advance() {
             Some(b) if b == expected => Ok(()),
-            Some(b) => Err(self.err(
-                &alloc::format!("expected '{}', found '{}'", expected as char, b as char),
-            )),
+            Some(b) => Err(self.err(&alloc::format!(
+                "expected '{}', found '{}'",
+                expected as char,
+                b as char
+            ))),
             None => {
                 // Bracket recovery: if we hit EOF expecting a closing bracket,
                 // check if it matches the top of our open_stack.
@@ -201,9 +207,10 @@ impl<'a> Parser<'a> {
                     self.open_stack.pop();
                     Ok(())
                 } else {
-                    Err(self.err(
-                        &alloc::format!("unexpected EOF, expected '{}'", expected as char),
-                    ))
+                    Err(self.err(&alloc::format!(
+                        "unexpected EOF, expected '{}'",
+                        expected as char
+                    )))
                 }
             }
         }
@@ -217,9 +224,7 @@ impl<'a> Parser<'a> {
             Some(b't') | Some(b'f') => self.parse_bool(),
             Some(b'n') => self.parse_null(),
             Some(b'-') | Some(b'0'..=b'9') => self.parse_number(),
-            Some(c) => Err(self.err(
-                &alloc::format!("unexpected character '{}'", c as char),
-            )),
+            Some(c) => Err(self.err(&alloc::format!("unexpected character '{}'", c as char))),
             None => Err(self.err("unexpected EOF")),
         }
     }
@@ -291,9 +296,13 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
             }
         }
-        if self.pos < self.input.len() && (self.input[self.pos] == b'e' || self.input[self.pos] == b'E') {
+        if self.pos < self.input.len()
+            && (self.input[self.pos] == b'e' || self.input[self.pos] == b'E')
+        {
             self.pos += 1;
-            if self.pos < self.input.len() && (self.input[self.pos] == b'+' || self.input[self.pos] == b'-') {
+            if self.pos < self.input.len()
+                && (self.input[self.pos] == b'+' || self.input[self.pos] == b'-')
+            {
                 self.pos += 1;
             }
             while self.pos < self.input.len() && self.input[self.pos].is_ascii_digit() {
@@ -463,29 +472,64 @@ pub const KNOWN_FEATURES: &[&str] = &[
 /// All AVX-512 instruction mnemonics from the patched Cranelift.
 pub const KNOWN_INSTRUCTIONS: &[&str] = &[
     // abs
-    "vpabsb", "vpabsw", "vpabsd", "vpabsq",
+    "vpabsb",
+    "vpabsw",
+    "vpabsd",
+    "vpabsq",
     // and / ternlog
-    "vpandd", "vpandq", "vpandnd", "vpandnq", "vpternlogd", "vpternlogq",
+    "vpandd",
+    "vpandq",
+    "vpandnd",
+    "vpandnq",
+    "vpternlogd",
+    "vpternlogq",
     // bitmanip
-    "vpopcntb", "vpopcntw", "vpopcntd", "vpopcntq",
+    "vpopcntb",
+    "vpopcntw",
+    "vpopcntd",
+    "vpopcntq",
     // fma (132/213/231 x ps/pd x add/sub/nmadd)
-    "vfmadd132ps", "vfmadd213ps", "vfmadd231ps",
-    "vfmadd132pd", "vfmadd213pd", "vfmadd231pd",
-    "vfmsub132ps", "vfmsub213ps", "vfmsub231ps",
-    "vfmsub132pd", "vfmsub213pd", "vfmsub231pd",
-    "vfnmadd132ps", "vfnmadd213ps", "vfnmadd231ps",
-    "vfnmadd132pd", "vfnmadd213pd", "vfnmadd231pd",
+    "vfmadd132ps",
+    "vfmadd213ps",
+    "vfmadd231ps",
+    "vfmadd132pd",
+    "vfmadd213pd",
+    "vfmadd231pd",
+    "vfmsub132ps",
+    "vfmsub213ps",
+    "vfmsub231ps",
+    "vfmsub132pd",
+    "vfmsub213pd",
+    "vfmsub231pd",
+    "vfnmadd132ps",
+    "vfnmadd213ps",
+    "vfnmadd231ps",
+    "vfnmadd132pd",
+    "vfnmadd213pd",
+    "vfnmadd231pd",
     // mul / vnni
-    "vpmulld", "vpmullq",
-    "vpdpbusd", "vpdpbusds", "vpdpwssd", "vpdpwssds",
+    "vpmulld",
+    "vpmullq",
+    "vpdpbusd",
+    "vpdpbusds",
+    "vpdpwssd",
+    "vpdpwssds",
     // or
-    "vpord", "vporq",
+    "vpord",
+    "vporq",
     // shift
-    "vpsllw", "vpslld", "vpsllq",
-    "vpsraw", "vpsrad", "vpsraq",
-    "vpsrlw", "vpsrld", "vpsrlq",
+    "vpsllw",
+    "vpslld",
+    "vpsllq",
+    "vpsraw",
+    "vpsrad",
+    "vpsraq",
+    "vpsrlw",
+    "vpsrld",
+    "vpsrlq",
     // xor
-    "vpxord", "vpxorq",
+    "vpxord",
+    "vpxorq",
     // add
     "vaddpd",
     // cvt
@@ -503,12 +547,23 @@ pub const KNOWN_BACKENDS: &[&str] = &["lancedb", "dragonfly"];
 /// Known Cranelift presets.
 const KNOWN_PRESETS: &[&str] = &[
     "baseline",
-    "nehalem", "haswell", "broadwell", "skylake",
-    "knl", "knm",
-    "skylake_avx512", "cascade_lake", "cooper_lake",
-    "cannon_lake", "ice_lake_client", "ice_lake_server",
-    "tiger_lake", "sapphire_rapids",
-    "x86_64_v2", "x86_64_v3", "x86_64_v4",
+    "nehalem",
+    "haswell",
+    "broadwell",
+    "skylake",
+    "knl",
+    "knm",
+    "skylake_avx512",
+    "cascade_lake",
+    "cooper_lake",
+    "cannon_lake",
+    "ice_lake_client",
+    "ice_lake_server",
+    "tiger_lake",
+    "sapphire_rapids",
+    "x86_64_v2",
+    "x86_64_v3",
+    "x86_64_v4",
 ];
 
 /// Known opt levels.
@@ -750,7 +805,13 @@ pub fn validate(root: &JsonValue) -> Vec<ValidationError> {
 
     // Warn on unknown top-level keys
     let known_top: &[&str] = &[
-        "version", "kernel", "scan", "pipeline", "features", "cranelift", "backends",
+        "version",
+        "kernel",
+        "scan",
+        "pipeline",
+        "features",
+        "cranelift",
+        "backends",
     ];
     for (key, _) in obj {
         if !known_top.contains(&key.as_str()) {
@@ -764,12 +825,7 @@ pub fn validate(root: &JsonValue) -> Vec<ValidationError> {
     errs
 }
 
-fn validate_uint_field(
-    parent: &JsonValue,
-    key: &str,
-    path: &str,
-    errs: &mut Vec<ValidationError>,
-) {
+fn validate_uint_field(parent: &JsonValue, key: &str, path: &str, errs: &mut Vec<ValidationError>) {
     match parent.get(key) {
         Some(v) => {
             if v.as_u64().is_none() {
@@ -867,7 +923,10 @@ fn convert(root: &JsonValue) -> Result<JitsonTemplate, JitsonError> {
 
     let scan = ScanConfig {
         threshold: scan_obj.get("threshold").and_then(|v| v.as_u64()).unwrap(),
-        record_size: scan_obj.get("record_size").and_then(|v| v.as_usize()).unwrap(),
+        record_size: scan_obj
+            .get("record_size")
+            .and_then(|v| v.as_usize())
+            .unwrap(),
         top_k: scan_obj.get("top_k").and_then(|v| v.as_usize()).unwrap(),
         query: Vec::new(), // Query bytes are provided at runtime, not in the template
     };
@@ -895,11 +954,7 @@ fn convert(root: &JsonValue) -> Result<JitsonTemplate, JitsonError> {
         Some(pairs) => pairs
             .iter()
             .map(|(name, cfg)| {
-                let uri = cfg
-                    .get("uri")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .into();
+                let uri = cfg.get("uri").and_then(|v| v.as_str()).unwrap_or("").into();
                 let options = cfg
                     .as_object()
                     .map(|o| {
@@ -984,9 +1039,7 @@ pub fn required_features(instruction: &str) -> &'static [&'static str] {
         "vpord" | "vporq" => &["avx512vl", "avx512f"],
         // shift (bw for word, f for dword/qword)
         "vpsllw" | "vpsraw" | "vpsrlw" => &["avx512vl", "avx512bw"],
-        "vpslld" | "vpsllq" | "vpsrad" | "vpsraq" | "vpsrld" | "vpsrlq" => {
-            &["avx512vl", "avx512f"]
-        }
+        "vpslld" | "vpsllq" | "vpsrad" | "vpsraq" | "vpsrld" | "vpsrlq" => &["avx512vl", "avx512f"],
         // xor
         "vpxord" | "vpxorq" => &["avx512vl", "avx512f"],
         // add
@@ -1244,7 +1297,10 @@ mod tests {
     fn test_parse_valid() {
         let root = parse_json(VALID_TEMPLATE).unwrap();
         assert_eq!(root.get("version").unwrap().as_u64(), Some(1));
-        assert_eq!(root.get("kernel").unwrap().as_str(), Some("hamming_distance"));
+        assert_eq!(
+            root.get("kernel").unwrap().as_str(),
+            Some("hamming_distance")
+        );
         let scan = root.get("scan").unwrap();
         assert_eq!(scan.get("threshold").unwrap().as_u64(), Some(2048));
     }
@@ -1255,7 +1311,10 @@ mod tests {
         let input = r#"{"version": 1, "kernel": "hamming_distance", "scan": {"threshold": 1, "record_size": 64, "top_k": 5}"#;
         let root = parse_json(input).unwrap();
         assert_eq!(root.get("version").unwrap().as_u64(), Some(1));
-        assert_eq!(root.get("kernel").unwrap().as_str(), Some("hamming_distance"));
+        assert_eq!(
+            root.get("kernel").unwrap().as_str(),
+            Some("hamming_distance")
+        );
     }
 
     #[test]
@@ -1371,7 +1430,10 @@ mod tests {
     #[test]
     fn test_required_features_mapping() {
         assert_eq!(required_features("vpxord"), &["avx512vl", "avx512f"]);
-        assert_eq!(required_features("vpopcntd"), &["avx512vl", "avx512vpopcntdq"]);
+        assert_eq!(
+            required_features("vpopcntd"),
+            &["avx512vl", "avx512vpopcntdq"]
+        );
         assert_eq!(required_features("vpdpbusd"), &["avx512vl", "avx512vnni"]);
         assert_eq!(required_features("vpermi2b"), &["avx512vl", "avx512vbmi"]);
         assert_eq!(required_features("vpsllw"), &["avx512vl", "avx512bw"]);
@@ -1512,7 +1574,12 @@ mod tests {
         assert!(queue.mark_compiled(h1, 0xDEAD_BEEF));
         assert_eq!(queue.pending().len(), 1);
         let entry = queue.lookup(h1).unwrap();
-        assert_eq!(entry.state, CompileState::Compiled { code_addr: 0xDEAD_BEEF });
+        assert_eq!(
+            entry.state,
+            CompileState::Compiled {
+                code_addr: 0xDEAD_BEEF
+            }
+        );
 
         // Compile second template
         assert!(queue.mark_compiled(h2, 0xCAFE_BABE));

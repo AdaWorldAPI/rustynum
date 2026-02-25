@@ -19,6 +19,7 @@
 //!
 //! The SPO crystal (Subject-Predicate-Object) uses 3D grid hashing:
 //! - hash(S) → x, hash(P) → y, hash(O) → z
+//!
 //! This module provides BF16-accelerated distance for SPO triple comparison:
 //! - Subject distance on X-axis (who?)
 //! - Predicate distance on Y-axis (does what?)
@@ -37,8 +38,7 @@
 //! for int8 embedding dot products on the EMBED container axis.
 
 use crate::bf16_hamming::{
-    self, AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights,
-    SuperpositionState,
+    self, AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights, SuperpositionState,
 };
 
 // ============================================================================
@@ -63,7 +63,10 @@ pub struct CrystalAxis {
 impl CrystalAxis {
     /// Create a crystal axis from BF16 bytes.
     pub fn from_bf16_bytes(data: Vec<u8>) -> Self {
-        assert!(data.len() % 2 == 0, "BF16 data must be even number of bytes");
+        assert!(
+            data.len().is_multiple_of(2),
+            "BF16 data must be even number of bytes"
+        );
         let n_dims = data.len() / 2;
         Self { data, n_dims }
     }
@@ -101,8 +104,16 @@ impl CrystalAxis {
     /// XOR-bind two axes (for SPO triple encoding: S ⊕ P, etc).
     pub fn xor_bind(&self, other: &CrystalAxis) -> CrystalAxis {
         assert_eq!(self.data.len(), other.data.len());
-        let data: Vec<u8> = self.data.iter().zip(&other.data).map(|(a, b)| a ^ b).collect();
-        CrystalAxis { data, n_dims: self.n_dims }
+        let data: Vec<u8> = self
+            .data
+            .iter()
+            .zip(&other.data)
+            .map(|(a, b)| a ^ b)
+            .collect();
+        CrystalAxis {
+            data,
+            n_dims: self.n_dims,
+        }
     }
 }
 
@@ -197,11 +208,15 @@ impl SpatialCrystal3D {
     /// This mirrors the SPO crystal encoding in ladybug-rs:
     /// `S ⊕ ROLE_S ⊕ P ⊕ ROLE_P ⊕ O ⊕ ROLE_O`
     /// but decomposed per axis for BF16-structured distance.
-    pub fn spo_encode(subject: &CrystalAxis, predicate: &CrystalAxis, object: &CrystalAxis) -> Self {
+    pub fn spo_encode(
+        subject: &CrystalAxis,
+        predicate: &CrystalAxis,
+        object: &CrystalAxis,
+    ) -> Self {
         Self {
-            x: subject.xor_bind(predicate),  // S ⊕ P
-            y: predicate.xor_bind(object),    // P ⊕ O
-            z: subject.xor_bind(object),      // S ⊕ O
+            x: subject.xor_bind(predicate), // S ⊕ P
+            y: predicate.xor_bind(object),  // P ⊕ O
+            z: subject.xor_bind(object),    // S ⊕ O
         }
     }
 
@@ -310,18 +325,9 @@ pub fn spatial_awareness_decompose(
     b: &SpatialCrystal3D,
     thresholds: &AwarenessThresholds,
 ) -> SpatialAwareness {
-    let x_awareness = bf16_hamming::superposition_decompose(
-        &[&a.x.data, &b.x.data],
-        thresholds,
-    );
-    let y_awareness = bf16_hamming::superposition_decompose(
-        &[&a.y.data, &b.y.data],
-        thresholds,
-    );
-    let z_awareness = bf16_hamming::superposition_decompose(
-        &[&a.z.data, &b.z.data],
-        thresholds,
-    );
+    let x_awareness = bf16_hamming::superposition_decompose(&[&a.x.data, &b.x.data], thresholds);
+    let y_awareness = bf16_hamming::superposition_decompose(&[&a.y.data, &b.y.data], thresholds);
+    let z_awareness = bf16_hamming::superposition_decompose(&[&a.z.data, &b.z.data], thresholds);
 
     let crystallized = [
         x_awareness.crystallized_pct,
@@ -410,7 +416,11 @@ pub fn extract_spatial_learning_signal(
 
     // Per-axis attention weights from awareness states
     let mut attention_weights_3d = Vec::with_capacity(96);
-    for axis_awareness in [&awareness.x_awareness, &awareness.y_awareness, &awareness.z_awareness] {
+    for axis_awareness in [
+        &awareness.x_awareness,
+        &awareness.y_awareness,
+        &awareness.z_awareness,
+    ] {
         let n_dims = axis_awareness.n_dims;
         let group_size = n_dims.div_ceil(32).max(1);
         for group in 0..32 {
@@ -507,7 +517,11 @@ pub fn spatial_sweep(
         let total = dx + dy + dz;
 
         if total <= threshold {
-            let distances = SpatialDistances { x: dx, y: dy, z: dz };
+            let distances = SpatialDistances {
+                x: dx,
+                y: dy,
+                z: dz,
+            };
             matches.push(SpatialMatch {
                 index: idx,
                 distances,
@@ -549,7 +563,11 @@ mod tests {
         let a = make_axis(&[1.0, 2.0, 3.0, 4.0]);
         let b = make_axis(&[-1.0, -2.0, 3.0, 4.0]);
         let d = a.distance(&b, &BF16Weights::default());
-        assert!(d >= 512, "two sign flips should give >= 512 distance, got {}", d);
+        assert!(
+            d >= 512,
+            "two sign flips should give >= 512 distance, got {}",
+            d
+        );
     }
 
     #[test]
@@ -574,11 +592,7 @@ mod tests {
 
     #[test]
     fn test_spatial_crystal_3d_axis_distances() {
-        let a = SpatialCrystal3D::from_f32(
-            &[1.0, 2.0],
-            &[3.0, 4.0],
-            &[5.0, 6.0],
-        );
+        let a = SpatialCrystal3D::from_f32(&[1.0, 2.0], &[3.0, 4.0], &[5.0, 6.0]);
         let b = SpatialCrystal3D::from_f32(
             &[-1.0, 2.0], // X: sign flip
             &[3.0, 4.0],  // Y: identical
@@ -601,8 +615,14 @@ mod tests {
         let recovered_s = encoded.spo_recover_subject(&predicate);
         let recovered_o = encoded.spo_recover_object(&predicate);
 
-        assert_eq!(subject.data, recovered_s.data, "subject should be recoverable");
-        assert_eq!(object.data, recovered_o.data, "object should be recoverable");
+        assert_eq!(
+            subject.data, recovered_s.data,
+            "subject should be recoverable"
+        );
+        assert_eq!(
+            object.data, recovered_o.data,
+            "object should be recoverable"
+        );
     }
 
     #[test]
@@ -632,12 +652,13 @@ mod tests {
             &[9.0, 10.0, 11.0, 12.0],
         );
         let result = SpatialCrystal3D::from_f32(
-            &[-1.0, -2.0, 3.0, 4.0], // X: sign flips
-            &[5.0, 6.0, 7.0, 8.0],   // Y: identical
+            &[-1.0, -2.0, 3.0, 4.0],  // X: sign flips
+            &[5.0, 6.0, 7.0, 8.0],    // Y: identical
             &[9.0, 10.0, 11.0, 12.0], // Z: identical
         );
 
-        let signal = extract_spatial_learning_signal(&query, &result, &AwarenessThresholds::default());
+        let signal =
+            extract_spatial_learning_signal(&query, &result, &AwarenessThresholds::default());
 
         assert!(signal.x_diff.sign_flips > 0, "X should have sign flips");
         assert_eq!(signal.y_diff.sign_flips, 0, "Y should have no sign flips");
@@ -666,16 +687,15 @@ mod tests {
         let matches = spatial_sweep(&query, &database, 100, &BF16Weights::default(), 10);
         assert!(!matches.is_empty(), "should find at least one match");
         assert_eq!(matches[0].index, 0, "best match should be index 0");
-        assert_eq!(matches[0].total_distance, 0, "exact match should have 0 distance");
+        assert_eq!(
+            matches[0].total_distance, 0,
+            "exact match should have 0 distance"
+        );
     }
 
     #[test]
     fn test_spatial_sweep_early_exit() {
-        let query = SpatialCrystal3D::from_f32(
-            &[1.0; 64],
-            &[1.0; 64],
-            &[1.0; 64],
-        );
+        let query = SpatialCrystal3D::from_f32(&[1.0; 64], &[1.0; 64], &[1.0; 64]);
 
         // All candidates very far away on X → should exit early without computing Y, Z
         let database: Vec<SpatialCrystal3D> = (0..100)
@@ -683,16 +703,16 @@ mod tests {
             .collect();
 
         let matches = spatial_sweep(&query, &database, 100, &BF16Weights::default(), 10);
-        assert!(matches.is_empty(), "all candidates should be rejected by X-axis early exit");
+        assert!(
+            matches.is_empty(),
+            "all candidates should be rejected by X-axis early exit"
+        );
     }
 
     #[test]
     fn test_flat_bytes_roundtrip() {
-        let crystal = SpatialCrystal3D::from_f32(
-            &[1.0, 2.0, 3.0],
-            &[4.0, 5.0, 6.0],
-            &[7.0, 8.0, 9.0],
-        );
+        let crystal =
+            SpatialCrystal3D::from_f32(&[1.0, 2.0, 3.0], &[4.0, 5.0, 6.0], &[7.0, 8.0, 9.0]);
         let bytes = crystal.to_flat_bytes();
         let back = SpatialCrystal3D::from_flat_bytes(&bytes, crystal.x.data.len());
         assert_eq!(crystal.x.data, back.x.data);
@@ -702,10 +722,20 @@ mod tests {
 
     #[test]
     fn test_spatial_distances_balance() {
-        let balanced = SpatialDistances { x: 100, y: 100, z: 100 };
-        assert!(balanced.balance() > 0.9, "equal distances should be balanced");
+        let balanced = SpatialDistances {
+            x: 100,
+            y: 100,
+            z: 100,
+        };
+        assert!(
+            balanced.balance() > 0.9,
+            "equal distances should be balanced"
+        );
 
         let imbalanced = SpatialDistances { x: 300, y: 0, z: 0 };
-        assert!(imbalanced.balance() < 0.5, "single-axis distance should be imbalanced");
+        assert!(
+            imbalanced.balance() < 0.5,
+            "single-axis distance should be imbalanced"
+        );
     }
 }

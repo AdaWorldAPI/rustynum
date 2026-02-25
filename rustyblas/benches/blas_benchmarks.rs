@@ -3,7 +3,9 @@ use rustyblas::{level1, level3, Layout, Transpose};
 
 fn bench_sdot(c: &mut Criterion) {
     let mut group = c.benchmark_group("sdot");
-    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
+    for &n in &[
+        64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
+    ] {
         let x: Vec<f32> = (0..n).map(|i| i as f32 * 0.001).collect();
         let y: Vec<f32> = (0..n).map(|i| i as f32 * 0.002).collect();
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {
@@ -15,7 +17,9 @@ fn bench_sdot(c: &mut Criterion) {
 
 fn bench_saxpy(c: &mut Criterion) {
     let mut group = c.benchmark_group("saxpy");
-    for &n in &[64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144] {
+    for &n in &[
+        64, 256, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144,
+    ] {
         let x: Vec<f32> = (0..n).map(|i| i as f32 * 0.001).collect();
         let mut y: Vec<f32> = (0..n).map(|i| i as f32 * 0.002).collect();
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &_n| {

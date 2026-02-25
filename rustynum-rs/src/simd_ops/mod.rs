@@ -399,14 +399,14 @@ impl SimdOps<f32> for f32x16 {
             m,
             n,
             k,
-            1.0,  // alpha
+            1.0, // alpha
             a,
-            k,    // lda = K for row-major NoTrans A
+            k, // lda = K for row-major NoTrans A
             b,
-            n,    // ldb = N for row-major NoTrans B
-            0.0,  // beta (overwrite C)
+            n,   // ldb = N for row-major NoTrans B
+            0.0, // beta (overwrite C)
             c,
-            n,    // ldc = N for row-major C
+            n, // ldc = N for row-major C
         );
     }
 
@@ -668,14 +668,14 @@ impl SimdOps<f64> for f64x8 {
             m,
             n,
             k,
-            1.0,  // alpha
+            1.0, // alpha
             a,
-            k,    // lda = K for row-major NoTrans A
+            k, // lda = K for row-major NoTrans A
             b,
-            n,    // ldb = N for row-major NoTrans B
-            0.0,  // beta (overwrite C)
+            n,   // ldb = N for row-major NoTrans B
+            0.0, // beta (overwrite C)
             c,
-            n,    // ldc = N for row-major C
+            n, // ldc = N for row-major C
         );
     }
 

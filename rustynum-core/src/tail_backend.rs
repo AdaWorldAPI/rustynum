@@ -91,12 +91,8 @@ pub trait TailBackend: Send + Sync {
     ///
     /// `query_bytes` and `candidate_bytes` are BF16 byte slices (2 bytes/dim).
     /// Both must have the same length. No mutation, no retained references.
-    fn score(
-        &self,
-        query_bytes: &[u8],
-        candidate_bytes: &[u8],
-        weights: &BF16Weights,
-    ) -> TailScore;
+    fn score(&self, query_bytes: &[u8], candidate_bytes: &[u8], weights: &BF16Weights)
+        -> TailScore;
 
     /// Score multiple candidates in one call.
     ///
@@ -262,7 +258,7 @@ pub fn compact_score_from_bytes(
     weights: &BF16Weights,
 ) -> CompactTailScore {
     assert_eq!(query_bytes.len(), candidate_bytes.len());
-    assert!(query_bytes.len() % 2 == 0);
+    assert!(query_bytes.len().is_multiple_of(2));
 
     let n_dims = query_bytes.len() / 2;
     let mut distance: u64 = 0;
@@ -283,7 +279,7 @@ pub fn compact_score_from_bytes(
             + exp_pop as u64 * weights.exponent as u64
             + man_pop as u64 * weights.mantissa as u64;
 
-        sign_flips += sign as u16;
+        sign_flips += sign;
         exponent_bits += exp_pop;
     }
 
@@ -631,21 +627,9 @@ mod tests {
 
         // Distant candidates should be tied, ordered by index
         let distant_dist = order[2].0;
-        assert_eq!(
-            order[2],
-            (distant_dist, 0),
-            "Tied distant: index 0 first"
-        );
-        assert_eq!(
-            order[3],
-            (distant_dist, 1),
-            "Tied distant: index 1 second"
-        );
-        assert_eq!(
-            order[4],
-            (distant_dist, 2),
-            "Tied distant: index 2 third"
-        );
+        assert_eq!(order[2], (distant_dist, 0), "Tied distant: index 0 first");
+        assert_eq!(order[3], (distant_dist, 1), "Tied distant: index 1 second");
+        assert_eq!(order[4], (distant_dist, 2), "Tied distant: index 2 third");
     }
 
     #[test]
@@ -671,11 +655,17 @@ mod tests {
         let compact = backend.score_batch_compact(&query_bytes, &batch_data, n, &weights);
 
         // Distances must be identical
-        for i in 0..n {
+        for (i, (full_dist, compact_entry)) in full
+            .distances
+            .iter()
+            .zip(compact.iter())
+            .enumerate()
+            .take(n)
+        {
             assert_eq!(
-                full.distances[i], compact[i].bf16_distance,
+                *full_dist, compact_entry.bf16_distance,
                 "Distance mismatch at index {}: full={} compact={}",
-                i, full.distances[i], compact[i].bf16_distance
+                i, full_dist, compact_entry.bf16_distance
             );
         }
 
@@ -744,10 +734,7 @@ mod tests {
         // If BITALG is detected, AVX-512F must also be present
         let caps = capabilities();
         if caps.avx512_bitalg {
-            assert!(
-                caps.avx512f,
-                "BITALG implies AVX-512F, but avx512f=false"
-            );
+            assert!(caps.avx512f, "BITALG implies AVX-512F, but avx512f=false");
         }
         // If libxsmm is selected, it must be compiled
         if caps.libxsmm_selected {
@@ -855,11 +842,7 @@ mod tests {
 
         eprintln!(
             "  N={:<6} dims={:<6} | {:.1} ns/cand | {:.0} cand/s | (compact) checksum={}",
-            n_candidates,
-            n_dims,
-            ns_per_candidate,
-            candidates_per_sec,
-            checksum,
+            n_candidates, n_dims, ns_per_candidate, candidates_per_sec, checksum,
         );
     }
 
@@ -869,7 +852,10 @@ mod tests {
         let caps = capabilities();
         eprintln!("\n=== Tail Backend Benchmark (full) ===");
         eprintln!("Backend: {}", caps.backend_name);
-        eprintln!("AVX-512F={} BITALG={} VPOPCNTDQ={}", caps.avx512f, caps.avx512_bitalg, caps.avx512_vpopcntdq);
+        eprintln!(
+            "AVX-512F={} BITALG={} VPOPCNTDQ={}",
+            caps.avx512f, caps.avx512_bitalg, caps.avx512_vpopcntdq
+        );
 
         let backend = auto_detect();
         let dims = 1024; // Jina-standard: 1024 BF16 dims = 2048 bytes

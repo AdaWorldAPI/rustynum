@@ -13,7 +13,10 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumError {
     /// Shape mismatch: data length doesn't match shape product
-    ShapeMismatch { data_len: usize, shape_product: usize },
+    ShapeMismatch {
+        data_len: usize,
+        shape_product: usize,
+    },
     /// Dimension mismatch for matrix operations
     DimensionMismatch(String),
     /// Invalid parameter (e.g., step == 0 in arange)
@@ -23,8 +26,15 @@ pub enum NumError {
 impl std::fmt::Display for NumError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NumError::ShapeMismatch { data_len, shape_product } => {
-                write!(f, "data length {} does not match shape product {}", data_len, shape_product)
+            NumError::ShapeMismatch {
+                data_len,
+                shape_product,
+            } => {
+                write!(
+                    f,
+                    "data length {} does not match shape product {}",
+                    data_len, shape_product
+                )
             }
             NumError::DimensionMismatch(msg) => write!(f, "dimension mismatch: {}", msg),
             NumError::InvalidParameter(msg) => write!(f, "invalid parameter: {}", msg),

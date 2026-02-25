@@ -28,7 +28,7 @@
 
 use crate::bf16_hamming::{self, BF16Weights};
 use crate::tail_backend::{
-    BatchTailScore, CompactTailScore, TailBackend, TailScore, compact_score_from_bytes,
+    compact_score_from_bytes, BatchTailScore, CompactTailScore, TailBackend, TailScore,
 };
 
 /// Default scale factor for f32→u64 distance quantization.
@@ -53,6 +53,12 @@ pub struct GemmBackend {
 // Safety: GemmBackend holds only a function pointer, a float, and no mutable state.
 unsafe impl Send for GemmBackend {}
 unsafe impl Sync for GemmBackend {}
+
+impl Default for GemmBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GemmBackend {
     /// Create a new GEMM backend with default scale factor.
@@ -80,6 +86,7 @@ impl GemmBackend {
 /// Used as the baseline implementation. When SIMD features are compiled,
 /// `simd_dot_f32()` is preferred in the batch path.
 #[inline]
+#[cfg_attr(any(feature = "avx512", feature = "avx2"), allow(dead_code))]
 fn dot_f32_scalar(a: &[f32], b: &[f32]) -> f32 {
     debug_assert_eq!(a.len(), b.len());
     // 4x manual unroll for ILP
@@ -161,7 +168,7 @@ impl TailBackend for GemmBackend {
         query_bytes: &[u8],
         candidate_slices: &[u8],
         n_candidates: usize,
-        weights: &BF16Weights,
+        _weights: &BF16Weights,
     ) -> BatchTailScore {
         let stride = query_bytes.len();
 

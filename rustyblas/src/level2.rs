@@ -811,7 +811,17 @@ pub fn strmv(
                 Uplo::Upper => Uplo::Lower,
                 Uplo::Lower => Uplo::Upper,
             };
-            strmv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+            strmv(
+                Layout::RowMajor,
+                effective_uplo,
+                trans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
@@ -915,7 +925,17 @@ pub fn strsv(
                 Uplo::Upper => Uplo::Lower,
                 Uplo::Lower => Uplo::Upper,
             };
-            strsv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+            strsv(
+                Layout::RowMajor,
+                effective_uplo,
+                trans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
@@ -1007,7 +1027,17 @@ pub fn dtrmv(
                 Uplo::Upper => Uplo::Lower,
                 Uplo::Lower => Uplo::Upper,
             };
-            dtrmv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+            dtrmv(
+                Layout::RowMajor,
+                effective_uplo,
+                trans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
@@ -1084,7 +1114,17 @@ pub fn dtrsv(
                 Uplo::Upper => Uplo::Lower,
                 Uplo::Lower => Uplo::Upper,
             };
-            dtrsv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+            dtrsv(
+                Layout::RowMajor,
+                effective_uplo,
+                trans,
+                diag,
+                n,
+                a,
+                lda,
+                x,
+                incx,
+            );
         }
     }
 }
