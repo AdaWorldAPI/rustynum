@@ -14,6 +14,7 @@ members = [
     "rustynum-oracle",
     "rustynum-clam",
     "bindings/python",
+    "qualia_xor",
 ]
 # NOTE: jitson/ is NOT a workspace member — it depends on AdaWorldAPI/wasmtime
 # Cranelift fork (AVX-512 JIT) which pulls in the full wasmtime workspace.
