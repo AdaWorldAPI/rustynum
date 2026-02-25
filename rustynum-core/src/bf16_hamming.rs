@@ -248,6 +248,8 @@ pub fn select_bf16_hamming_fn() -> BF16HammingFn {
         #[cfg(target_arch = "x86_64")]
         {
             if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
+                // SAFETY: CPU feature detection guarantees AVX-512BW + BITALG are available.
+                // The closure delegates to bf16_hamming_avx512 which requires these features.
                 return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
             }
         }

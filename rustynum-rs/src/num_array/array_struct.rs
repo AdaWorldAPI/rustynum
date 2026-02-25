@@ -172,6 +172,45 @@ where
         }
     }
 
+    /// Creates a new array from the given data and a specific shape, returning
+    /// an error if the data length does not match the shape product.
+    ///
+    /// # Parameters
+    /// * `data` - The vector of elements.
+    /// * `shape` - A vector of dimensions defining the shape of the array.
+    ///
+    /// # Returns
+    /// `Ok(NumArray)` on success, or `Err(NumError::ShapeMismatch)` if lengths disagree.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    /// let array = NumArrayF32::try_new_with_shape(data, vec![2, 3]).unwrap();
+    /// ```
+    pub fn try_new_with_shape(data: Vec<T>, shape: Vec<usize>) -> Result<Self, crate::NumError> {
+        let num_elements_from_shape: usize = if shape.is_empty() {
+            1 // Scalar case (0-D)
+        } else {
+            shape.iter().product() // Product of dimensions for N-D
+        };
+
+        if data.len() != num_elements_from_shape {
+            return Err(crate::NumError::ShapeMismatch {
+                data_len: data.len(),
+                shape_product: num_elements_from_shape,
+            });
+        }
+
+        let strides = Self::compute_strides(&shape);
+        Ok(Self {
+            data,
+            shape,
+            strides,
+            _ops: PhantomData,
+        })
+    }
+
     /// Creates a new array from the given data and a specific shape.
     ///
     /// # Parameters
@@ -191,27 +230,15 @@ where
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
     /// ```
     pub fn new_with_shape(data: Vec<T>, shape: Vec<usize>) -> Self {
-        let num_elements_from_shape: usize = if shape.is_empty() {
-            1 // Scalar case (0-D)
-        } else {
-            shape.iter().product() // Product of dimensions for N-D
-        };
-
-        if data.len() != num_elements_from_shape {
-            panic!(
-                "Data length ({}) does not match the number of elements required by shape {:?} ({})",
-                data.len(),
-                shape,
-                num_elements_from_shape
-            );
-        }
-
-        let strides = Self::compute_strides(&shape);
-        Self {
-            data,
-            shape,
-            strides,
-            _ops: PhantomData,
+        match Self::try_new_with_shape(data, shape) {
+            Ok(arr) => arr,
+            Err(crate::NumError::ShapeMismatch { data_len, shape_product }) => {
+                panic!(
+                    "Data length ({}) does not match the number of elements required by shape ({})",
+                    data_len, shape_product
+                );
+            }
+            Err(e) => panic!("{}", e),
         }
     }
 
@@ -633,7 +660,7 @@ where
     pub fn top_k(&self, k: usize) -> (Vec<usize>, Vec<T>) {
         assert!(k <= self.data.len(), "k must be <= array length.");
         let mut indexed: Vec<(usize, T)> = self.data.iter().copied().enumerate().collect();
-        indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         indexed.truncate(k);
         let indices: Vec<usize> = indexed.iter().map(|&(i, _)| i).collect();
         let values: Vec<T> = indexed.iter().map(|&(_, v)| v).collect();

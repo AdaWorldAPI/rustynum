@@ -256,6 +256,8 @@ pub mod arch {
 /// Must be called after `ensure_init()`.
 pub fn target_archid() -> i32 {
     ensure_init();
+    // SAFETY: libxsmm_init() has been called via ensure_init(). The function
+    // returns an integer arch ID and has no other preconditions.
     unsafe { libxsmm_get_target_archid() }
 }
 
@@ -266,8 +268,10 @@ pub fn target_archid() -> i32 {
 static INIT: Once = Once::new();
 
 fn ensure_init() {
-    INIT.call_once(|| unsafe {
-        libxsmm_init();
+    INIT.call_once(|| {
+        // SAFETY: libxsmm_init() is safe to call from any thread and idempotent.
+        // Once guards guarantee it runs exactly once across all threads.
+        unsafe { libxsmm_init() };
     });
 }
 
@@ -293,12 +297,17 @@ impl JitKernel {
     /// (e.g., BF16 on a CPU without VDPBF16PS and no AMX).
     pub fn try_dispatch(shape: LibxsmmGemmShape, flags: LibxsmmBitfield) -> Option<Self> {
         ensure_init();
+        // SAFETY: libxsmm_init() has been called. shape is a valid LibxsmmGemmShape
+        // struct (repr(C), matching the C API layout). Returns None if unsupported.
         let kernel = unsafe { libxsmm_dispatch_gemm(shape.clone(), flags, 0) }?;
         Some(Self { kernel, shape })
     }
 
     /// Dispatch an f32 GEMM kernel (C = A * B, beta=0).
     pub fn f32_gemm(m: i32, n: i32, k: i32) -> Option<Self> {
+        // SAFETY: libxsmm_create_gemm_shape is a pure struct constructor with no
+        // preconditions beyond valid integer arguments. It fills a stack-allocated
+        // LibxsmmGemmShape struct.
         let shape = unsafe {
             libxsmm_create_gemm_shape(
                 m,
@@ -319,6 +328,8 @@ impl JitKernel {
     /// Dispatch a BF16 GEMM kernel (BF16 inputs, f32 output, f32 accumulation).
     /// Requires CPX+ (VDPBF16PS) or SPR+ (AMX TDPBF16PS).
     pub fn bf16_gemm(m: i32, n: i32, k: i32) -> Option<Self> {
+        // SAFETY: Same as f32_gemm -- pure struct constructor with no preconditions.
+        // Uses LIBXSMM_DATATYPE_BF16 for A/B and F32 for C accumulation.
         let shape = unsafe {
             libxsmm_create_gemm_shape(
                 m,
@@ -358,9 +369,9 @@ impl JitKernel {
     }
 }
 
-// JitKernel holds a function pointer to mmap'd code. Safe across threads
-// (the code is read-only after JIT compilation, protected by LIBXSMM's
-// internal locking during dispatch).
+// SAFETY: JitKernel holds a function pointer to mmap'd code that is read-only
+// after JIT compilation. LIBXSMM uses internal locking during dispatch, so the
+// kernel pointer is safe to share across threads. No mutable state.
 unsafe impl Send for JitKernel {}
 unsafe impl Sync for JitKernel {}
 
@@ -427,6 +438,8 @@ pub struct XsmmBackend {
     archid: i32,
 }
 
+// SAFETY: XsmmBackend holds only a function pointer (popcnt_fn) and an integer
+// (archid). Function pointers are Send+Sync. No mutable state.
 unsafe impl Send for XsmmBackend {}
 unsafe impl Sync for XsmmBackend {}
 
@@ -439,6 +452,8 @@ impl XsmmBackend {
         ensure_init();
         Some(Self {
             popcnt_fn: bf16_hamming::select_bf16_hamming_fn(),
+            // SAFETY: libxsmm_init() was called by ensure_init() above.
+            // Returns an integer arch ID with no other preconditions.
             archid: unsafe { libxsmm_get_target_archid() },
         })
     }
@@ -485,6 +500,10 @@ impl XsmmBackend {
 
                     // SGEMM: C = Candidates^T × Query
                     // transa='T', transb='N', M=N_candidates, N=1, K=dim
+                    // SAFETY: All pointers are from thread-local Vec buffers that
+                    // are live for the duration of this call. Dimensions match the
+                    // widened BF16->f32 data: cbuf has n_candidates*n_dims elements,
+                    // qbuf has n_dims elements, sbuf has n_candidates elements.
                     unsafe {
                         let transa = b'T' as libc::c_char;
                         let transb = b'N' as libc::c_char;

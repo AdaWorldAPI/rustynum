@@ -113,6 +113,8 @@ impl SimdKernelRegistry for DefaultKernelRegistry {
 ///
 /// `a` and `b` must point to valid memory of at least `len` bytes.
 extern "C" fn hamming_trampoline(a: *const u8, b: *const u8, len: usize) -> u64 {
+    // SAFETY: Caller (Cranelift JIT or scan_hamming) guarantees `a` and `b` point
+    // to valid memory of at least `len` bytes, as documented in the # Safety section.
     let a_slice = unsafe { core::slice::from_raw_parts(a, len) };
     let b_slice = unsafe { core::slice::from_raw_parts(b, len) };
     #[cfg(any(feature = "avx512", feature = "avx2"))]
@@ -131,6 +133,9 @@ extern "C" fn hamming_trampoline(a: *const u8, b: *const u8, len: usize) -> u64 
 ///
 /// `a` and `b` must point to valid memory of at least `len` bytes.
 extern "C" fn cosine_i8_trampoline(a: *const i8, b: *const i8, len: usize) -> f32 {
+    // SAFETY: Caller (Cranelift JIT) guarantees `a` and `b` point to valid memory
+    // of at least `len` bytes, as documented in the # Safety section.
+    // The u8 casts are safe because i8 and u8 have identical layout.
     let a_slice = unsafe { core::slice::from_raw_parts(a as *const u8, len) };
     let b_slice = unsafe { core::slice::from_raw_parts(b as *const u8, len) };
     // Cast back to i8 slices for the SIMD dot product
@@ -162,6 +167,8 @@ extern "C" fn cosine_i8_trampoline(a: *const i8, b: *const i8, len: usize) -> f3
 ///
 /// `a` and `b` must point to valid memory of at least `len * 4` bytes.
 extern "C" fn dot_f32_trampoline(a: *const f32, b: *const f32, len: usize) -> f32 {
+    // SAFETY: Caller (Cranelift JIT) guarantees `a` and `b` point to valid memory
+    // of at least `len * 4` bytes (len f32 elements), as documented in the # Safety section.
     let a_slice = unsafe { core::slice::from_raw_parts(a, len) };
     let b_slice = unsafe { core::slice::from_raw_parts(b, len) };
     #[cfg(any(feature = "avx512", feature = "avx2"))]

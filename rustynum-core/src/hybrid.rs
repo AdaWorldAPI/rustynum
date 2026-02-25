@@ -457,7 +457,7 @@ pub fn hybrid_pipeline(
     }
 
     // Sort by combined score (best first)
-    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap());
+    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap_or(std::cmp::Ordering::Equal));
 
     (hybrid_scores, stats)
 }
@@ -623,7 +623,7 @@ pub fn hybrid_pipeline_with_backend(
     }
 
     // Sort by combined score (best first)
-    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap());
+    hybrid_scores.sort_by(|a, b| a.combined_score.partial_cmp(&b.combined_score).unwrap_or(std::cmp::Ordering::Equal));
 
     (hybrid_scores, stats)
 }

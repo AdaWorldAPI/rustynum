@@ -300,6 +300,8 @@ pub fn int8_gemm_i32(
     {
         // Prefer 512-bit VNNI if available (servers: Sapphire Rapids, etc.)
         if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512bw") {
+            // SAFETY: CPU feature detection above guarantees AVX-512 VNNI + BW.
+            // a, b_t, c pointers come from valid slices with lengths checked by asserts.
             unsafe {
                 int8_gemm_vnni_512(a, &b_t, c, m, n, k);
             }
@@ -307,6 +309,8 @@ pub fn int8_gemm_i32(
         }
         // Fall back to 256-bit AVX-VNNI (laptops: Meteor Lake U9 185H, etc.)
         if is_x86_feature_detected!("avxvnni") {
+            // SAFETY: CPU feature detection above guarantees AVX-VNNI.
+            // a, b_t, c pointers come from valid slices with lengths checked by asserts.
             unsafe {
                 int8_gemm_vnni_256(a, &b_t, c, m, n, k);
             }

@@ -225,7 +225,9 @@ pub fn bf16_gemm_f32(
 
     #[cfg(feature = "mkl")]
     {
-        // BF16 is #[repr(transparent)] wrapping u16, safe to cast pointer
+        // SAFETY: BF16 is #[repr(transparent)] wrapping u16, so pointer casts are
+        // layout-compatible. Dimensions m, n, k are checked by asserts above.
+        // Pointers from valid slices, leading dimensions match row-major layout.
         unsafe {
             rustynum_core::mkl_ffi::cblas_gemm_bf16bf16f32(
                 101, // CblasRowMajor

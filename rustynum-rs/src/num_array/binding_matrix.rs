@@ -108,7 +108,7 @@ pub fn find_holographic_sweet_spot(
         }
     }
 
-    spots.sort_by(|a, b| a.3.partial_cmp(&b.3).unwrap());
+    spots.sort_by(|a, b| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal));
     spots
 }
 
@@ -140,7 +140,7 @@ pub fn find_discriminative_spots(
         }
     }
 
-    spots.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap());
+    spots.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
     spots
 }
 

@@ -56,6 +56,8 @@ pub fn sgemv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS SGEMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_sgemv(
                 layout as i32,
@@ -201,6 +203,8 @@ pub fn dgemv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS DGEMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dgemv(
                 layout as i32,
@@ -343,6 +347,8 @@ pub fn sger(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, incx, incy, lda are caller-provided
+        // and satisfy the CBLAS SGER contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_sger(
                 layout as i32,
@@ -418,6 +424,8 @@ pub fn dger(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. m, n, incx, incy, lda are caller-provided
+        // and satisfy the CBLAS DGER contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dger(
                 layout as i32,
@@ -499,6 +507,8 @@ pub fn ssymv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS SSYMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_ssymv(
                 layout as i32,
@@ -601,6 +611,8 @@ pub fn dsymv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx, incy are caller-provided
+        // and satisfy the CBLAS DSYMV contract.
         unsafe {
             rustynum_core::mkl_ffi::cblas_dsymv(
                 layout as i32,
@@ -703,6 +715,9 @@ pub fn strmv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx are caller-provided
+        // and satisfy the CBLAS STRMV contract. A is triangular (read-only),
+        // x is overwritten in-place.
         unsafe {
             rustynum_core::mkl_ffi::cblas_strmv(
                 layout as i32,
@@ -757,23 +772,46 @@ pub fn strmv(
                 x[i * incx] = sum;
             }
         }
+        // Transposed cases: access A^T by reading a[j*lda+i] instead of a[i*lda+j].
+        // The old approach (swap uplo, recurse with NoTrans) is incorrect because it
+        // still reads the same matrix elements — it doesn't actually transpose the access.
+        (Layout::RowMajor, Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => {
+            // A^T is lower-triangular. Process bottom-up so earlier x[j] are final.
+            for i in (0..n).rev() {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                // Off-diagonal: columns j < i where A[j,i] lives (upper triangle of A)
+                for j in 0..i {
+                    sum += a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = sum;
+            }
+        }
+        (Layout::RowMajor, Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => {
+            // A^T is upper-triangular. Process top-down so later x[j] are final.
+            for i in 0..n {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                // Off-diagonal: columns j > i where A[j,i] lives (lower triangle of A)
+                for j in (i + 1)..n {
+                    sum += a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = sum;
+            }
+        }
         _ => {
-            let effective_uplo = match (uplo, trans) {
-                (Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => Uplo::Lower,
-                (Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => Uplo::Upper,
-                (u, _) => u,
+            // ColMajor: swap to RowMajor with transposed uplo interpretation
+            let effective_uplo = match uplo {
+                Uplo::Upper => Uplo::Lower,
+                Uplo::Lower => Uplo::Upper,
             };
-            strmv(
-                layout,
-                effective_uplo,
-                Transpose::NoTrans,
-                diag,
-                n,
-                a,
-                lda,
-                x,
-                incx,
-            );
+            strmv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
         }
     }
 }
@@ -799,6 +837,9 @@ pub fn strsv(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers from valid slices. n, lda, incx are caller-provided
+        // and satisfy the CBLAS STRSV contract. A is triangular (read-only),
+        // x is overwritten with the solution in-place.
         unsafe {
             rustynum_core::mkl_ffi::cblas_strsv(
                 layout as i32,
@@ -847,23 +888,203 @@ pub fn strsv(
                 x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
             }
         }
+        // Transposed cases: solve A^T * x = b by reading a[j*lda+i].
+        (Layout::RowMajor, Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => {
+            // A^T is upper-triangular → back substitution
+            for i in (0..n).rev() {
+                let mut sum = x[i * incx];
+                for j in (i + 1)..n {
+                    sum -= a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
+        (Layout::RowMajor, Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => {
+            // A^T is lower-triangular → forward substitution
+            for i in 0..n {
+                let mut sum = x[i * incx];
+                for j in 0..i {
+                    sum -= a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
         _ => {
-            let effective_uplo = match (uplo, trans) {
-                (Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => Uplo::Lower,
-                (Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => Uplo::Upper,
-                (u, _) => u,
+            // ColMajor: swap to RowMajor with transposed uplo interpretation
+            let effective_uplo = match uplo {
+                Uplo::Upper => Uplo::Lower,
+                Uplo::Lower => Uplo::Upper,
             };
-            strsv(
-                layout,
-                effective_uplo,
-                Transpose::NoTrans,
-                diag,
-                n,
-                a,
-                lda,
-                x,
-                incx,
-            );
+            strsv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+        }
+    }
+}
+
+// ============================================================================
+// DTRMV: Double-precision triangular matrix-vector multiply
+// ============================================================================
+
+/// Double-precision TRMV: x := op(A) * x (A triangular)
+///
+/// Uses SIMD dot for the off-diagonal summation when incx==1.
+pub fn dtrmv(
+    layout: Layout,
+    uplo: Uplo,
+    trans: Transpose,
+    diag: rustynum_core::layout::Diag,
+    n: usize,
+    a: &[f64],
+    lda: usize,
+    x: &mut [f64],
+    incx: usize,
+) {
+    let unit = diag == rustynum_core::layout::Diag::Unit;
+
+    match (layout, uplo, trans) {
+        (Layout::RowMajor, Uplo::Upper, Transpose::NoTrans) => {
+            for i in 0..n {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                let len = n - (i + 1);
+                if len > 0 && incx == 1 {
+                    sum += simd::dot_f64(&a[i * lda + (i + 1)..i * lda + n], &x[(i + 1)..n]);
+                } else {
+                    for j in (i + 1)..n {
+                        sum += a[i * lda + j] * x[j * incx];
+                    }
+                }
+                x[i * incx] = sum;
+            }
+        }
+        (Layout::RowMajor, Uplo::Lower, Transpose::NoTrans) => {
+            for i in (0..n).rev() {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                if i > 0 && incx == 1 {
+                    sum += simd::dot_f64(&a[i * lda..i * lda + i], &x[..i]);
+                } else {
+                    for j in 0..i {
+                        sum += a[i * lda + j] * x[j * incx];
+                    }
+                }
+                x[i * incx] = sum;
+            }
+        }
+        (Layout::RowMajor, Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => {
+            for i in (0..n).rev() {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                for j in 0..i {
+                    sum += a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = sum;
+            }
+        }
+        (Layout::RowMajor, Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => {
+            for i in 0..n {
+                let mut sum = if unit {
+                    x[i * incx]
+                } else {
+                    a[i * lda + i] * x[i * incx]
+                };
+                for j in (i + 1)..n {
+                    sum += a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = sum;
+            }
+        }
+        _ => {
+            let effective_uplo = match uplo {
+                Uplo::Upper => Uplo::Lower,
+                Uplo::Lower => Uplo::Upper,
+            };
+            dtrmv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
+        }
+    }
+}
+
+// ============================================================================
+// DTRSV: Double-precision triangular solve
+// ============================================================================
+
+/// Double-precision TRSV: x := A^{-1} * x (A triangular, row-major)
+///
+/// Sequential dependency between rows limits full SIMD, but the
+/// inner dot-product accumulation uses SIMD for contiguous access.
+pub fn dtrsv(
+    layout: Layout,
+    uplo: Uplo,
+    trans: Transpose,
+    diag: rustynum_core::layout::Diag,
+    n: usize,
+    a: &[f64],
+    lda: usize,
+    x: &mut [f64],
+    incx: usize,
+) {
+    let unit = diag == rustynum_core::layout::Diag::Unit;
+
+    match (layout, uplo, trans) {
+        (Layout::RowMajor, Uplo::Lower, Transpose::NoTrans) => {
+            for i in 0..n {
+                let mut sum = x[i * incx];
+                if i > 0 && incx == 1 {
+                    sum -= simd::dot_f64(&a[i * lda..i * lda + i], &x[..i]);
+                } else {
+                    for j in 0..i {
+                        sum -= a[i * lda + j] * x[j * incx];
+                    }
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
+        (Layout::RowMajor, Uplo::Upper, Transpose::NoTrans) => {
+            for i in (0..n).rev() {
+                let mut sum = x[i * incx];
+                let len = n - (i + 1);
+                if len > 0 && incx == 1 {
+                    sum -= simd::dot_f64(&a[i * lda + (i + 1)..i * lda + n], &x[(i + 1)..n]);
+                } else {
+                    for j in (i + 1)..n {
+                        sum -= a[i * lda + j] * x[j * incx];
+                    }
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
+        (Layout::RowMajor, Uplo::Lower, Transpose::Trans | Transpose::ConjTrans) => {
+            for i in (0..n).rev() {
+                let mut sum = x[i * incx];
+                for j in (i + 1)..n {
+                    sum -= a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
+        (Layout::RowMajor, Uplo::Upper, Transpose::Trans | Transpose::ConjTrans) => {
+            for i in 0..n {
+                let mut sum = x[i * incx];
+                for j in 0..i {
+                    sum -= a[j * lda + i] * x[j * incx];
+                }
+                x[i * incx] = if unit { sum } else { sum / a[i * lda + i] };
+            }
+        }
+        _ => {
+            let effective_uplo = match uplo {
+                Uplo::Upper => Uplo::Lower,
+                Uplo::Lower => Uplo::Upper,
+            };
+            dtrsv(Layout::RowMajor, effective_uplo, trans, diag, n, a, lda, x, incx);
         }
     }
 }
@@ -1115,5 +1336,146 @@ mod tests {
             1,
         );
         assert_eq!(x, vec![8.0, 8.0]);
+    }
+
+    #[test]
+    fn test_strmv_upper_trans() {
+        // A = [[2, 3], [0, 4]], A^T = [[2, 0], [3, 4]]
+        // x := A^T * x = [2*1, 3*1 + 4*2] = [2, 11]
+        let a = vec![2.0f32, 3.0, 0.0, 4.0];
+        let mut x = vec![1.0f32, 2.0];
+        strmv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::Trans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert_eq!(x, vec![2.0, 11.0]);
+    }
+
+    #[test]
+    fn test_strmv_lower_trans() {
+        // A = [[2, 0], [3, 4]], A^T = [[2, 3], [0, 4]]
+        // x := A^T * x = [2*1 + 3*2, 4*2] = [8, 8]
+        let a = vec![2.0f32, 0.0, 3.0, 4.0];
+        let mut x = vec![1.0f32, 2.0];
+        strmv(
+            Layout::RowMajor,
+            Uplo::Lower,
+            Transpose::Trans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert_eq!(x, vec![8.0, 8.0]);
+    }
+
+    #[test]
+    fn test_strsv_upper_trans() {
+        // A = [[2, 3], [0, 4]], solve A^T * x = b where b = [2, 11]
+        // A^T = [[2, 0], [3, 4]]
+        // Forward sub: x[0] = 2/2 = 1, x[1] = (11 - 3*1)/4 = 2
+        let a = vec![2.0f32, 3.0, 0.0, 4.0];
+        let mut x = vec![2.0f32, 11.0];
+        strsv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::Trans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert!((x[0] - 1.0).abs() < 1e-6);
+        assert!((x[1] - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_dtrmv_upper_notrans() {
+        let a = vec![2.0f64, 3.0, 0.0, 4.0];
+        let mut x = vec![1.0f64, 2.0];
+        dtrmv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::NoTrans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert_eq!(x, vec![8.0, 8.0]);
+    }
+
+    #[test]
+    fn test_dtrmv_upper_trans() {
+        let a = vec![2.0f64, 3.0, 0.0, 4.0];
+        let mut x = vec![1.0f64, 2.0];
+        dtrmv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::Trans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert_eq!(x, vec![2.0, 11.0]);
+    }
+
+    #[test]
+    fn test_dtrsv_upper_notrans() {
+        // A = [[2, 3], [0, 4]], solve A*x = b where b = [8, 8]
+        // Back sub: x[1] = 8/4 = 2, x[0] = (8 - 3*2)/2 = 1
+        let a = vec![2.0f64, 3.0, 0.0, 4.0];
+        let mut x = vec![8.0f64, 8.0];
+        dtrsv(
+            Layout::RowMajor,
+            Uplo::Upper,
+            Transpose::NoTrans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert!((x[0] - 1.0).abs() < 1e-12);
+        assert!((x[1] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_dtrsv_lower_trans() {
+        // A = [[2, 0], [3, 4]], A^T = [[2, 3], [0, 4]]
+        // Solve A^T * x = b where b = [8, 8]
+        // Back sub: x[1] = 8/4 = 2, x[0] = (8 - 3*2)/2 = 1
+        let a = vec![2.0f64, 0.0, 3.0, 4.0];
+        let mut x = vec![8.0f64, 8.0];
+        dtrsv(
+            Layout::RowMajor,
+            Uplo::Lower,
+            Transpose::Trans,
+            rustynum_core::layout::Diag::NonUnit,
+            2,
+            &a,
+            2,
+            &mut x,
+            1,
+        );
+        assert!((x[0] - 1.0).abs() < 1e-12);
+        assert!((x[1] - 2.0).abs() < 1e-12);
     }
 }

@@ -78,6 +78,46 @@ where
         Self::new_with_shape(data, shape)
     }
 
+    /// Creates a new 1D array with values starting from `start` to `stop` with a given `step`,
+    /// returning an error if `step` is zero.
+    ///
+    /// # Parameters
+    /// * `start` - The start value of the sequence.
+    /// * `stop` - The end value of the sequence.
+    /// * `step` - The step value between each pair of consecutive values.
+    ///
+    /// # Returns
+    /// `Ok(NumArray)` on success, or `Err(NumError::InvalidParameter)` if `step` is zero.
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    /// let arange_array = NumArrayF32::try_arange(0.0, 1.0, 0.2).unwrap();
+    /// ```
+    pub fn try_arange(start: T, stop: T, step: T) -> Result<Self, crate::NumError> {
+        if step == T::default() {
+            return Err(crate::NumError::InvalidParameter(
+                "step cannot be zero for arange".to_string(),
+            ));
+        }
+
+        let mut data = Vec::new();
+        let mut current = start;
+
+        if step > T::default() {
+            while current < stop {
+                data.push(current);
+                current = current + step;
+            }
+        } else {
+            while current > stop {
+                data.push(current);
+                current = current + step;
+            }
+        }
+        Ok(Self::new(data))
+    }
+
     /// Creates a new 1D array with values starting from `start` to `stop` with a given `step`.
     ///
     /// # Parameters
@@ -88,6 +128,9 @@ where
     /// # Returns
     /// A new `NumArray` instance with the specified range.
     ///
+    /// # Panics
+    /// Panics if `step` is zero.
+    ///
     /// # Example
     /// ```
     /// use rustynum_rs::NumArrayF32;
@@ -95,29 +138,10 @@ where
     /// println!("Arange array: {:?}", arange_array.get_data());
     /// ```
     pub fn arange(start: T, stop: T, step: T) -> Self {
-        if step == T::default() {
-            panic!("step cannot be zero for arange.");
+        match Self::try_arange(start, stop, step) {
+            Ok(arr) => arr,
+            Err(e) => panic!("{}", e),
         }
-
-        let mut data = Vec::new();
-        let mut current = start;
-
-        if step > T::default() {
-            // Positive step
-            // Ensure we don't overshoot due to floating point for positive step
-            while current < stop {
-                data.push(current);
-                current = current + step;
-            }
-        } else {
-            // Negative step
-            // Ensure we don't overshoot due to floating point for negative step
-            while current > stop {
-                data.push(current);
-                current = current + step;
-            }
-        }
-        Self::new(data) // Relies on new() from array_struct.rs for 1D array
     }
 
     /// Creates a new 1D array with linearly spaced values between `start` and `stop`.

@@ -389,29 +389,25 @@ impl SimdOps<f32> for f32x16 {
         assert_eq!(b.len(), k * n);
         assert_eq!(c.len(), m * n);
 
-        c.fill(0.0);
-
-        let mut b_transposed = vec![0.0f32; n * k];
-        Self::transpose(b, &mut b_transposed, k, n);
-
-        let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get())
-            .unwrap_or(4);
-        let rows_per_thread = m.div_ceil(n_threads);
-        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
-            let row_start = offset / n;
-            let rows_this = chunk.len() / n;
-            for i in 0..rows_this {
-                let global_row = row_start + i;
-                let a_row = &a[global_row * k..(global_row + 1) * k];
-                let mut c_row = vec![0.0; n];
-                for j in 0..n {
-                    let b_col = &b_transposed[j * k..(j + 1) * k];
-                    c_row[j] = Self::dot_product(a_row, b_col);
-                }
-                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
-            }
-        });
+        // Dispatch to rustyblas Goto BLAS: cache-blocked 6×16 microkernel with
+        // multithreading. Replaces the old transpose-dot path which was O(m*n*k)
+        // with no cache locality and no microkernel utilization.
+        rustyblas::level3::sgemm(
+            rustyblas::Layout::RowMajor,
+            rustyblas::Transpose::NoTrans,
+            rustyblas::Transpose::NoTrans,
+            m,
+            n,
+            k,
+            1.0,  // alpha
+            a,
+            k,    // lda = K for row-major NoTrans A
+            b,
+            n,    // ldb = N for row-major NoTrans B
+            0.0,  // beta (overwrite C)
+            c,
+            n,    // ldc = N for row-major C
+        );
     }
 
     fn dot_product(a: &[f32], b: &[f32]) -> f32 {
@@ -663,29 +659,24 @@ impl SimdOps<f64> for f64x8 {
         assert_eq!(b.len(), k * n);
         assert_eq!(c.len(), m * n);
 
-        c.fill(0.0);
-
-        let mut b_transposed = vec![0.0f64; n * k];
-        Self::transpose(b, &mut b_transposed, k, n);
-
-        let n_threads = std::thread::available_parallelism()
-            .map(|t| t.get())
-            .unwrap_or(4);
-        let rows_per_thread = m.div_ceil(n_threads);
-        parallel_into_slices(c, rows_per_thread * n, |offset, chunk| {
-            let row_start = offset / n;
-            let rows_this = chunk.len() / n;
-            for i in 0..rows_this {
-                let global_row = row_start + i;
-                let a_row = &a[global_row * k..(global_row + 1) * k];
-                let mut c_row = vec![0.0; n];
-                for j in 0..n {
-                    let b_col = &b_transposed[j * k..(j + 1) * k];
-                    c_row[j] = Self::dot_product(a_row, b_col);
-                }
-                chunk[i * n..(i + 1) * n].copy_from_slice(&c_row);
-            }
-        });
+        // Dispatch to rustyblas Goto BLAS: cache-blocked 6×8 microkernel with
+        // multithreading. Replaces the old transpose-dot path.
+        rustyblas::level3::dgemm(
+            rustyblas::Layout::RowMajor,
+            rustyblas::Transpose::NoTrans,
+            rustyblas::Transpose::NoTrans,
+            m,
+            n,
+            k,
+            1.0,  // alpha
+            a,
+            k,    // lda = K for row-major NoTrans A
+            b,
+            n,    // ldb = N for row-major NoTrans B
+            0.0,  // beta (overwrite C)
+            c,
+            n,    // ldc = N for row-major C
+        );
     }
 
     fn dot_product(a: &[f64], b: &[f64]) -> f64 {

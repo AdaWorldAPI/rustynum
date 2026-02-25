@@ -6,6 +6,39 @@ use super::NumArray;
 use crate::simd_ops::SimdOps;
 use crate::traits::NumElement;
 
+/// Fallible matrix-vector multiplication.
+///
+/// Returns `Err(NumError::DimensionMismatch)` if the column count of the matrix
+/// does not equal the length of the vector.
+pub fn try_matrix_vector_multiply<T, Ops>(
+    lhs: &NumArray<T, Ops>,
+    rhs: &NumArray<T, Ops>,
+) -> Result<NumArray<T, Ops>, crate::NumError>
+where
+    T: NumElement,
+    Ops: SimdOps<T>,
+{
+    if lhs.shape()[1] != rhs.shape()[0] {
+        return Err(crate::NumError::DimensionMismatch(format!(
+            "Column count of the matrix ({}) must match the length of the vector ({})",
+            lhs.shape()[1],
+            rhs.shape()[0]
+        )));
+    }
+
+    let rows = lhs.shape()[0];
+    let mut result = NumArray::new(vec![T::default(); rows]);
+    let rhs_data = rhs.get_data().to_vec();
+
+    for i in 0..rows {
+        let lhs_row = lhs.row_slice(i);
+        let sum = Ops::dot_product(lhs_row, &rhs_data);
+        result.set(&[i], sum);
+    }
+
+    Ok(result)
+}
+
 /// Performs matrix-vector multiplication.
 ///
 /// # Arguments
@@ -25,22 +58,51 @@ where
     T: NumElement,
     Ops: SimdOps<T>,
 {
-    assert!(
-        lhs.shape()[1] == rhs.shape()[0],
-        "Column count of the matrix must match the length of the vector."
-    );
+    match try_matrix_vector_multiply(lhs, rhs) {
+        Ok(result) => result,
+        Err(crate::NumError::DimensionMismatch(_)) => {
+            panic!("Column count of the matrix must match the length of the vector.")
+        }
+        Err(e) => panic!("{}", e),
+    }
+}
 
-    let rows = lhs.shape()[0];
-    let mut result = NumArray::new(vec![T::default(); rows]);
-    let rhs_data = rhs.get_data().to_vec();
-
-    for i in 0..rows {
-        let lhs_row = lhs.row_slice(i);
-        let sum = Ops::dot_product(lhs_row, &rhs_data);
-        result.set(&[i], sum);
+/// Fallible matrix-matrix multiplication.
+///
+/// Returns `Err(NumError::DimensionMismatch)` if the column count of the first matrix
+/// does not equal the row count of the second.
+pub fn try_matrix_matrix_multiply<T, Ops>(
+    lhs: &NumArray<T, Ops>,
+    rhs: &NumArray<T, Ops>,
+) -> Result<NumArray<T, Ops>, crate::NumError>
+where
+    T: NumElement,
+    Ops: SimdOps<T>,
+{
+    if lhs.shape()[1] != rhs.shape()[0] {
+        return Err(crate::NumError::DimensionMismatch(format!(
+            "Column count of the first matrix ({}) must match the row count of the second ({})",
+            lhs.shape()[1],
+            rhs.shape()[0]
+        )));
     }
 
-    result
+    let rows = lhs.shape()[0];
+    let cols = rhs.shape()[1];
+    let inner_dim = lhs.shape()[1];
+
+    let mut result_data = vec![T::default(); rows * cols];
+
+    Ops::matrix_multiply(
+        lhs.get_data(),
+        rhs.get_data(),
+        &mut result_data,
+        rows,
+        inner_dim,
+        cols,
+    );
+
+    Ok(NumArray::new_with_shape(result_data, vec![rows, cols]))
 }
 
 /// Performs matrix-matrix multiplication.
@@ -62,27 +124,40 @@ where
     T: NumElement,
     Ops: SimdOps<T>,
 {
-    assert!(
-        lhs.shape()[1] == rhs.shape()[0],
-        "Column count of the first matrix must match the row count of the second."
-    );
+    match try_matrix_matrix_multiply(lhs, rhs) {
+        Ok(result) => result,
+        Err(crate::NumError::DimensionMismatch(_)) => {
+            panic!("Column count of the first matrix must match the row count of the second.")
+        }
+        Err(e) => panic!("{}", e),
+    }
+}
 
-    let rows = lhs.shape()[0];
-    let cols = rhs.shape()[1];
-    let inner_dim = lhs.shape()[1];
-
-    let mut result_data = vec![T::default(); rows * cols];
-
-    Ops::matrix_multiply(
-        lhs.get_data(),
-        rhs.get_data(),
-        &mut result_data,
-        rows,
-        inner_dim,
-        cols,
-    );
-
-    NumArray::new_with_shape(result_data, vec![rows, cols])
+/// Fallible convenience function that checks the shapes and performs the appropriate
+/// matrix multiplication, returning an error on incompatible shapes.
+///
+/// # Arguments
+/// * `lhs` - A NumArray representing the left-hand side matrix.
+/// * `rhs` - A NumArray representing the right-hand side matrix or vector.
+///
+/// # Returns
+/// `Ok(NumArray)` on success, or `Err(NumError::DimensionMismatch)` on shape errors.
+pub fn try_matrix_multiply<T, Ops>(
+    lhs: &NumArray<T, Ops>,
+    rhs: &NumArray<T, Ops>,
+) -> Result<NumArray<T, Ops>, crate::NumError>
+where
+    T: NumElement,
+    Ops: SimdOps<T>,
+{
+    match rhs.shape().len() {
+        1 => try_matrix_vector_multiply(lhs, rhs),
+        2 => try_matrix_matrix_multiply(lhs, rhs),
+        _ => Err(crate::NumError::DimensionMismatch(format!(
+            "Unsupported RHS shape with {} dimensions; only vectors (1D) or matrices (2D) are supported",
+            rhs.shape().len()
+        ))),
+    }
 }
 
 /// Convenience function that checks the shapes and performs the appropriate matrix multiplication.

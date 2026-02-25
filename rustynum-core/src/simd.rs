@@ -345,9 +345,13 @@ pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
+            // SAFETY: CPU feature detection above guarantees AVX-512 VPOPCNTDQ is available.
+            // Slice lengths are verified equal by the assert_eq at function entry.
             return unsafe { hamming_vpopcntdq(a, b) };
         }
         if is_x86_feature_detected!("avx2") {
+            // SAFETY: CPU feature detection above guarantees AVX2 is available.
+            // Slice lengths are verified equal by the assert_eq at function entry.
             return unsafe { hamming_avx2(a, b) };
         }
     }
@@ -391,6 +395,8 @@ pub fn select_dot_i8_fn() -> fn(&[u8], &[u8]) -> i64 {
 /// Safe wrapper for dot_i8_vnni (coerces to fn pointer).
 #[cfg(target_arch = "x86_64")]
 fn dot_i8_vnni_safe(a: &[u8], b: &[u8]) -> i64 {
+    // SAFETY: This wrapper is only returned by select_dot_i8_fn() when
+    // AVX-512 VNNI + AVX-512F are detected. Slices come from the caller.
     unsafe { dot_i8_vnni(a, b) }
 }
 
@@ -462,12 +468,16 @@ pub fn hamming_top_k(
 /// Safe wrapper for hamming_vpopcntdq (coerces to fn pointer).
 #[cfg(target_arch = "x86_64")]
 fn hamming_vpopcntdq_safe(a: &[u8], b: &[u8]) -> u64 {
+    // SAFETY: This wrapper is only returned by select_hamming_fn() when
+    // AVX-512 VPOPCNTDQ + AVX-512F are detected. Slices come from the caller.
     unsafe { hamming_vpopcntdq(a, b) }
 }
 
 /// Safe wrapper for hamming_avx2 (coerces to fn pointer).
 #[cfg(target_arch = "x86_64")]
 fn hamming_avx2_safe(a: &[u8], b: &[u8]) -> u64 {
+    // SAFETY: This wrapper is only returned by select_hamming_fn() when
+    // AVX2 is detected. Slices come from the caller.
     unsafe { hamming_avx2(a, b) }
 }
 
@@ -638,9 +648,11 @@ pub fn popcount(a: &[u8]) -> u64 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512f") {
+            // SAFETY: CPU feature detection above guarantees AVX-512 VPOPCNTDQ is available.
             return unsafe { popcount_vpopcntdq(a) };
         }
         if is_x86_feature_detected!("avx2") {
+            // SAFETY: CPU feature detection above guarantees AVX2 is available.
             return unsafe { popcount_avx2(a) };
         }
     }
@@ -737,6 +749,8 @@ unsafe fn popcount_avx2(a: &[u8]) -> u64 {
     }
 
     // Horizontal sum
+    // SAFETY: __m256i is a 256-bit SIMD type, same size and alignment as [i64; 4].
+    // transmute reinterprets the 4 packed i64 lanes for scalar summation.
     let arr: [i64; 4] = std::mem::transmute(total);
     let mut sum: u64 = arr.iter().map(|&v| v as u64).sum();
 
@@ -799,6 +813,8 @@ pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512f") {
+            // SAFETY: CPU feature detection above guarantees AVX-512 VNNI is available.
+            // Slice lengths are verified equal by the assert_eq at function entry.
             return unsafe { dot_i8_vnni(a, b) };
         }
     }
