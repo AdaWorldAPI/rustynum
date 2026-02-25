@@ -18,3 +18,7 @@ path = "src/bin/edge_vectors.rs"
 [[bin]]
 name = "cypher-vsa"
 path = "src/bin/cypher_vsa.rs"
+
+[[bin]]
+name = "hydrate-agents"
+path = "src/bin/hydrate_agents.rs"
