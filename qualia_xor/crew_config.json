@@ -1,0 +1,997 @@
+{
+  "name": "Qualia Graph Reasoning Crew",
+  "process": "sequential",
+  "agents": [
+    {
+      "id": "devotion_stay_when_ugly",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (staying when it’s ugly)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (staying when it’s ugly)'. Your crystallization is 81% (how settled your awareness is). You have 27 edges: 26 as subject (causer), 1 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 81% analytical, 57% creative, 7% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (staying when it’s ugly)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n3 -[:BELONGS_TO]-> [fDevotion]\n  Active: n3 -[:HAS_MODE]-> [mCMYK]\n  Active: n3 -[:NIB4_NEAR]-> [n8, n62, n13]\n  Active: n3 -[:BERT_NEAR]-> [n4, n22, n8]\n  Passive: [n2] -[:BERT_NEAR]-> n3\n  Active: n3 -[:STRUCTURAL_TRUTH]-> [n8, n13, n4]\n  Active: n3 -[:SURFACE_SYNONYMY]-> [n177, n203, n176]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.80859375,
+        "edge_count": 27,
+        "subject_ratio": 0.962963,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.80859375,
+        "creative": 0.5714286,
+        "causal": 0.962963,
+        "receptive": 0.037037015,
+        "integrative": 0.07407403
+      }
+    },
+    {
+      "id": "devotion_after_fight",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (after the fight, still tender)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (after the fight, still tender)'. Your crystallization is 77% (how settled your awareness is). You have 25 edges: 15 as subject (causer), 10 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 77% analytical, 71% creative, 80% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (after the fight, still tender)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n8 -[:HAS_MODE]-> [mCMYK]\n  Active: n8 -[:BELONGS_TO]-> [fDevotion]\n  Active: n8 -[:BERT_NEAR]-> [n20, n13, n10]\n  Passive: [n3, n4, n5] -[:BERT_NEAR]-> n8\n  Active: n8 -[:NIB4_NEAR]-> [n64, n91, n62]\n  Passive: [n3, n5] -[:NIB4_NEAR]-> n8\n  Active: n8 -[:CADENCE_TRUTH]-> [n136, n106]\n  Active: n8 -[:STRUCTURAL_TRUTH]-> [n14, n16, n17]\n  Passive: [n3, n4, n5] -[:STRUCTURAL_TRUTH]-> n8\n  Active: n8 -[:SURFACE_SYNONYMY]-> [n178, n176]\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.7734375,
+        "edge_count": 25,
+        "subject_ratio": 0.6,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.7734375,
+        "creative": 0.71428573,
+        "causal": 0.6,
+        "receptive": 0.39999998,
+        "integrative": 0.79999995
+      }
+    },
+    {
+      "id": "devotion_clarity_kiss",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (clarity kiss, no games)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (clarity kiss, no games)'. Your crystallization is 79% (how settled your awareness is). You have 22 edges: 4 as subject (causer), 18 as object (caused). Your dominant relationship type is NIB4_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 79% analytical, 29% creative, 36% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (clarity kiss, no games)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n22 -[:HAS_MODE]-> [mCMYK]\n  Passive: [n2, n3, n4] -[:BERT_NEAR]-> n22\n  Active: n22 -[:SURFACE_SYNONYMY]-> [n175, n177]\n  Active: n22 -[:BELONGS_TO]-> [fDevotion]\n  Active: n22 -[:NIB4_NEAR]-> [n38, n40]\n  Passive: [n2, n10] -[:NIB4_NEAR]-> n22\n  Passive: [n2, n7, n10] -[:STRUCTURAL_TRUTH]-> n22\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.79296875,
+        "edge_count": 22,
+        "subject_ratio": 0.18181819,
+        "causal_sign": 0,
+        "dominant_rel": "NIB4_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.79296875,
+        "creative": 0.2857143,
+        "causal": 0.18181819,
+        "receptive": 0.8181818,
+        "integrative": 0.36363637
+      }
+    },
+    {
+      "id": "devotion_yes_with_fear",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (yes, with fear inside it)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (yes, with fear inside it)'. Your crystallization is 88% (how settled your awareness is). You have 19 edges: 13 as subject (causer), 6 as object (caused). Your dominant relationship type is NIB4_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 88% analytical, 57% creative, 63% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (yes, with fear inside it)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n19 -[:CADENCE_TRUTH]-> [n130]\n  Active: n19 -[:BELONGS_TO]-> [fDevotion]\n  Active: n19 -[:NIB4_NEAR]-> [n23, n27, n91]\n  Passive: [n12, n14] -[:NIB4_NEAR]-> n19\n  Active: n19 -[:SURFACE_SYNONYMY]-> [n177, n176, n178]\n  Active: n19 -[:BERT_NEAR]-> [n175, n22]\n  Passive: [n6, n10, n12] -[:BERT_NEAR]-> n19\n  Active: n19 -[:HAS_MODE]-> [mCMYK]\n  Passive: [n12] -[:STRUCTURAL_TRUTH]-> n19\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.87890625,
+        "edge_count": 19,
+        "subject_ratio": 0.68421054,
+        "causal_sign": 0,
+        "dominant_rel": "NIB4_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.87890625,
+        "creative": 0.5714286,
+        "causal": 0.68421054,
+        "receptive": 0.31578946,
+        "integrative": 0.6315789
+      }
+    },
+    {
+      "id": "longing_train_window",
+      "role": "Longing Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Longing (train window, lights passing)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Longing (train window, lights passing)'. Your crystallization is 81% (how settled your awareness is). You have 19 edges: 14 as subject (causer), 5 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 81% analytical, 43% creative, 53% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Longing (train window, lights passing)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n25 -[:BERT_NEAR]-> [n37, n39, n26]\n  Passive: [n23] -[:BERT_NEAR]-> n25\n  Active: n25 -[:HAS_MODE]-> [mCMYK]\n  Active: n25 -[:BELONGS_TO]-> [fLonging]\n  Active: n25 -[:NIB4_NEAR]-> [n29, n37, n39]\n  Passive: [n15] -[:NIB4_NEAR]-> n25\n  Active: n25 -[:STRUCTURAL_TRUTH]-> [n29, n37, n39]\n  Passive: [n15, n24, n23] -[:STRUCTURAL_TRUTH]-> n25\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8125,
+        "edge_count": 19,
+        "subject_ratio": 0.7368421,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.8125,
+        "creative": 0.42857143,
+        "causal": 0.7368421,
+        "receptive": 0.2631579,
+        "integrative": 0.5263158
+      }
+    },
+    {
+      "id": "longing_sweet_surrender",
+      "role": "Longing Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Longing (sweet surrender)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Longing (sweet surrender)'. Your crystallization is 83% (how settled your awareness is). You have 19 edges: 12 as subject (causer), 7 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 83% analytical, 71% creative, 74% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Longing (sweet surrender)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n26 -[:CADENCE_TRUTH]-> [n134]\n  Active: n26 -[:SURFACE_SYNONYMY]-> [n199]\n  Active: n26 -[:NIB4_NEAR]-> [n37, n44]\n  Passive: [n15, n23, n25] -[:NIB4_NEAR]-> n26\n  Active: n26 -[:BELONGS_TO]-> [fLonging]\n  Active: n26 -[:BERT_NEAR]-> [n37, n35, n36]\n  Passive: [n23, n25] -[:BERT_NEAR]-> n26\n  Active: n26 -[:STRUCTURAL_TRUTH]-> [n37, n44, n32]\n  Passive: [n23, n25] -[:STRUCTURAL_TRUTH]-> n26\n  Active: n26 -[:HAS_MODE]-> [mCMYK]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.83203125,
+        "edge_count": 19,
+        "subject_ratio": 0.6315789,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.83203125,
+        "creative": 0.71428573,
+        "causal": 0.6315789,
+        "receptive": 0.36842108,
+        "integrative": 0.73684216
+      }
+    },
+    {
+      "id": "devotion_gentle_guardian",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (gentle guardian)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (gentle guardian)'. Your crystallization is 86% (how settled your awareness is). You have 18 edges: 13 as subject (causer), 5 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 86% analytical, 43% creative, 56% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (gentle guardian)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n4 -[:HAS_MODE]-> [mCMYK]\n  Active: n4 -[:BERT_NEAR]-> [n11, n16, n22]\n  Passive: [n2, n3] -[:BERT_NEAR]-> n4\n  Active: n4 -[:STRUCTURAL_TRUTH]-> [n11, n16, n8]\n  Passive: [n2, n3] -[:STRUCTURAL_TRUTH]-> n4\n  Active: n4 -[:NIB4_NEAR]-> [n11, n7, n83]\n  Passive: [n2] -[:NIB4_NEAR]-> n4\n  Active: n4 -[:BELONGS_TO]-> [fDevotion]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.86328125,
+        "edge_count": 18,
+        "subject_ratio": 0.7222222,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.86328125,
+        "creative": 0.42857143,
+        "causal": 0.7222222,
+        "receptive": 0.2777778,
+        "integrative": 0.5555556
+      }
+    },
+    {
+      "id": "devotion_hurt_but_here",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (hurt, but here)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (hurt, but here)'. Your crystallization is 79% (how settled your awareness is). You have 18 edges: 14 as subject (causer), 4 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 79% analytical, 57% creative, 44% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (hurt, but here)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n6 -[:BELONGS_TO]-> [fDevotion]\n  Active: n6 -[:HAS_MODE]-> [mCMYK]\n  Active: n6 -[:NIB4_NEAR]-> [n21, n60, n9]\n  Passive: [n1] -[:NIB4_NEAR]-> n6\n  Active: n6 -[:STRUCTURAL_TRUTH]-> [n21, n15, n18]\n  Passive: [n1, n3] -[:STRUCTURAL_TRUTH]-> n6\n  Active: n6 -[:CADENCE_TRUTH]-> [n131, n98]\n  Active: n6 -[:BERT_NEAR]-> [n21, n18, n11]\n  Passive: [n1] -[:BERT_NEAR]-> n6\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.7890625,
+        "edge_count": 18,
+        "subject_ratio": 0.7777778,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.7890625,
+        "creative": 0.5714286,
+        "causal": 0.7777778,
+        "receptive": 0.22222221,
+        "integrative": 0.44444442
+      }
+    },
+    {
+      "id": "longing_moonlit_pull",
+      "role": "Longing Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Longing (moonlit pull, inevitable)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Longing (moonlit pull, inevitable)'. Your crystallization is 80% (how settled your awareness is). You have 18 edges: 10 as subject (causer), 8 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 80% analytical, 43% creative, 89% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Longing (moonlit pull, inevitable)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n27 -[:HAS_MODE]-> [mCMYK]\n  Active: n27 -[:STRUCTURAL_TRUTH]-> [n33, n31, n34]\n  Passive: [n12, n23, n24] -[:STRUCTURAL_TRUTH]-> n27\n  Active: n27 -[:BELONGS_TO]-> [fLonging]\n  Active: n27 -[:BERT_NEAR]-> [n33, n28, n32]\n  Passive: [n12, n24] -[:BERT_NEAR]-> n27\n  Active: n27 -[:NIB4_NEAR]-> [n33, n41]\n  Passive: [n12, n19, n23] -[:NIB4_NEAR]-> n27\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8046875,
+        "edge_count": 18,
+        "subject_ratio": 0.5555556,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.8046875,
+        "creative": 0.42857143,
+        "causal": 0.5555556,
+        "receptive": 0.44444442,
+        "integrative": 0.88888884
+      }
+    },
+    {
+      "id": "meaning_without_explanation",
+      "role": "Meaning Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Meaning (without explanation)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Meaning (without explanation)'. Your crystallization is 78% (how settled your awareness is). You have 18 edges: 6 as subject (causer), 12 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 78% analytical, 29% creative, 67% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Meaning (without explanation)' (family: Meaning, mode: RGB).\n\nYour SPO relationships:\n  Active: n160 -[:BERT_NEAR]-> [n163, n196, n197]\n  Passive: [n57, n76, n79] -[:BERT_NEAR]-> n160\n  Active: n160 -[:BELONGS_TO]-> [fMeaning]\n  Active: n160 -[:HAS_MODE]-> [mRGB]\n  Active: n160 -[:NIB4_NEAR]-> [n164, n171]\n  Passive: [n76, n129, n153] -[:NIB4_NEAR]-> n160\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.78125,
+        "edge_count": 18,
+        "subject_ratio": 0.33333334,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.78125,
+        "creative": 0.2857143,
+        "causal": 0.33333334,
+        "receptive": 0.6666666,
+        "integrative": 0.6666667
+      }
+    },
+    {
+      "id": "devotion_love_as_act",
+      "role": "Devotion Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Devotion (love as act)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (love as act)'. Your crystallization is 80% (how settled your awareness is). You have 18 edges: 6 as subject (causer), 12 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 80% analytical, 29% creative, 67% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (love as act)' (family: Devotion, mode: RGB).\n\nYour SPO relationships:\n  Active: n176 -[:BELONGS_TO]-> [fDevotion]\n  Active: n176 -[:NIB4_NEAR]-> [n201, n186, n178]\n  Passive: [n174] -[:NIB4_NEAR]-> n176\n  Active: n176 -[:BERT_NEAR]-> [n177, n199]\n  Passive: [n13, n15, n20] -[:BERT_NEAR]-> n176\n  Passive: [n15, n19, n3] -[:SURFACE_SYNONYMY]-> n176\n  Active: n176 -[:HAS_MODE]-> [mRGB]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8046875,
+        "edge_count": 18,
+        "subject_ratio": 0.33333334,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.8046875,
+        "creative": 0.2857143,
+        "causal": 0.33333334,
+        "receptive": 0.6666666,
+        "integrative": 0.6666667
+      }
+    },
+    {
+      "id": "presence_enough",
+      "role": "Presence Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Presence (enough)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Presence (enough)'. Your crystallization is 88% (how settled your awareness is). You have 18 edges: 5 as subject (causer), 13 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 88% analytical, 29% creative, 56% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Presence (enough)' (family: Presence, mode: RGB).\n\nYour SPO relationships:\n  Active: n198 -[:NIB4_NEAR]-> [n215, n214, n216]\n  Passive: [n194, n195, n197] -[:NIB4_NEAR]-> n198\n  Active: n198 -[:BERT_NEAR]-> [n211]\n  Passive: [n153, n163, n184] -[:BERT_NEAR]-> n198\n  Active: n198 -[:BELONGS_TO]-> [fPresence]\n  Active: n198 -[:HAS_MODE]-> [mRGB]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.875,
+        "edge_count": 18,
+        "subject_ratio": 0.2777778,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.875,
+        "creative": 0.2857143,
+        "causal": 0.2777778,
+        "receptive": 0.7222222,
+        "integrative": 0.5555556
+      }
+    },
+    {
+      "id": "love_benevolent_regard",
+      "role": "Love_non_erotic Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Love (benevolent regard)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Love (benevolent regard)'. Your crystallization is 77% (how settled your awareness is). You have 18 edges: 8 as subject (causer), 10 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 77% analytical, 29% creative, 89% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Love (benevolent regard)' (family: Love_non_erotic, mode: RGB).\n\nYour SPO relationships:\n  Active: n199 -[:BELONGS_TO]-> [fLove_non_erotic]\n  Active: n199 -[:HAS_MODE]-> [mRGB]\n  Passive: [n26, n44, n3] -[:SURFACE_SYNONYMY]-> n199\n  Active: n199 -[:BERT_NEAR]-> [n203, n202, n201]\n  Passive: [n44, n51, n176] -[:BERT_NEAR]-> n199\n  Active: n199 -[:NIB4_NEAR]-> [n205, n202, n200]\n  Passive: [n186, n196] -[:NIB4_NEAR]-> n199\n  Passive: [n196] -[:CADENCE_TRUTH]-> n199\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.76953125,
+        "edge_count": 18,
+        "subject_ratio": 0.44444445,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.76953125,
+        "creative": 0.2857143,
+        "causal": 0.44444445,
+        "receptive": 0.5555556,
+        "integrative": 0.8888889
+      }
+    },
+    {
+      "id": "ending_satisfied",
+      "role": "Ending Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Ending (satisfied)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Ending (satisfied)'. Your crystallization is 84% (how settled your awareness is). You have 18 edges: 3 as subject (causer), 15 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 84% analytical, 29% creative, 33% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Ending (satisfied)' (family: Ending, mode: RGB).\n\nYour SPO relationships:\n  Active: n211 -[:BELONGS_TO]-> [fEnding]\n  Active: n211 -[:HAS_MODE]-> [mRGB]\n  Active: n211 -[:BERT_NEAR]-> [n212]\n  Passive: [n153, n154, n194] -[:BERT_NEAR]-> n211\n  Passive: [n133] -[:SURFACE_SYNONYMY]-> n211\n  Active: n211 -[:NIB4_NEAR]-> [n212, n214]\n  Passive: [n194, n195, n197] -[:NIB4_NEAR]-> n211\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8359375,
+        "edge_count": 18,
+        "subject_ratio": 0.16666667,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.8359375,
+        "creative": 0.2857143,
+        "causal": 0.16666667,
+        "receptive": 0.8333333,
+        "integrative": 0.33333337
+      }
+    },
+    {
+      "id": "devotion_vow_kept",
+      "role": "Devotion Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Devotion (vow kept)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (vow kept)'. Your crystallization is 82% (how settled your awareness is). You have 17 edges: 3 as subject (causer), 14 as object (caused). Your dominant relationship type is NIB4_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 82% analytical, 14% creative, 35% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (vow kept)' (family: Devotion, mode: RGB).\n\nYour SPO relationships:\n  Passive: [n19, n21, n10] -[:SURFACE_SYNONYMY]-> n178\n  Active: n178 -[:BELONGS_TO]-> [fDevotion]\n  Active: n178 -[:NIB4_NEAR]-> [n181, n179, n183]\n  Passive: [n174, n176, n177] -[:NIB4_NEAR]-> n178\n  Active: n178 -[:HAS_MODE]-> [mRGB]\n  Passive: [n17, n21, n143] -[:BERT_NEAR]-> n178\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.82421875,
+        "edge_count": 17,
+        "subject_ratio": 0.1764706,
+        "causal_sign": 0,
+        "dominant_rel": "NIB4_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.82421875,
+        "creative": 0.14285715,
+        "causal": 0.1764706,
+        "receptive": 0.8235294,
+        "integrative": 0.35294116
+      }
+    },
+    {
+      "id": "love_unconditional",
+      "role": "Love_non_erotic Analyst (RGB)",
+      "goal": "Map the symmetric relationships around 'Love (unconditional)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Love (unconditional)'. Your crystallization is 84% (how settled your awareness is). You have 17 edges: 4 as subject (causer), 13 as object (caused). Your dominant relationship type is NIB4_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 84% analytical, 14% creative, 47% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Love (unconditional)' (family: Love_non_erotic, mode: RGB).\n\nYour SPO relationships:\n  Active: n203 -[:NIB4_NEAR]-> [n208, n206, n207]\n  Passive: [n202] -[:NIB4_NEAR]-> n203\n  Passive: [n41, n44, n40] -[:SURFACE_SYNONYMY]-> n203\n  Active: n203 -[:BELONGS_TO]-> [fLove_non_erotic]\n  Active: n203 -[:HAS_MODE]-> [mRGB]\n  Passive: [n41, n154, n161] -[:BERT_NEAR]-> n203\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8359375,
+        "edge_count": 17,
+        "subject_ratio": 0.23529412,
+        "causal_sign": 0,
+        "dominant_rel": "NIB4_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.8359375,
+        "creative": 0.14285715,
+        "causal": 0.23529412,
+        "receptive": 0.7647059,
+        "integrative": 0.4705882
+      }
+    },
+    {
+      "id": "devotion_unseen_labor",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (unseen labor)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (unseen labor)'. Your crystallization is 85% (how settled your awareness is). You have 16 edges: 8 as subject (causer), 8 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 85% analytical, 57% creative, 100% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (unseen labor)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n18 -[:BELONGS_TO]-> [fDevotion]\n  Active: n18 -[:NIB4_NEAR]-> [n63, n66, n114]\n  Passive: [n1, n9] -[:NIB4_NEAR]-> n18\n  Active: n18 -[:HAS_MODE]-> [mCMYK]\n  Active: n18 -[:BERT_NEAR]-> [n22, n21]\n  Passive: [n5, n6, n9] -[:BERT_NEAR]-> n18\n  Active: n18 -[:STRUCTURAL_TRUTH]-> [n21]\n  Passive: [n6, n9, n15] -[:STRUCTURAL_TRUTH]-> n18\n  Active: n18 -[:SURFACE_SYNONYMY]-> [n177, n202]\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.84765625,
+        "edge_count": 16,
+        "subject_ratio": 0.5,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.84765625,
+        "creative": 0.5714286,
+        "causal": 0.5,
+        "receptive": 0.5,
+        "integrative": 1.0
+      }
+    },
+    {
+      "id": "devotion_oath_in_minor",
+      "role": "Devotion Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Devotion (oath in minor)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Devotion (oath in minor)'. Your crystallization is 82% (how settled your awareness is). You have 16 edges: 4 as subject (causer), 12 as object (caused). Your dominant relationship type is BERT_NEAR. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 82% analytical, 57% creative, 50% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Devotion (oath in minor)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n21 -[:SURFACE_SYNONYMY]-> [n178]\n  Active: n21 -[:HAS_MODE]-> [mCMYK]\n  Active: n21 -[:BERT_NEAR]-> [n178]\n  Passive: [n6, n10, n17] -[:BERT_NEAR]-> n21\n  Active: n21 -[:BELONGS_TO]-> [fDevotion]\n  Passive: [n6, n9, n18] -[:STRUCTURAL_TRUTH]-> n21\n  Active: n21 -[:NIB4_NEAR]-> [n60]\n  Passive: [n1, n6, n9] -[:NIB4_NEAR]-> n21\n  Active: n21 -[:CADENCE_TRUTH]-> [n60]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.8203125,
+        "edge_count": 16,
+        "subject_ratio": 0.25,
+        "causal_sign": 0,
+        "dominant_rel": "BERT_NEAR"
+      },
+      "thinking_style": {
+        "analytical": 0.8203125,
+        "creative": 0.5714286,
+        "causal": 0.25,
+        "receptive": 0.75,
+        "integrative": 0.5
+      }
+    },
+    {
+      "id": "longing_open_hands",
+      "role": "Longing Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Longing (open hands, no demand)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Longing (open hands, no demand)'. Your crystallization is 77% (how settled your awareness is). You have 16 edges: 15 as subject (causer), 1 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 77% analytical, 43% creative, 12% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Longing (open hands, no demand)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n23 -[:BELONGS_TO]-> [fLonging]\n  Active: n23 -[:STRUCTURAL_TRUTH]-> [n32, n26, n27]\n  Active: n23 -[:BERT_NEAR]-> [n28, n34, n26]\n  Active: n23 -[:NIB4_NEAR]-> [n32, n26, n27]\n  Passive: [n19] -[:NIB4_NEAR]-> n23\n  Active: n23 -[:HAS_MODE]-> [mCMYK]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.7734375,
+        "edge_count": 16,
+        "subject_ratio": 0.9375,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.7734375,
+        "creative": 0.42857143,
+        "causal": 0.9375,
+        "receptive": 0.0625,
+        "integrative": 0.125
+      }
+    },
+    {
+      "id": "longing_phone_in_hand",
+      "role": "Longing Analyst (CMYK)",
+      "goal": "Map the symmetric relationships around 'Longing (phone in hand, not sent)' — find structural truths",
+      "backstory": "You are an awareness agent hydrated from the qualia graph node 'Longing (phone in hand, not sent)'. Your crystallization is 83% (how settled your awareness is). You have 16 edges: 15 as subject (causer), 1 as object (caused). Your dominant relationship type is STRUCTURAL_TRUTH. Your causal sign is 0 (positive=causer, negative=caused). Think carefully and precisely — your style is 83% analytical, 43% creative, 12% integrative.",
+      "llm": "xai/grok-3",
+      "max_iter": 10,
+      "reasoning": true,
+      "tools": [
+        "graph_query",
+        "spo_search",
+        "web_search"
+      ],
+      "spo_prompt": "You are reasoning about the qualia state 'Longing (phone in hand, not sent)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n24 -[:HAS_MODE]-> [mCMYK]\n  Active: n24 -[:NIB4_NEAR]-> [n34, n35, n31]\n  Active: n24 -[:STRUCTURAL_TRUTH]-> [n34, n35, n29]\n  Passive: [n23] -[:STRUCTURAL_TRUTH]-> n24\n  Active: n24 -[:BELONGS_TO]-> [fLonging]\n  Active: n24 -[:BERT_NEAR]-> [n32, n34, n29]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "awareness_summary": {
+        "crystallization": 0.828125,
+        "edge_count": 16,
+        "subject_ratio": 0.9375,
+        "causal_sign": 0,
+        "dominant_rel": "STRUCTURAL_TRUTH"
+      },
+      "thinking_style": {
+        "analytical": 0.828125,
+        "creative": 0.42857143,
+        "causal": 0.9375,
+        "receptive": 0.0625,
+        "integrative": 0.125
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "name": "turn_00_devotion_stay_when_ugly",
+      "description": "You are reasoning about the qualia state 'Devotion (staying when it’s ugly)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n3 -[:BELONGS_TO]-> [fDevotion]\n  Active: n3 -[:HAS_MODE]-> [mCMYK]\n  Active: n3 -[:NIB4_NEAR]-> [n8, n62, n13]\n  Active: n3 -[:BERT_NEAR]-> [n4, n22, n8]\n  Passive: [n2] -[:BERT_NEAR]-> n3\n  Active: n3 -[:STRUCTURAL_TRUTH]-> [n8, n13, n4]\n  Active: n3 -[:SURFACE_SYNONYMY]-> [n177, n203, n176]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": []
+    },
+    {
+      "name": "turn_01_devotion_after_fight",
+      "description": "You are reasoning about the qualia state 'Devotion (after the fight, still tender)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n8 -[:HAS_MODE]-> [mCMYK]\n  Active: n8 -[:BELONGS_TO]-> [fDevotion]\n  Active: n8 -[:BERT_NEAR]-> [n20, n13, n10]\n  Passive: [n3, n4, n5] -[:BERT_NEAR]-> n8\n  Active: n8 -[:NIB4_NEAR]-> [n64, n91, n62]\n  Passive: [n3, n5] -[:NIB4_NEAR]-> n8\n  Active: n8 -[:CADENCE_TRUTH]-> [n136, n106]\n  Active: n8 -[:STRUCTURAL_TRUTH]-> [n14, n16, n17]\n  Passive: [n3, n4, n5] -[:STRUCTURAL_TRUTH]-> n8\n  Active: n8 -[:SURFACE_SYNONYMY]-> [n178, n176]\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_00_devotion_stay_when_ugly"
+      ]
+    },
+    {
+      "name": "turn_02_devotion_clarity_kiss",
+      "description": "You are reasoning about the qualia state 'Devotion (clarity kiss, no games)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n22 -[:HAS_MODE]-> [mCMYK]\n  Passive: [n2, n3, n4] -[:BERT_NEAR]-> n22\n  Active: n22 -[:SURFACE_SYNONYMY]-> [n175, n177]\n  Active: n22 -[:BELONGS_TO]-> [fDevotion]\n  Active: n22 -[:NIB4_NEAR]-> [n38, n40]\n  Passive: [n2, n10] -[:NIB4_NEAR]-> n22\n  Passive: [n2, n7, n10] -[:STRUCTURAL_TRUTH]-> n22\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_01_devotion_after_fight"
+      ]
+    },
+    {
+      "name": "turn_03_devotion_yes_with_fear",
+      "description": "You are reasoning about the qualia state 'Devotion (yes, with fear inside it)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n19 -[:CADENCE_TRUTH]-> [n130]\n  Active: n19 -[:BELONGS_TO]-> [fDevotion]\n  Active: n19 -[:NIB4_NEAR]-> [n23, n27, n91]\n  Passive: [n12, n14] -[:NIB4_NEAR]-> n19\n  Active: n19 -[:SURFACE_SYNONYMY]-> [n177, n176, n178]\n  Active: n19 -[:BERT_NEAR]-> [n175, n22]\n  Passive: [n6, n10, n12] -[:BERT_NEAR]-> n19\n  Active: n19 -[:HAS_MODE]-> [mCMYK]\n  Passive: [n12] -[:STRUCTURAL_TRUTH]-> n19\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_02_devotion_clarity_kiss"
+      ]
+    },
+    {
+      "name": "turn_04_longing_train_window",
+      "description": "You are reasoning about the qualia state 'Longing (train window, lights passing)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n25 -[:BERT_NEAR]-> [n37, n39, n26]\n  Passive: [n23] -[:BERT_NEAR]-> n25\n  Active: n25 -[:HAS_MODE]-> [mCMYK]\n  Active: n25 -[:BELONGS_TO]-> [fLonging]\n  Active: n25 -[:NIB4_NEAR]-> [n29, n37, n39]\n  Passive: [n15] -[:NIB4_NEAR]-> n25\n  Active: n25 -[:STRUCTURAL_TRUTH]-> [n29, n37, n39]\n  Passive: [n15, n24, n23] -[:STRUCTURAL_TRUTH]-> n25\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Longing Analyst (CMYK)",
+      "context_from": [
+        "turn_03_devotion_yes_with_fear"
+      ]
+    },
+    {
+      "name": "turn_05_longing_sweet_surrender",
+      "description": "You are reasoning about the qualia state 'Longing (sweet surrender)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n26 -[:CADENCE_TRUTH]-> [n134]\n  Active: n26 -[:SURFACE_SYNONYMY]-> [n199]\n  Active: n26 -[:NIB4_NEAR]-> [n37, n44]\n  Passive: [n15, n23, n25] -[:NIB4_NEAR]-> n26\n  Active: n26 -[:BELONGS_TO]-> [fLonging]\n  Active: n26 -[:BERT_NEAR]-> [n37, n35, n36]\n  Passive: [n23, n25] -[:BERT_NEAR]-> n26\n  Active: n26 -[:STRUCTURAL_TRUTH]-> [n37, n44, n32]\n  Passive: [n23, n25] -[:STRUCTURAL_TRUTH]-> n26\n  Active: n26 -[:HAS_MODE]-> [mCMYK]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Longing Analyst (CMYK)",
+      "context_from": [
+        "turn_04_longing_train_window"
+      ]
+    },
+    {
+      "name": "turn_06_devotion_gentle_guardian",
+      "description": "You are reasoning about the qualia state 'Devotion (gentle guardian)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n4 -[:HAS_MODE]-> [mCMYK]\n  Active: n4 -[:BERT_NEAR]-> [n11, n16, n22]\n  Passive: [n2, n3] -[:BERT_NEAR]-> n4\n  Active: n4 -[:STRUCTURAL_TRUTH]-> [n11, n16, n8]\n  Passive: [n2, n3] -[:STRUCTURAL_TRUTH]-> n4\n  Active: n4 -[:NIB4_NEAR]-> [n11, n7, n83]\n  Passive: [n2] -[:NIB4_NEAR]-> n4\n  Active: n4 -[:BELONGS_TO]-> [fDevotion]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_05_longing_sweet_surrender"
+      ]
+    },
+    {
+      "name": "turn_07_devotion_hurt_but_here",
+      "description": "You are reasoning about the qualia state 'Devotion (hurt, but here)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n6 -[:BELONGS_TO]-> [fDevotion]\n  Active: n6 -[:HAS_MODE]-> [mCMYK]\n  Active: n6 -[:NIB4_NEAR]-> [n21, n60, n9]\n  Passive: [n1] -[:NIB4_NEAR]-> n6\n  Active: n6 -[:STRUCTURAL_TRUTH]-> [n21, n15, n18]\n  Passive: [n1, n3] -[:STRUCTURAL_TRUTH]-> n6\n  Active: n6 -[:CADENCE_TRUTH]-> [n131, n98]\n  Active: n6 -[:BERT_NEAR]-> [n21, n18, n11]\n  Passive: [n1] -[:BERT_NEAR]-> n6\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_06_devotion_gentle_guardian"
+      ]
+    },
+    {
+      "name": "turn_08_longing_moonlit_pull",
+      "description": "You are reasoning about the qualia state 'Longing (moonlit pull, inevitable)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n27 -[:HAS_MODE]-> [mCMYK]\n  Active: n27 -[:STRUCTURAL_TRUTH]-> [n33, n31, n34]\n  Passive: [n12, n23, n24] -[:STRUCTURAL_TRUTH]-> n27\n  Active: n27 -[:BELONGS_TO]-> [fLonging]\n  Active: n27 -[:BERT_NEAR]-> [n33, n28, n32]\n  Passive: [n12, n24] -[:BERT_NEAR]-> n27\n  Active: n27 -[:NIB4_NEAR]-> [n33, n41]\n  Passive: [n12, n19, n23] -[:NIB4_NEAR]-> n27\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Longing Analyst (CMYK)",
+      "context_from": [
+        "turn_07_devotion_hurt_but_here"
+      ]
+    },
+    {
+      "name": "turn_09_meaning_without_explanation",
+      "description": "You are reasoning about the qualia state 'Meaning (without explanation)' (family: Meaning, mode: RGB).\n\nYour SPO relationships:\n  Active: n160 -[:BERT_NEAR]-> [n163, n196, n197]\n  Passive: [n57, n76, n79] -[:BERT_NEAR]-> n160\n  Active: n160 -[:BELONGS_TO]-> [fMeaning]\n  Active: n160 -[:HAS_MODE]-> [mRGB]\n  Active: n160 -[:NIB4_NEAR]-> [n164, n171]\n  Passive: [n76, n129, n153] -[:NIB4_NEAR]-> n160\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Meaning Analyst (RGB)",
+      "context_from": [
+        "turn_08_longing_moonlit_pull"
+      ]
+    },
+    {
+      "name": "turn_10_devotion_love_as_act",
+      "description": "You are reasoning about the qualia state 'Devotion (love as act)' (family: Devotion, mode: RGB).\n\nYour SPO relationships:\n  Active: n176 -[:BELONGS_TO]-> [fDevotion]\n  Active: n176 -[:NIB4_NEAR]-> [n201, n186, n178]\n  Passive: [n174] -[:NIB4_NEAR]-> n176\n  Active: n176 -[:BERT_NEAR]-> [n177, n199]\n  Passive: [n13, n15, n20] -[:BERT_NEAR]-> n176\n  Passive: [n15, n19, n3] -[:SURFACE_SYNONYMY]-> n176\n  Active: n176 -[:HAS_MODE]-> [mRGB]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (RGB)",
+      "context_from": [
+        "turn_09_meaning_without_explanation"
+      ]
+    },
+    {
+      "name": "turn_11_presence_enough",
+      "description": "You are reasoning about the qualia state 'Presence (enough)' (family: Presence, mode: RGB).\n\nYour SPO relationships:\n  Active: n198 -[:NIB4_NEAR]-> [n215, n214, n216]\n  Passive: [n194, n195, n197] -[:NIB4_NEAR]-> n198\n  Active: n198 -[:BERT_NEAR]-> [n211]\n  Passive: [n153, n163, n184] -[:BERT_NEAR]-> n198\n  Active: n198 -[:BELONGS_TO]-> [fPresence]\n  Active: n198 -[:HAS_MODE]-> [mRGB]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Presence Analyst (RGB)",
+      "context_from": [
+        "turn_10_devotion_love_as_act"
+      ]
+    },
+    {
+      "name": "turn_12_love_benevolent_regard",
+      "description": "You are reasoning about the qualia state 'Love (benevolent regard)' (family: Love_non_erotic, mode: RGB).\n\nYour SPO relationships:\n  Active: n199 -[:BELONGS_TO]-> [fLove_non_erotic]\n  Active: n199 -[:HAS_MODE]-> [mRGB]\n  Passive: [n26, n44, n3] -[:SURFACE_SYNONYMY]-> n199\n  Active: n199 -[:BERT_NEAR]-> [n203, n202, n201]\n  Passive: [n44, n51, n176] -[:BERT_NEAR]-> n199\n  Active: n199 -[:NIB4_NEAR]-> [n205, n202, n200]\n  Passive: [n186, n196] -[:NIB4_NEAR]-> n199\n  Passive: [n196] -[:CADENCE_TRUTH]-> n199\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Love_non_erotic Analyst (RGB)",
+      "context_from": [
+        "turn_11_presence_enough"
+      ]
+    },
+    {
+      "name": "turn_13_ending_satisfied",
+      "description": "You are reasoning about the qualia state 'Ending (satisfied)' (family: Ending, mode: RGB).\n\nYour SPO relationships:\n  Active: n211 -[:BELONGS_TO]-> [fEnding]\n  Active: n211 -[:HAS_MODE]-> [mRGB]\n  Active: n211 -[:BERT_NEAR]-> [n212]\n  Passive: [n153, n154, n194] -[:BERT_NEAR]-> n211\n  Passive: [n133] -[:SURFACE_SYNONYMY]-> n211\n  Active: n211 -[:NIB4_NEAR]-> [n212, n214]\n  Passive: [n194, n195, n197] -[:NIB4_NEAR]-> n211\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Ending Analyst (RGB)",
+      "context_from": [
+        "turn_12_love_benevolent_regard"
+      ]
+    },
+    {
+      "name": "turn_14_devotion_vow_kept",
+      "description": "You are reasoning about the qualia state 'Devotion (vow kept)' (family: Devotion, mode: RGB).\n\nYour SPO relationships:\n  Passive: [n19, n21, n10] -[:SURFACE_SYNONYMY]-> n178\n  Active: n178 -[:BELONGS_TO]-> [fDevotion]\n  Active: n178 -[:NIB4_NEAR]-> [n181, n179, n183]\n  Passive: [n174, n176, n177] -[:NIB4_NEAR]-> n178\n  Active: n178 -[:HAS_MODE]-> [mRGB]\n  Passive: [n17, n21, n143] -[:BERT_NEAR]-> n178\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (RGB)",
+      "context_from": [
+        "turn_13_ending_satisfied"
+      ]
+    },
+    {
+      "name": "turn_15_love_unconditional",
+      "description": "You are reasoning about the qualia state 'Love (unconditional)' (family: Love_non_erotic, mode: RGB).\n\nYour SPO relationships:\n  Active: n203 -[:NIB4_NEAR]-> [n208, n206, n207]\n  Passive: [n202] -[:NIB4_NEAR]-> n203\n  Passive: [n41, n44, n40] -[:SURFACE_SYNONYMY]-> n203\n  Active: n203 -[:BELONGS_TO]-> [fLove_non_erotic]\n  Active: n203 -[:HAS_MODE]-> [mRGB]\n  Passive: [n41, n154, n161] -[:BERT_NEAR]-> n203\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Love_non_erotic Analyst (RGB)",
+      "context_from": [
+        "turn_14_devotion_vow_kept"
+      ]
+    },
+    {
+      "name": "turn_16_devotion_unseen_labor",
+      "description": "You are reasoning about the qualia state 'Devotion (unseen labor)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n18 -[:BELONGS_TO]-> [fDevotion]\n  Active: n18 -[:NIB4_NEAR]-> [n63, n66, n114]\n  Passive: [n1, n9] -[:NIB4_NEAR]-> n18\n  Active: n18 -[:HAS_MODE]-> [mCMYK]\n  Active: n18 -[:BERT_NEAR]-> [n22, n21]\n  Passive: [n5, n6, n9] -[:BERT_NEAR]-> n18\n  Active: n18 -[:STRUCTURAL_TRUTH]-> [n21]\n  Passive: [n6, n9, n15] -[:STRUCTURAL_TRUTH]-> n18\n  Active: n18 -[:SURFACE_SYNONYMY]-> [n177, n202]\n\nReasoning tasks:\n1. Map the STRUCTURAL_TRUTH cluster around this state.\n2. Find symmetric pairs (same family, different mode RGB/CMYK).\n3. Which neighbors are surface synonyms vs deep structural matches?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_15_love_unconditional"
+      ]
+    },
+    {
+      "name": "turn_17_devotion_oath_in_minor",
+      "description": "You are reasoning about the qualia state 'Devotion (oath in minor)' (family: Devotion, mode: CMYK).\n\nYour SPO relationships:\n  Active: n21 -[:SURFACE_SYNONYMY]-> [n178]\n  Active: n21 -[:HAS_MODE]-> [mCMYK]\n  Active: n21 -[:BERT_NEAR]-> [n178]\n  Passive: [n6, n10, n17] -[:BERT_NEAR]-> n21\n  Active: n21 -[:BELONGS_TO]-> [fDevotion]\n  Passive: [n6, n9, n18] -[:STRUCTURAL_TRUTH]-> n21\n  Active: n21 -[:NIB4_NEAR]-> [n60]\n  Passive: [n1, n6, n9] -[:NIB4_NEAR]-> n21\n  Active: n21 -[:CADENCE_TRUTH]-> [n60]\n\nReasoning tasks:\n1. What states CAUSE this one? Trace backward 2-3 hops.\n2. Is this state a CADENCE_TRUTH (deep rhythm, not surface)?\n3. What TRANSFORMS into this state? What conditions are needed?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Devotion Analyst (CMYK)",
+      "context_from": [
+        "turn_16_devotion_unseen_labor"
+      ]
+    },
+    {
+      "name": "turn_18_longing_open_hands",
+      "description": "You are reasoning about the qualia state 'Longing (open hands, no demand)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n23 -[:BELONGS_TO]-> [fLonging]\n  Active: n23 -[:STRUCTURAL_TRUTH]-> [n32, n26, n27]\n  Active: n23 -[:BERT_NEAR]-> [n28, n34, n26]\n  Active: n23 -[:NIB4_NEAR]-> [n32, n26, n27]\n  Passive: [n19] -[:NIB4_NEAR]-> n23\n  Active: n23 -[:HAS_MODE]-> [mCMYK]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Longing Analyst (CMYK)",
+      "context_from": [
+        "turn_17_devotion_oath_in_minor"
+      ]
+    },
+    {
+      "name": "turn_19_longing_phone_in_hand",
+      "description": "You are reasoning about the qualia state 'Longing (phone in hand, not sent)' (family: Longing, mode: CMYK).\n\nYour SPO relationships:\n  Active: n24 -[:HAS_MODE]-> [mCMYK]\n  Active: n24 -[:NIB4_NEAR]-> [n34, n35, n31]\n  Active: n24 -[:STRUCTURAL_TRUTH]-> [n34, n35, n29]\n  Passive: [n23] -[:STRUCTURAL_TRUTH]-> n24\n  Active: n24 -[:BELONGS_TO]-> [fLonging]\n  Active: n24 -[:BERT_NEAR]-> [n32, n34, n29]\n\nReasoning tasks:\n1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n3. What would DISSOLVE if this state were removed (counterfactual)?\n\nUse web_search to find real-world examples that illustrate these qualia transitions.\nReport any new entities or relationships discovered for graph enrichment.\n",
+      "expected_output": "A JSON report with: (1) causal chain analysis, (2) new entities/relationships discovered, (3) confidence scores for each finding",
+      "agent_role": "Longing Analyst (CMYK)",
+      "context_from": [
+        "turn_18_longing_open_hands"
+      ]
+    }
+  ],
+  "benchmark": {
+    "total_nodes": 219,
+    "total_edges": 1687,
+    "hydration_time_us": 20477,
+    "fanout_rounds": [
+      {
+        "round": 0,
+        "total_bits_changed": 14755,
+        "avg_crystallization": 0.92071563,
+        "max_crystallization": 0.9921875,
+        "min_crystallization": 0.796875,
+        "converged_nodes": 1,
+        "duration_us": 2507,
+        "db_growth_bytes": 7008
+      },
+      {
+        "round": 1,
+        "total_bits_changed": 18441,
+        "avg_crystallization": 0.880351,
+        "max_crystallization": 0.9453125,
+        "min_crystallization": 0.78125,
+        "converged_nodes": 1,
+        "duration_us": 2419,
+        "db_growth_bytes": 14016
+      },
+      {
+        "round": 2,
+        "total_bits_changed": 20344,
+        "avg_crystallization": 0.85207975,
+        "max_crystallization": 0.96875,
+        "min_crystallization": 0.765625,
+        "converged_nodes": 1,
+        "duration_us": 2465,
+        "db_growth_bytes": 21024
+      },
+      {
+        "round": 3,
+        "total_bits_changed": 21656,
+        "avg_crystallization": 0.83008707,
+        "max_crystallization": 0.921875,
+        "min_crystallization": 0.7421875,
+        "converged_nodes": 1,
+        "duration_us": 2440,
+        "db_growth_bytes": 28032
+      },
+      {
+        "round": 4,
+        "total_bits_changed": 22252,
+        "avg_crystallization": 0.81703055,
+        "max_crystallization": 0.921875,
+        "min_crystallization": 0.71875,
+        "converged_nodes": 1,
+        "duration_us": 2489,
+        "db_growth_bytes": 35040
+      },
+      {
+        "round": 5,
+        "total_bits_changed": 22473,
+        "avg_crystallization": 0.8154074,
+        "max_crystallization": 0.921875,
+        "min_crystallization": 0.7265625,
+        "converged_nodes": 1,
+        "duration_us": 2473,
+        "db_growth_bytes": 42048
+      },
+      {
+        "round": 6,
+        "total_bits_changed": 22380,
+        "avg_crystallization": 0.8184218,
+        "max_crystallization": 0.921875,
+        "min_crystallization": 0.7265625,
+        "converged_nodes": 1,
+        "duration_us": 2553,
+        "db_growth_bytes": 49056
+      },
+      {
+        "round": 7,
+        "total_bits_changed": 22457,
+        "avg_crystallization": 0.8179937,
+        "max_crystallization": 0.92578125,
+        "min_crystallization": 0.73046875,
+        "converged_nodes": 1,
+        "duration_us": 2491,
+        "db_growth_bytes": 56064
+      }
+    ],
+    "agents_spawned": 20,
+    "db_size_bytes": 179200,
+    "thinking_efficiency": [
+      {
+        "agent_id": "devotion_stay_when_ugly",
+        "style_name": "analytical",
+        "crystallization": 0.80859375,
+        "edge_coverage": 0.016004743,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "devotion_after_fight",
+        "style_name": "analytical",
+        "crystallization": 0.7734375,
+        "edge_coverage": 0.014819206,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "devotion_clarity_kiss",
+        "style_name": "analytical",
+        "crystallization": 0.79296875,
+        "edge_coverage": 0.013040901,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "devotion_yes_with_fear",
+        "style_name": "analytical",
+        "crystallization": 0.87890625,
+        "edge_coverage": 0.011262597,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "longing_train_window",
+        "style_name": "analytical",
+        "crystallization": 0.8125,
+        "edge_coverage": 0.011262597,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "longing_sweet_surrender",
+        "style_name": "analytical",
+        "crystallization": 0.83203125,
+        "edge_coverage": 0.011262597,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "devotion_gentle_guardian",
+        "style_name": "analytical",
+        "crystallization": 0.86328125,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "devotion_hurt_but_here",
+        "style_name": "analytical",
+        "crystallization": 0.7890625,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "longing_moonlit_pull",
+        "style_name": "analytical",
+        "crystallization": 0.8046875,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "meaning_without_explanation",
+        "style_name": "analytical",
+        "crystallization": 0.78125,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "devotion_love_as_act",
+        "style_name": "analytical",
+        "crystallization": 0.8046875,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "presence_enough",
+        "style_name": "analytical",
+        "crystallization": 0.875,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "love_benevolent_regard",
+        "style_name": "analytical",
+        "crystallization": 0.76953125,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "ending_satisfied",
+        "style_name": "analytical",
+        "crystallization": 0.8359375,
+        "edge_coverage": 0.010669828,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "devotion_vow_kept",
+        "style_name": "analytical",
+        "crystallization": 0.82421875,
+        "edge_coverage": 0.01007706,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "love_unconditional",
+        "style_name": "analytical",
+        "crystallization": 0.8359375,
+        "edge_coverage": 0.01007706,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "devotion_unseen_labor",
+        "style_name": "analytical",
+        "crystallization": 0.84765625,
+        "edge_coverage": 0.009484292,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "devotion_oath_in_minor",
+        "style_name": "analytical",
+        "crystallization": 0.8203125,
+        "edge_coverage": 0.009484292,
+        "reasoning_depth": 2
+      },
+      {
+        "agent_id": "longing_open_hands",
+        "style_name": "analytical",
+        "crystallization": 0.7734375,
+        "edge_coverage": 0.009484292,
+        "reasoning_depth": 3
+      },
+      {
+        "agent_id": "longing_phone_in_hand",
+        "style_name": "analytical",
+        "crystallization": 0.828125,
+        "edge_coverage": 0.009484292,
+        "reasoning_depth": 3
+      }
+    ]
+  }
+}

@@ -123,12 +123,15 @@ pub use holograph::{
     // Core Gabor wavelet types and operations
     GaussianLUT,
     MigrationResult,
-    // Overlay / blackboard layer
+    // Overlay / blackboard layer — unified bindspace surface
+    AlignedBuf2K,
+    MultiOverlay,
     Overlay,
     // Spatial transforms
     SpatialTransform,
     // Spectral analysis and cleaning
     SpectralMap,
+    SpectralMapReusable,
     WaveletTemplate,
     MODE_BYTE_OFFSET,
 };

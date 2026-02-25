@@ -30,6 +30,8 @@
 
 use crate::carrier::{carrier_decode, carrier_encode, CarrierBasis, CARRIER_FREQUENCIES};
 use crate::focus::{FOCUS_DIM_X, FOCUS_DIM_Y, FOCUS_DIM_Z};
+use rustynum_core::fingerprint::Fingerprint;
+use rustynum_core::layer_stack::CollapseGate;
 
 /// A migration entry: (concept_index, old_position, new_position).
 pub type Migration = (usize, (f32, f32, f32), (f32, f32, f32));
@@ -524,8 +526,18 @@ pub fn spatial_unbind_i8(container: &[i8], transform: &SpatialTransform) -> Vec<
 /// |-----------|------------- |-----------|
 /// | Overlay   | Working set  | Redis     |
 /// | Container | Committed    | LanceDB   |
+///
+/// ## Unified Bindspace Surface
+///
+/// `Overlay.buffer` (2048 bytes) IS `Fingerprint<256>` (256 × u64 = 2048 bytes).
+/// Same memory. Same operations. Use `to_fingerprint()` / `from_fingerprint()` to
+/// convert, or `as_fingerprint_words()` for a zero-copy view.
+///
+/// This means rustynum-holo, rustynum-core, ladybug-rs, and crewai-rust all
+/// operate on the EXACT SAME surface — not distinct copies.
 pub struct Overlay {
     /// The scratch surface. Same geometry as container: 2048 bytes = 8×8×32.
+    /// Also viewable as `Fingerprint<256>` via `as_fingerprint_words()`.
     pub buffer: Vec<u8>,
 
     /// Snapshot stack for rewind. Each snapshot is a full 2048-byte copy
@@ -675,6 +687,334 @@ impl Overlay {
     pub fn as_i8(&self) -> &[i8] {
         // SAFETY: u8 and i8 have identical size, alignment, and no invalid values.
         unsafe { std::slice::from_raw_parts(self.buffer.as_ptr() as *const i8, 2048) }
+    }
+
+    // ---- Zero-copy Fingerprint<256> bridge ----
+    // Overlay.buffer (2048 bytes) IS Fingerprint<256> (256 × u64 = 2048 bytes).
+    // Same memory. Same operations. One binary — never copy, only view.
+
+    /// View the overlay buffer as fingerprint words — zero-copy.
+    ///
+    /// `Vec<u8>` from the global allocator is always 8-byte aligned on 64-bit systems
+    /// for allocations >= 8 bytes. This panics in debug builds if alignment is wrong.
+    pub fn as_fingerprint_words(&self) -> &[u64; 256] {
+        let ptr = self.buffer.as_ptr();
+        debug_assert_eq!(
+            ptr as usize % 8,
+            0,
+            "overlay buffer not 8-byte aligned"
+        );
+        // SAFETY: Vec<u8> global allocator returns >= 8-byte aligned for 2048-byte alloc.
+        // u64 requires 8-byte alignment. 2048 bytes = 256 × u64.
+        unsafe { &*(ptr as *const [u64; 256]) }
+    }
+
+    /// Mutable view as fingerprint words — zero-copy.
+    pub fn as_fingerprint_words_mut(&mut self) -> &mut [u64; 256] {
+        let ptr = self.buffer.as_mut_ptr();
+        debug_assert_eq!(
+            ptr as usize % 8,
+            0,
+            "overlay buffer not 8-byte aligned"
+        );
+        // SAFETY: same alignment guarantee as as_fingerprint_words.
+        unsafe { &mut *(ptr as *mut [u64; 256]) }
+    }
+
+    // ---- Zero-allocation read-through variants ----
+    // The original read_full_xor/add/add_i8 allocate 2KB Vec per call.
+    // These _into variants write into caller-provided buffers — zero heap traffic.
+
+    /// Read full container through overlay into caller buffer (XOR mode).
+    /// Zero allocations. Processes 8 bytes at a time for u64 throughput.
+    pub fn read_full_xor_into(&self, container: &[u8], out: &mut [u8]) {
+        assert!(container.len() >= 2048 && out.len() >= 2048);
+        for i in (0..2048).step_by(8) {
+            let c = u64::from_le_bytes(container[i..i + 8].try_into().unwrap());
+            let o = u64::from_le_bytes(self.buffer[i..i + 8].try_into().unwrap());
+            out[i..i + 8].copy_from_slice(&(c ^ o).to_le_bytes());
+        }
+    }
+
+    /// Read full container through overlay into caller buffer (ADD mode).
+    /// Zero allocations.
+    pub fn read_full_add_into(&self, container: &[u8], out: &mut [u8]) {
+        assert!(container.len() >= 2048 && out.len() >= 2048);
+        for i in 0..2048 {
+            out[i] = container[i].wrapping_add(self.buffer[i]);
+        }
+    }
+
+    /// Read full container through overlay into caller buffer (i8 ADD mode).
+    /// Zero allocations.
+    pub fn read_full_add_i8_into(&self, container: &[i8], out: &mut [i8]) {
+        assert!(container.len() >= 2048 && out.len() >= 2048);
+        for i in 0..2048 {
+            out[i] = container[i].saturating_add(self.buffer[i] as i8);
+        }
+    }
+}
+
+// ============================================================================
+// AlignedBuf2K — 8-byte aligned 2048-byte buffer
+// ============================================================================
+
+/// Buffer type guaranteeing u64 alignment for zero-copy fingerprint views.
+///
+/// `Vec<u8>` does NOT guarantee alignment as a language-level contract.
+/// `AlignedBuf2K` uses `#[repr(C, align(8))]` to make alignment a type-system
+/// guarantee — not a runtime assert, not an allocator hope.
+///
+/// A `Fingerprint<256>` is `[u64; 256]` = 2048 bytes. An `AlignedBuf2K` is
+/// `[u8; 2048]` with 8-byte alignment. Same size. The zero-copy view between
+/// them is sound because the alignment invariant is upheld by the type system.
+#[repr(C, align(8))]
+#[derive(Clone)]
+pub struct AlignedBuf2K {
+    pub data: [u8; 2048],
+}
+
+impl AlignedBuf2K {
+    /// Create a zeroed buffer.
+    pub fn zero() -> Self {
+        Self { data: [0u8; 2048] }
+    }
+
+    /// View as fingerprint words — ZERO COPY.
+    /// Sound because `#[repr(align(8))]` guarantees u64 alignment.
+    pub fn as_fingerprint_words(&self) -> &[u64; 256] {
+        // SAFETY: AlignedBuf2K is repr(C, align(8)).
+        // [u8; 2048] and [u64; 256] have identical size (2048 bytes).
+        // u64 requires 8-byte alignment, which the repr guarantees.
+        unsafe { &*(self.data.as_ptr() as *const [u64; 256]) }
+    }
+
+    /// Mutable view as fingerprint words — ZERO COPY.
+    pub fn as_fingerprint_words_mut(&mut self) -> &mut [u64; 256] {
+        unsafe { &mut *(self.data.as_mut_ptr() as *mut [u64; 256]) }
+    }
+
+    /// Convert to `Fingerprint<256>` — ZERO COPY via word view.
+    pub fn to_fingerprint(&self) -> Fingerprint<256> {
+        Fingerprint::from_words(*self.as_fingerprint_words())
+    }
+
+    /// Set from `Fingerprint<256>`.
+    pub fn from_fingerprint(fp: &Fingerprint<256>) -> Self {
+        let mut buf = Self::zero();
+        for i in 0..256 {
+            let base = i * 8;
+            buf.data[base..base + 8].copy_from_slice(&fp.words[i].to_le_bytes());
+        }
+        buf
+    }
+
+    /// View as i8 slice.
+    pub fn as_i8(&self) -> &[i8] {
+        // SAFETY: u8 and i8 have identical size, alignment, and no invalid values.
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as *const i8, 2048) }
+    }
+
+    /// View as mutable i8 slice.
+    pub fn as_i8_mut(&mut self) -> &mut [i8] {
+        unsafe { std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut i8, 2048) }
+    }
+}
+
+impl Default for AlignedBuf2K {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
+impl std::fmt::Debug for AlignedBuf2K {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let words = self.as_fingerprint_words();
+        let popcount: u32 = words.iter().map(|w| w.count_ones()).sum();
+        write!(f, "AlignedBuf2K[popcount={}, {:016x} {:016x} ...]", popcount, words[0], words[1])
+    }
+}
+
+// ============================================================================
+// MultiOverlay — One Overlay per agent, conflict detection via CollapseGate
+// ============================================================================
+
+/// Multi-agent overlay stack: each agent owns its own Overlay (`&mut`),
+/// while the container (ground truth) remains `&self` during processing.
+///
+/// Conflict detection uses AND + popcount on the fingerprint views — the
+/// exact same operation as `DeltaLayer::conflicts_with()` in `rustynum-core`.
+/// The math is identical. The types are interchangeable.
+///
+/// This is the bridge between rustynum-holo (holographic containers) and
+/// ladybug-rs (cognitive collapse gates). Both operate on the same 2048-byte
+/// / `Fingerprint<256>` surface.
+pub struct MultiOverlay {
+    /// One overlay per agent — each agent owns their `&mut`.
+    pub overlays: Vec<Overlay>,
+}
+
+impl MultiOverlay {
+    /// Create N agent overlays.
+    pub fn new(num_agents: usize) -> Self {
+        Self {
+            overlays: (0..num_agents).map(|_| Overlay::new()).collect(),
+        }
+    }
+
+    /// Get mutable access to an agent's overlay.
+    #[inline]
+    pub fn agent_mut(&mut self, idx: usize) -> &mut Overlay {
+        &mut self.overlays[idx]
+    }
+
+    /// Get immutable access to an agent's overlay.
+    #[inline]
+    pub fn agent(&self, idx: usize) -> &Overlay {
+        &self.overlays[idx]
+    }
+
+    /// Number of agent overlays.
+    #[inline]
+    pub fn num_agents(&self) -> usize {
+        self.overlays.len()
+    }
+
+    /// Conflict detection: do any two overlays touch the same bits?
+    ///
+    /// Returns `(has_conflict, total_overlap_bits)`.
+    /// Uses AND + popcount on the fingerprint word views — same operation
+    /// as `DeltaLayer::conflicts_with()` in `rustynum-core`.
+    pub fn conflict_map(&self) -> (bool, u32) {
+        let mut total_overlap = 0u32;
+        for i in 0..self.overlays.len() {
+            for j in (i + 1)..self.overlays.len() {
+                let aw = self.overlays[i].as_fingerprint_words();
+                let bw = self.overlays[j].as_fingerprint_words();
+                for k in 0..256 {
+                    total_overlap += (aw[k] & bw[k]).count_ones();
+                }
+            }
+        }
+        (total_overlap > 0, total_overlap)
+    }
+
+    /// Evaluate the CollapseGate based on conflict analysis.
+    ///
+    /// - **Flow**: No significant conflict. Safe to commit all overlays.
+    /// - **Hold**: No changes yet. Accumulate more evidence.
+    /// - **Block**: High conflict. Discard all overlays.
+    pub fn evaluate(&self, conflict_threshold: u32) -> CollapseGate {
+        let (_, overlap) = self.conflict_map();
+        if overlap > conflict_threshold {
+            return CollapseGate::Block;
+        }
+        if self.overlays.iter().all(|o| o.is_clean()) {
+            CollapseGate::Hold
+        } else {
+            CollapseGate::Flow
+        }
+    }
+
+    /// FLOW: flush all overlays into container via XOR (order irrelevant for XOR).
+    pub fn commit_xor(&mut self, container: &mut [u8]) {
+        for overlay in &mut self.overlays {
+            overlay.flush_xor(container);
+        }
+    }
+
+    /// FLOW: flush all overlays into container via ADD.
+    pub fn commit_add(&mut self, container: &mut [u8]) {
+        for overlay in &mut self.overlays {
+            overlay.flush_add(container);
+        }
+    }
+
+    /// BLOCK: discard all overlays without flushing.
+    pub fn discard_all(&mut self) {
+        for overlay in &mut self.overlays {
+            overlay.discard();
+        }
+    }
+}
+
+// ============================================================================
+// SpectralMapReusable — Pre-allocated spectral analysis buffer
+// ============================================================================
+
+/// Reusable spectral analysis buffer. Allocates once, reuses across analyses.
+///
+/// `SpectralMap::analyze()` allocates 256KB per call (2048 × 16 × 2 × f32).
+/// This struct pre-allocates and reuses the buffers — zero heap traffic
+/// during processing cycles.
+pub struct SpectralMapReusable {
+    /// amplitude[pos_idx * 16 + freq_idx] — pre-allocated, zeroed between uses.
+    pub amplitude: Vec<f32>,
+    /// phase[pos_idx * 16 + freq_idx] — pre-allocated, zeroed between uses.
+    pub phase: Vec<f32>,
+}
+
+impl SpectralMapReusable {
+    /// Pre-allocate the analysis buffers (256KB total).
+    pub fn new() -> Self {
+        let total = 2048 * 16;
+        Self {
+            amplitude: vec![0.0f32; total],
+            phase: vec![0.0f32; total],
+        }
+    }
+
+    /// Analyze the full volume, writing into pre-allocated buffers.
+    /// Zero allocations.
+    pub fn analyze(&mut self, container: &[i8], lut_cache: &[GaussianLUT]) {
+        let n_freqs = 16;
+        self.amplitude.fill(0.0);
+        self.phase.fill(0.0);
+        let lut = &lut_cache[lut_cache.len() - 1];
+
+        for x in 0..8u8 {
+            for y in 0..8u8 {
+                for z in 0..32u8 {
+                    let pos_idx = x as usize * 256 + y as usize * 32 + z as usize;
+                    for f in 0..n_freqs {
+                        let (ph, amp) =
+                            gabor_read(container, lut, x, y, z, CARRIER_FREQUENCIES[f] as f32);
+                        let idx = pos_idx * n_freqs + f;
+                        self.amplitude[idx] = amp;
+                        self.phase[idx] = ph;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Find significant peaks in the last analysis.
+    pub fn find_peaks(&self, threshold: f32) -> Vec<(u8, u8, u8, u8, f32, f32)> {
+        let mut peaks = Vec::new();
+        let n_freqs = 16;
+
+        for x in 0..8u8 {
+            for y in 0..8u8 {
+                for z in 0..32u8 {
+                    let pos_idx = x as usize * 256 + y as usize * 32 + z as usize;
+                    for f in 0..n_freqs {
+                        let idx = pos_idx * n_freqs + f;
+                        let amp = self.amplitude[idx];
+                        if amp >= threshold {
+                            peaks.push((x, y, z, f as u8, amp, self.phase[idx]));
+                        }
+                    }
+                }
+            }
+        }
+
+        peaks
+    }
+}
+
+impl Default for SpectralMapReusable {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

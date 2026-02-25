@@ -1,29 +1,31 @@
-//! Layer stack + collapse gate for multi-writer concurrent state.
+//! Layer stack + collapse gate (Luftschleuse) for multi-writer concurrent state.
 //!
 //! Ground truth is `&self` forever during processing cycles.
 //! Each writer has their own delta layer with `&mut`.
-//! The CollapseGate decides what to do with accumulated deltas:
-//! - **Flow**: commit all deltas to ground truth (freeze / "ice-cake")
-//! - **Hold**: keep deltas floating — accumulate across cycles
-//! - **Block**: discard all deltas — irreconcilable contradiction
+//! Deltas ARE superposition — they coexist over ground truth without collapsing.
+//!
+//! The CollapseGate is the airlock between superposition and ground truth:
+//! - **Flow**: gate opens, superposition collapses into ground truth
+//! - **Hold**: gate stays closed, superposition persists across cycles
+//! - **Block**: contradiction detected, superposition discarded
 
 use crate::delta::DeltaLayer;
 use crate::fingerprint::Fingerprint;
 
-/// What to do with accumulated deltas.
+/// Airlock (Luftschleuse) between superposition and ground truth.
 ///
-/// The Collapse Gate evaluates conflict between deltas (via AND + popcount)
-/// and decides whether to commit, hold, or discard.
+/// Deltas ARE superposition — they coexist over ground truth.
+/// The CollapseGate evaluates conflict (AND + popcount) and decides
+/// whether superposition collapses, persists, or is discarded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CollapseGate {
-    /// Commit deltas to ground truth (freeze / "ice-cake").
+    /// Gate opens. Superposition collapses into ground truth.
     /// Low conflict — writers modified independent regions.
     Flow,
-    /// Keep deltas floating without committing.
-    /// Ambiguous — accumulate more evidence across additional cycles.
+    /// Gate stays closed. Superposition persists across cycles.
+    /// Ambiguous — accumulate more evidence.
     Hold,
-    /// Discard all deltas. Ground truth unchanged.
-    /// High conflict — writers contradicted each other.
+    /// Contradiction. Superposition discarded. Ground truth unchanged.
     Block,
 }
 

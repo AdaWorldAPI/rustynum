@@ -1,0 +1,1532 @@
+[
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "BERT_NEAR",
+    "bf16_distance": 3,
+    "sign_flips": 0,
+    "exp_shifts": 0,
+    "man_noise": 3,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=3)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 22,
+    "sign_flips": 0,
+    "exp_shifts": 0,
+    "man_noise": 22,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=22)"
+  },
+  {
+    "type_a": "DEVELOPED_BY",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 49,
+    "sign_flips": 0,
+    "exp_shifts": 2,
+    "man_noise": 17,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=49)"
+  },
+  {
+    "type_a": "OPERATED_BY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 57,
+    "sign_flips": 0,
+    "exp_shifts": 2,
+    "man_noise": 25,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=57, 0 sign flips)"
+  },
+  {
+    "type_a": "DEVELOPED_BY",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 80,
+    "sign_flips": 0,
+    "exp_shifts": 4,
+    "man_noise": 16,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=80)"
+  },
+  {
+    "type_a": "DEVELOPED_BY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 88,
+    "sign_flips": 0,
+    "exp_shifts": 4,
+    "man_noise": 24,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=88, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 91,
+    "sign_flips": 0,
+    "exp_shifts": 4,
+    "man_noise": 27,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=91, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 99,
+    "sign_flips": 0,
+    "exp_shifts": 5,
+    "man_noise": 19,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=99)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 100,
+    "sign_flips": 0,
+    "exp_shifts": 5,
+    "man_noise": 20,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=100)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 112,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 16,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=112, 0 sign flips)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 113,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 17,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=113, 0 sign flips)"
+  },
+  {
+    "type_a": "OPERATED_BY",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 115,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 19,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=115)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 119,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 23,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 120,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 24,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DEPLOYED_BY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 120,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 24,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=120, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 123,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 27,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=123)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 124,
+    "sign_flips": 0,
+    "exp_shifts": 7,
+    "man_noise": 12,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=124)"
+  },
+  {
+    "type_a": "DEVELOPED_BY",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 124,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 28,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=124)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 126,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 30,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=126)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 130,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 34,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=130, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 134,
+    "sign_flips": 0,
+    "exp_shifts": 6,
+    "man_noise": 38,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=134, 0 sign flips)"
+  },
+  {
+    "type_a": "DEPLOYED_BY",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 143,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 15,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=143)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 156,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 28,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 159,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 31,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 160,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 32,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 162,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 34,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "SUPPLIED_BY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 162,
+    "sign_flips": 0,
+    "exp_shifts": 8,
+    "man_noise": 34,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=162, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "BERT_NEAR",
+    "bf16_distance": 166,
+    "sign_flips": 0,
+    "exp_shifts": 9,
+    "man_noise": 22,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "NIB4_NEAR",
+    "bf16_distance": 169,
+    "sign_flips": 0,
+    "exp_shifts": 9,
+    "man_noise": 25,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 179,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 19,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=179)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 181,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 21,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 182,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 22,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 184,
+    "sign_flips": 0,
+    "exp_shifts": 9,
+    "man_noise": 40,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=184)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 184,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 24,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DEPLOYED_BY",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 184,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 24,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=184)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 185,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 25,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 189,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 29,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 1, same direction, d=189)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 190,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 30,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 192,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 16,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 196,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 20,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=196)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 197,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 37,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 199,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 39,
+    "same_rung": true,
+    "causal_interpretation": "NEAR-SYNONYM (same rung 2, same direction, d=199)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 199,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 23,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=199, 0 sign flips)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 202,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 42,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 203,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 43,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 205,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 45,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 207,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 31,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=207)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 208,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 32,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 1, d=208)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 213,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 37,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 214,
+    "sign_flips": 0,
+    "exp_shifts": 10,
+    "man_noise": 54,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 214,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 22,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 217,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 25,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 219,
+    "sign_flips": 0,
+    "exp_shifts": 11,
+    "man_noise": 43,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=219)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 220,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 28,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 220,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 28,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 221,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 29,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=221, 0 sign flips)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 222,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 30,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=222, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 223,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 31,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 223,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 31,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 224,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 32,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=224, 0 sign flips)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 224,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 32,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 226,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 34,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 227,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 35,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=227, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 228,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 36,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 231,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 39,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 231,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 39,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 231,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 39,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 232,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 40,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 234,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 42,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=234)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "TARGETS",
+    "bf16_distance": 236,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 28,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 237,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 45,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 241,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 33,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 244,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 36,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 244,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 52,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 245,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 37,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 246,
+    "sign_flips": 0,
+    "exp_shifts": 12,
+    "man_noise": 54,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "TARGETS",
+    "bf16_distance": 248,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 40,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 249,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 41,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 250,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 42,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=250, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "TARGETS",
+    "bf16_distance": 251,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 43,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 252,
+    "sign_flips": 0,
+    "exp_shifts": 13,
+    "man_noise": 44,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 257,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 33,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 261,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 37,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "NIB4_NEAR",
+    "bf16_distance": 262,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 38,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "IS_CAUSED_BY",
+    "bf16_distance": 264,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 24,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "BERT_NEAR",
+    "bf16_distance": 265,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 41,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 265,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 41,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=265)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 265,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 25,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 270,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 46,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 272,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 48,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 274,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "TARGETS",
+    "bf16_distance": 274,
+    "sign_flips": 0,
+    "exp_shifts": 14,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "TARGETS",
+    "bf16_distance": 275,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 35,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 276,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 36,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=276)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 276,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 36,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 281,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 41,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 282,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 42,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 283,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 43,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 285,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 45,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 288,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 32,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 289,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 49,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "TARGETS",
+    "bf16_distance": 289,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 49,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 290,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "NIB4_NEAR",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 290,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 34,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "BERT_NEAR",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 293,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 37,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 293,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 37,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 295,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 39,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 296,
+    "sign_flips": 0,
+    "exp_shifts": 15,
+    "man_noise": 56,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "TARGETS",
+    "bf16_distance": 297,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 41,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 302,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 46,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 302,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 30,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=302, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 305,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 49,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 306,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 308,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 36,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=308, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 310,
+    "sign_flips": 0,
+    "exp_shifts": 16,
+    "man_noise": 54,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "NIB4_NEAR",
+    "bf16_distance": 310,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 38,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "TRANSFORMS",
+    "bf16_distance": 313,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 41,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 2, d=313)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "BERT_NEAR",
+    "bf16_distance": 313,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 41,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 318,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 46,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CADENCE_TRUTH",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 319,
+    "sign_flips": 0,
+    "exp_shifts": 18,
+    "man_noise": 31,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "TARGETS",
+    "bf16_distance": 322,
+    "sign_flips": 0,
+    "exp_shifts": 18,
+    "man_noise": 34,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "HAS_MODE",
+    "bf16_distance": 322,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "STRUCTURAL_TRUTH",
+    "bf16_distance": 326,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 54,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "INVESTED_IN",
+    "type_b": "TARGETS",
+    "bf16_distance": 326,
+    "sign_flips": 0,
+    "exp_shifts": 17,
+    "man_noise": 54,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "HAS_MODE",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 329,
+    "sign_flips": 0,
+    "exp_shifts": 18,
+    "man_noise": 41,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 1→2)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "DISSOLVES_INTO",
+    "bf16_distance": 334,
+    "sign_flips": 0,
+    "exp_shifts": 18,
+    "man_noise": 46,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 338,
+    "sign_flips": 0,
+    "exp_shifts": 18,
+    "man_noise": 50,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "SUPPLIED_BY",
+    "type_b": "TARGETS",
+    "bf16_distance": 338,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 34,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 339,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 35,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=339, 0 sign flips)"
+  },
+  {
+    "type_a": "STRUCTURAL_TRUTH",
+    "type_b": "TARGETS",
+    "bf16_distance": 340,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 36,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 349,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 45,
+    "same_rung": true,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 2→2)"
+  },
+  {
+    "type_a": "OPERATED_BY",
+    "type_b": "TARGETS",
+    "bf16_distance": 349,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 45,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "SURFACE_SYNONYMY",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 352,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 48,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "NIB4_NEAR",
+    "bf16_distance": 353,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 49,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "BERT_NEAR",
+    "bf16_distance": 354,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "DEPLOYED_BY",
+    "type_b": "TARGETS",
+    "bf16_distance": 354,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "OPERATED_BY",
+    "bf16_distance": 356,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 52,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 3→2)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "BELONGS_TO",
+    "bf16_distance": 357,
+    "sign_flips": 0,
+    "exp_shifts": 21,
+    "man_noise": 21,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "CAUSES",
+    "type_b": "DISSOLVES_INTO",
+    "bf16_distance": 359,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 55,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "DEPLOYED_BY",
+    "bf16_distance": 359,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 55,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 3→2)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "INVESTED_IN",
+    "bf16_distance": 359,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 55,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->2, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "CADENCE_TRUTH",
+    "bf16_distance": 364,
+    "sign_flips": 0,
+    "exp_shifts": 19,
+    "man_noise": 60,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->2, 0 sign flips)"
+  },
+  {
+    "type_a": "TRANSFORMS",
+    "type_b": "VALID_FOR",
+    "bf16_distance": 365,
+    "sign_flips": 0,
+    "exp_shifts": 21,
+    "man_noise": 29,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 368,
+    "sign_flips": 0,
+    "exp_shifts": 20,
+    "man_noise": 48,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->1, 0 sign flips)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "TRANSFORMS",
+    "bf16_distance": 369,
+    "sign_flips": 0,
+    "exp_shifts": 20,
+    "man_noise": 49,
+    "same_rung": true,
+    "causal_interpretation": "RELATED (d=369, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "SURFACE_SYNONYMY",
+    "bf16_distance": 369,
+    "sign_flips": 0,
+    "exp_shifts": 20,
+    "man_noise": 49,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (3->1, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "DEVELOPED_BY",
+    "bf16_distance": 379,
+    "sign_flips": 0,
+    "exp_shifts": 21,
+    "man_noise": 43,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 3→2)"
+  },
+  {
+    "type_a": "DEVELOPED_BY",
+    "type_b": "TARGETS",
+    "bf16_distance": 380,
+    "sign_flips": 0,
+    "exp_shifts": 21,
+    "man_noise": 44,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "BELONGS_TO",
+    "type_b": "TARGETS",
+    "bf16_distance": 418,
+    "sign_flips": 0,
+    "exp_shifts": 23,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "VALID_FOR",
+    "type_b": "TARGETS",
+    "bf16_distance": 418,
+    "sign_flips": 0,
+    "exp_shifts": 23,
+    "man_noise": 50,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (1->3, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "SUPPLIED_BY",
+    "bf16_distance": 453,
+    "sign_flips": 0,
+    "exp_shifts": 25,
+    "man_noise": 53,
+    "same_rung": false,
+    "causal_interpretation": "PARTIAL-INVERSION (0 sign flips, rung 3→2)"
+  },
+  {
+    "type_a": "IS_CAUSED_BY",
+    "type_b": "DISSOLVES_INTO",
+    "bf16_distance": 469,
+    "sign_flips": 0,
+    "exp_shifts": 26,
+    "man_noise": 53,
+    "same_rung": false,
+    "causal_interpretation": "RUNG-SHIFT (2->3, 0 sign flips)"
+  },
+  {
+    "type_a": "DISSOLVES_INTO",
+    "type_b": "TARGETS",
+    "bf16_distance": 503,
+    "sign_flips": 0,
+    "exp_shifts": 28,
+    "man_noise": 55,
+    "same_rung": true,
+    "causal_interpretation": "SAME-CLASS-DIVERGENT (rung 3, d=503)"
+  }
+]
