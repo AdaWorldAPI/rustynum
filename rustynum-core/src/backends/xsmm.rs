@@ -256,6 +256,8 @@ pub mod arch {
 /// Must be called after `ensure_init()`.
 pub fn target_archid() -> i32 {
     ensure_init();
+    // SAFETY: libxsmm_init() has been called via ensure_init(). The function
+    // returns an integer arch ID and has no other preconditions.
     unsafe { libxsmm_get_target_archid() }
 }
 
@@ -266,8 +268,10 @@ pub fn target_archid() -> i32 {
 static INIT: Once = Once::new();
 
 fn ensure_init() {
-    INIT.call_once(|| unsafe {
-        libxsmm_init();
+    INIT.call_once(|| {
+        // SAFETY: libxsmm_init() is safe to call from any thread and idempotent.
+        // Once guards guarantee it runs exactly once across all threads.
+        unsafe { libxsmm_init() };
     });
 }
 
@@ -293,12 +297,17 @@ impl JitKernel {
     /// (e.g., BF16 on a CPU without VDPBF16PS and no AMX).
     pub fn try_dispatch(shape: LibxsmmGemmShape, flags: LibxsmmBitfield) -> Option<Self> {
         ensure_init();
+        // SAFETY: libxsmm_init() has been called. shape is a valid LibxsmmGemmShape
+        // struct (repr(C), matching the C API layout). Returns None if unsupported.
         let kernel = unsafe { libxsmm_dispatch_gemm(shape.clone(), flags, 0) }?;
         Some(Self { kernel, shape })
     }
 
     /// Dispatch an f32 GEMM kernel (C = A * B, beta=0).
     pub fn f32_gemm(m: i32, n: i32, k: i32) -> Option<Self> {
+        // SAFETY: libxsmm_create_gemm_shape is a pure struct constructor with no
+        // preconditions beyond valid integer arguments. It fills a stack-allocated
+        // LibxsmmGemmShape struct.
         let shape = unsafe {
             libxsmm_create_gemm_shape(
                 m,
@@ -319,6 +328,8 @@ impl JitKernel {
     /// Dispatch a BF16 GEMM kernel (BF16 inputs, f32 output, f32 accumulation).
     /// Requires CPX+ (VDPBF16PS) or SPR+ (AMX TDPBF16PS).
     pub fn bf16_gemm(m: i32, n: i32, k: i32) -> Option<Self> {
+        // SAFETY: Same as f32_gemm -- pure struct constructor with no preconditions.
+        // Uses LIBXSMM_DATATYPE_BF16 for A/B and F32 for C accumulation.
         let shape = unsafe {
             libxsmm_create_gemm_shape(
                 m,
