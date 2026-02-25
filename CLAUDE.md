@@ -6,7 +6,11 @@
 
 ---
 
-## READ THIS FIRST — Role in the Architecture
+## READ THIS FIRST — Role in the Four-Level Architecture
+
+rustynum is **Level 1 — Surface** (spatial substrate).
+
+> **Canonical cross-repo architecture:** [ada-docs/architecture/FOUR_LEVEL_ARCHITECTURE.md](https://github.com/AdaWorldAPI/ada-docs/blob/main/architecture/FOUR_LEVEL_ARCHITECTURE.md)
 
 rustynum is the **hardware layer AND the bindspace type owner**. It provides:
 
@@ -289,28 +293,50 @@ Race conditions cannot exist by construction:
 ### CollapseGate = Airlock (Luftschleuse)
 
 Deltas ARE superposition — they coexist over ground truth without collapsing.
-The CollapseGate is the airlock between superposition and ground truth:
+The CollapseGate is the airlock between superposition and ground truth.
+
+**Two kinds of XOR — never confuse them:**
+
+| XOR | When | Target | Borrow |
+|-----|------|--------|--------|
+| **Delta XOR** | WRITE phase | Writer's own `DeltaLayer` | `&mut DeltaLayer` (private) |
+| **Commit XOR** | After gate FLOW | Ground truth | `&mut LayerStack` (exclusive) |
+
+**Phase ordering (strict):**
 
 ```
-writers produce deltas → superposition exists (bundle of coexisting deltas)
-                              │
-                         CollapseGate (airlock)
-                              │
-                    ┌─────────┼─────────┐
-                  FLOW       HOLD      BLOCK
-                    │         │         │
-               collapse    keep      discard
-               to ground   super-    super-
-               truth       position  position
+1. WRITE         Each writer delta-XORs their intent into their own layer.
+                 Ground is &self — untouched. Each delta is &mut — private.
+                      │
+2. AWARENESS     Read superposition: ground ^ delta[0] ^ delta[1] ^ ...
+                 AND + popcount SEES contradictions between deltas.
+                 Contradictions ARE the awareness signal.
+                 Without contradiction there is nothing to be aware OF.
+                 Everything is &self — nobody writing.
+                      │
+3. GATE          CollapseGate evaluates awareness → decision.
+                      │
+            ┌─────────┼─────────┐
+          FLOW       HOLD      BLOCK
+            │         │         │
+4. COMMIT   │    keep super-  discard
+   ground   │    position     super-
+   ^= Σδ   │    (accumulate  position
+            │    more evidence)
+       collapse
+       to ground
+       truth
 ```
 
-- **Before the gate**: superposition. Deltas coexist. No race — ground is `&self`.
-- **FLOW**: gate opens, superposition collapses into ground truth (commit).
-- **HOLD**: gate stays closed. Superposition persists. More evidence accumulates.
-- **BLOCK**: contradiction detected. Superposition discarded. Ground unchanged.
+- **WRITE → AWARENESS**: you need the contradiction to have the awareness.
+  Awareness is reading the superposition. Without superposition, no signal.
+- **AWARENESS → GATE**: gate uses awareness (AND+popcount) to decide.
+- **GATE → COMMIT**: XOR to ground ONLY on FLOW. This is the only `&mut` on ground.
+- **HOLD**: superposition persists. Next cycle adds more deltas. Awareness grows.
+- **BLOCK**: superposition discarded. Ground unchanged. Start fresh.
 
-The gate evaluates conflict via AND + popcount on the deltas themselves.
-XOR is the algebra. Bundle is the superposition. The gate is the decision.
+XOR is the algebra. Bundle is the superposition. Awareness reads the bundle.
+The gate is the decision. Commit is the only write to ground.
 
 ---
 
@@ -425,5 +451,6 @@ cd bindings/python && cargo test
 
 ---
 
-*This document governs rustynum development. Read `/home/user/CLAUDE.md`
+*This document governs rustynum development. Read
+[ada-docs/architecture/FOUR_LEVEL_ARCHITECTURE.md](https://github.com/AdaWorldAPI/ada-docs/blob/main/architecture/FOUR_LEVEL_ARCHITECTURE.md)
 for the cross-repo architectural contract.*
