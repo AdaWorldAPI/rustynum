@@ -11,8 +11,10 @@ mod manipulation;
 pub mod operations;
 pub mod projection;
 mod statistics;
+pub mod view;
 
 pub use array_struct::{NumArray, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
+pub use view::{ArrayView, ArrayViewMut};
 pub use binding_matrix::{
     binding_popcount_3d, find_discriminative_spots, find_holographic_sweet_spot,
 };

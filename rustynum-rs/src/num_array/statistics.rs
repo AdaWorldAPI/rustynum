@@ -109,7 +109,7 @@ where
     /// ```
     pub fn sort(&self) -> NumArray<T, Ops> {
         let mut sorted_data = self.data.clone();
-        sorted_data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted_data.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         NumArray::new(sorted_data)
     }
 
@@ -180,7 +180,7 @@ where
                 }
 
                 for (i, ptr) in accumulator_ptrs.iter_mut().enumerate() {
-                    ptr.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    ptr.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     reduced_data[i] = Self::calculate_median(ptr);
                 }
 
@@ -402,7 +402,7 @@ where
 
                 let mut result_data = vec![T::from_u32(0); reduced_size];
                 for (i, slice) in acc_slices.iter_mut().enumerate() {
-                    slice.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    slice.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     let temp = NumArray::<T, Ops>::new(slice.to_vec());
                     result_data[i] = temp.percentile(p).get_data()[0];
                 }

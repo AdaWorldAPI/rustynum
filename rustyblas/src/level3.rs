@@ -28,6 +28,9 @@ struct SendMutPtr<T> {
     ptr: *mut T,
     len: usize,
 }
+// SAFETY: SendMutPtr is only used in the blocked GEMM path where each thread
+// writes to disjoint row ranges of C. The work_items partitioning guarantees
+// non-overlapping row ranges, so no data races occur.
 unsafe impl<T> Send for SendMutPtr<T> {}
 unsafe impl<T> Sync for SendMutPtr<T> {}
 
@@ -76,6 +79,9 @@ pub fn sgemm(
 ) {
     #[cfg(feature = "mkl")]
     {
+        // SAFETY: Pointers are derived from valid slices. Dimensions (m, n, k) and
+        // leading dimensions (lda, ldb, ldc) are caller-provided and match the CBLAS
+        // contract. MKL reads a[..m*lda] / b[..k*ldb] and writes c[..m*ldc].
         unsafe {
             rustynum_core::mkl_ffi::cblas_sgemm(
                 layout as i32,
@@ -308,8 +314,11 @@ fn sgemm_blocked(
                     {
                         let c_ptr = c_send;
                         s.spawn(move || {
-                            // Safety: each thread writes to rows [ic..ic+thread_m] of C,
-                            // which are non-overlapping across threads.
+                            // SAFETY: Each thread writes to rows [ic..ic+thread_m] of C,
+                            // which are non-overlapping across threads. The work_items
+                            // partitioning ensures disjoint row ranges. c_ptr was created
+                            // from a valid &mut [f32] slice and the scoped thread join
+                            // guarantees the borrow outlives all spawned threads.
                             let c_slice = unsafe { c_ptr.as_mut_slice() };
 
                             let mut thread_ic = ic;
@@ -508,6 +517,10 @@ fn sgemm_microkernel_6x16(
         // Software prefetch: 4 K-steps ahead for B and A panels
         #[cfg(target_arch = "x86_64")]
         if p + 4 < kb {
+            // SAFETY: The prefetch pointers are within the packed_a/packed_b buffers
+            // (guarded by `p + 4 < kb`). _mm_prefetch is a hint that does not read
+            // memory — it only populates the cache line. No UB even if the address
+            // is unmapped (the CPU silently ignores faulting prefetches).
             unsafe {
                 use std::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
                 let b_pf = packed_b.as_ptr().add((p + 4) * SGEMM_NR);

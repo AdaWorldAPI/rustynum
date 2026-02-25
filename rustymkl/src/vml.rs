@@ -7,8 +7,9 @@
 //! `vd` prefix = double-precision vector.
 
 use rustynum_core::simd::{F32_LANES, F64_LANES};
+use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
 use std::simd::num::SimdFloat;
-use std::simd::StdFloat;
+use std::simd::{Select, StdFloat};
 
 // SIMD vector types selected by feature flag
 #[cfg(feature = "avx512")]
@@ -431,6 +432,11 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// 4. Scale by 2^n via IEEE 754 exponent bit manipulation (ldexp)
 #[inline(always)]
 fn simd_exp_f32(x: F32Simd) -> F32Simd {
+    // IEEE 754 compliance: handle special values before clamping.
+    let is_nan = x.simd_ne(x); // NaN != NaN
+    let is_pos_inf = x.simd_eq(F32Simd::splat(f32::INFINITY));
+    let is_neg_inf = x.simd_eq(F32Simd::splat(f32::NEG_INFINITY));
+
     let ln2_inv = F32Simd::splat(std::f32::consts::LOG2_E);
     let ln2_hi = F32Simd::splat(0.693_145_75_f32);
     let ln2_lo = F32Simd::splat(1.428_606_8e-6_f32);
@@ -442,7 +448,7 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
     let c4 = F32Simd::splat(0.041_666_668);
     let c5 = F32Simd::splat(0.008_333_334);
 
-    // Clamp to avoid overflow
+    // Clamp to avoid overflow in polynomial path
     let x_clamped = x
         .simd_max(F32Simd::splat(-87.0))
         .simd_min(F32Simd::splat(88.0));
@@ -457,15 +463,20 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
     let poly = c1 + r * (c1 + r * (c2 + r * (c3 + r * (c4 + r * c5))));
 
     // ldexp: poly * 2^n via IEEE 754 exponent bit manipulation.
-    // 2^n as f32 = bits ((n + 127) << 23) when -126 <= n <= 127.
-    // Convert n (float with integer values) to i32, bias, shift into exponent field.
     let n_arr = n.to_array();
     let mut pow2n_arr = [0u32; F32_LANES];
     for i in 0..F32_LANES {
         pow2n_arr[i] = ((n_arr[i] as i32 + 127) as u32) << 23;
     }
     let pow2n = F32Simd::from_bits(U32Simd::from_array(pow2n_arr));
-    poly * pow2n
+    let mut result = poly * pow2n;
+
+    // Post-process IEEE 754 special values:
+    // exp(+Inf) = +Inf, exp(-Inf) = 0.0, exp(NaN) = NaN
+    result = is_pos_inf.select(F32Simd::splat(f32::INFINITY), result);
+    result = is_neg_inf.select(F32Simd::splat(0.0), result);
+    result = is_nan.select(F32Simd::splat(f32::NAN), result);
+    result
 }
 
 /// Fast SIMD exp(x) for F64Simd using range reduction + polynomial.
@@ -474,6 +485,11 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
 /// ldexp via IEEE 754 f64 exponent bit manipulation.
 #[inline(always)]
 fn simd_exp_f64(x: F64Simd) -> F64Simd {
+    // IEEE 754 compliance: handle special values before clamping.
+    let is_nan = x.simd_ne(x);
+    let is_pos_inf = x.simd_eq(F64Simd::splat(f64::INFINITY));
+    let is_neg_inf = x.simd_eq(F64Simd::splat(f64::NEG_INFINITY));
+
     let ln2_inv = F64Simd::splat(std::f64::consts::LOG2_E);
     let ln2_hi = F64Simd::splat(6.93145751953125e-1f64);
     let ln2_lo = F64Simd::splat(1.42860676533018e-6f64);
@@ -502,7 +518,13 @@ fn simd_exp_f64(x: F64Simd) -> F64Simd {
         pow2n_arr[i] = ((n_arr[i] as i64 + 1023) as u64) << 52;
     }
     let pow2n = F64Simd::from_bits(U64Simd::from_array(pow2n_arr));
-    poly * pow2n
+    let mut result = poly * pow2n;
+
+    // Post-process IEEE 754 special values
+    result = is_pos_inf.select(F64Simd::splat(f64::INFINITY), result);
+    result = is_neg_inf.select(F64Simd::splat(0.0), result);
+    result = is_nan.select(F64Simd::splat(f64::NAN), result);
+    result
 }
 
 /// Fast SIMD ln(x) for F32Simd.
@@ -513,6 +535,13 @@ fn simd_exp_f64(x: F64Simd) -> F64Simd {
 /// 3. ln(m) via Padé-like series: u = (m-1)/(m+1), ln(m) = 2u(1 + u²/3 + u⁴/5 + ...)
 #[inline(always)]
 fn simd_ln_f32(x: F32Simd) -> F32Simd {
+    // IEEE 754 compliance: handle special values before bit extraction.
+    let zero = F32Simd::splat(0.0);
+    let is_nan = x.simd_ne(x);
+    let is_zero = x.simd_eq(zero);
+    let is_neg = x.simd_lt(zero);
+    let is_pos_inf = x.simd_eq(F32Simd::splat(f32::INFINITY));
+
     let bits = x.to_bits(); // u32xN
 
     // Extract exponent: ((bits >> 23) & 0xFF) - 127
@@ -540,7 +569,15 @@ fn simd_ln_f32(x: F32Simd) -> F32Simd {
                 + u2 * (F32Simd::splat(1.0 / 7.0) + u2 * F32Simd::splat(1.0 / 9.0))));
     let ln_m = F32Simd::splat(2.0) * u * poly;
 
-    exp_f32 * F32Simd::splat(std::f32::consts::LN_2) + ln_m
+    let mut result = exp_f32 * F32Simd::splat(std::f32::consts::LN_2) + ln_m;
+
+    // Post-process IEEE 754 special values:
+    // ln(0) = -Inf, ln(negative) = NaN, ln(+Inf) = +Inf, ln(NaN) = NaN
+    result = is_zero.select(F32Simd::splat(f32::NEG_INFINITY), result);
+    result = is_neg.select(F32Simd::splat(f32::NAN), result);
+    result = is_pos_inf.select(F32Simd::splat(f32::INFINITY), result);
+    result = is_nan.select(F32Simd::splat(f32::NAN), result);
+    result
 }
 
 /// Fast SIMD ln(x) for F64Simd.
@@ -549,6 +586,13 @@ fn simd_ln_f32(x: F32Simd) -> F32Simd {
 /// Padé series to degree 15 (u^14 term).
 #[inline(always)]
 fn simd_ln_f64(x: F64Simd) -> F64Simd {
+    // IEEE 754 compliance: handle special values before bit extraction.
+    let zero = F64Simd::splat(0.0);
+    let is_nan = x.simd_ne(x);
+    let is_zero = x.simd_eq(zero);
+    let is_neg = x.simd_lt(zero);
+    let is_pos_inf = x.simd_eq(F64Simd::splat(f64::INFINITY));
+
     let bits = x.to_bits(); // u64xN
 
     // Extract exponent: ((bits >> 52) & 0x7FF) - 1023
@@ -580,7 +624,15 @@ fn simd_ln_f64(x: F64Simd) -> F64Simd {
                                 + u2 * F64Simd::splat(1.0 / 15.0)))))));
     let ln_m = F64Simd::splat(2.0) * u * poly;
 
-    exp_f64 * F64Simd::splat(std::f64::consts::LN_2) + ln_m
+    let mut result = exp_f64 * F64Simd::splat(std::f64::consts::LN_2) + ln_m;
+
+    // Post-process IEEE 754 special values:
+    // ln(0) = -Inf, ln(negative) = NaN, ln(+Inf) = +Inf, ln(NaN) = NaN
+    result = is_zero.select(F64Simd::splat(f64::NEG_INFINITY), result);
+    result = is_neg.select(F64Simd::splat(f64::NAN), result);
+    result = is_pos_inf.select(F64Simd::splat(f64::INFINITY), result);
+    result = is_nan.select(F64Simd::splat(f64::NAN), result);
+    result
 }
 
 /// Fast SIMD sin(x) for F32Simd.
@@ -827,5 +879,65 @@ mod tests {
                 x[i]
             );
         }
+    }
+
+    // IEEE 754 special value tests — validates Bug #2 fix
+    #[test]
+    fn test_vsexp_special_values() {
+        let x = vec![f32::INFINITY, f32::NEG_INFINITY, f32::NAN, 0.0f32];
+        let mut out = vec![0.0f32; 4];
+        vsexp(&x, &mut out);
+
+        assert!(out[0].is_infinite() && out[0] > 0.0, "exp(+Inf) must be +Inf, got {}", out[0]);
+        assert_eq!(out[1], 0.0, "exp(-Inf) must be 0.0, got {}", out[1]);
+        assert!(out[2].is_nan(), "exp(NaN) must be NaN, got {}", out[2]);
+        assert!((out[3] - 1.0).abs() < 1e-6, "exp(0) must be 1.0, got {}", out[3]);
+    }
+
+    #[test]
+    fn test_vsln_special_values() {
+        let x = vec![0.0f32, f32::INFINITY, f32::NAN, 1.0f32];
+        let mut out = vec![0.0f32; 4];
+        vsln(&x, &mut out);
+
+        assert!(out[0].is_infinite() && out[0] < 0.0, "ln(0) must be -Inf, got {}", out[0]);
+        assert!(out[1].is_infinite() && out[1] > 0.0, "ln(+Inf) must be +Inf, got {}", out[1]);
+        assert!(out[2].is_nan(), "ln(NaN) must be NaN, got {}", out[2]);
+        assert!(out[3].abs() < 1e-6, "ln(1) must be 0.0, got {}", out[3]);
+    }
+
+    #[test]
+    fn test_vsln_negative_returns_nan() {
+        let x = vec![-1.0f32, -100.0, -0.001, -f32::INFINITY];
+        let mut out = vec![0.0f32; 4];
+        vsln(&x, &mut out);
+
+        for i in 0..4 {
+            assert!(out[i].is_nan(), "ln({}) must be NaN, got {}", x[i], out[i]);
+        }
+    }
+
+    #[test]
+    fn test_vdexp_special_values() {
+        let x = vec![f64::INFINITY, f64::NEG_INFINITY, f64::NAN, 0.0f64];
+        let mut out = vec![0.0f64; 4];
+        vdexp(&x, &mut out);
+
+        assert!(out[0].is_infinite() && out[0] > 0.0, "exp(+Inf) must be +Inf");
+        assert_eq!(out[1], 0.0, "exp(-Inf) must be 0.0");
+        assert!(out[2].is_nan(), "exp(NaN) must be NaN");
+        assert!((out[3] - 1.0).abs() < 1e-12, "exp(0) must be 1.0");
+    }
+
+    #[test]
+    fn test_vdln_special_values() {
+        let x = vec![0.0f64, f64::INFINITY, f64::NAN, 1.0f64];
+        let mut out = vec![0.0f64; 4];
+        vdln(&x, &mut out);
+
+        assert!(out[0].is_infinite() && out[0] < 0.0, "ln(0) must be -Inf");
+        assert!(out[1].is_infinite() && out[1] > 0.0, "ln(+Inf) must be +Inf");
+        assert!(out[2].is_nan(), "ln(NaN) must be NaN");
+        assert!(out[3].abs() < 1e-12, "ln(1) must be 0.0");
     }
 }

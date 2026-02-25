@@ -15,7 +15,7 @@
 //!   `snrm2`, `dnrm2`, `sasum`, `dasum`, `isamax`, `idamax`, `scopy`, `dcopy`, `sswap`, `dswap`
 //! - **Level 2** (matrix-vector): `sgemv`, `dgemv`, `sger`, `dger`, `ssymv`, `dsymv`,
 //!   `strmv`, `dtrmv`, `strsv`, `dtrsv`
-//! - **Level 3** (matrix-matrix): `sgemm`, `dgemm`, `ssymm`, `dsymm`, `strmm`, `dtrmm`,
+//! - **Level 3** (matrix-matrix): `sgemm`, `dgemm`, `ssymm`, `dsymm`,
 //!   `strsm`, `dtrsm`, `ssyrk`, `dsyrk`
 //!
 //! ## Memory Layout
