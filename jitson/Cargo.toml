@@ -1,3 +1,7 @@
+# Own workspace — prevents parent rustynum workspace from auto-discovering
+# this crate and resolving its Cranelift/wasmtime path deps.
+[workspace]
+
 [package]
 name = "jitson"
 version = "0.1.0"
@@ -12,6 +16,10 @@ license = "MIT"
 #   - avx512bw, avx512vpopcntdq, avx512vnni, avx512ifma feature flags
 #   - VPOPCNTD/VPOPCNTQ, VPDPBUSD, VPTERNLOGD instructions
 #   - Sapphire Rapids / Granite Rapids microarchitecture presets
+# Path deps: requires AdaWorldAPI/wasmtime cloned at ../../wasmtime/
+# (sibling to rustynum workspace root). Excluded from workspace CI.
+# Git dep alternative (pulls full wasmtime workspace, breaks cargo fmt/test):
+#   cranelift-codegen = { git = "https://github.com/AdaWorldAPI/wasmtime.git", branch = "main" }
 cranelift-codegen = { path = "../../wasmtime/cranelift/codegen" }
 cranelift-frontend = { path = "../../wasmtime/cranelift/frontend" }
 cranelift-jit = { path = "../../wasmtime/cranelift/jit" }

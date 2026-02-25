@@ -15,10 +15,10 @@ members = [
     "rustynum-clam",
     "bindings/python",
 ]
-# jitson excluded: requires path deps on AdaWorldAPI/wasmtime fork (../../wasmtime/cranelift/*)
-# which is a separate local clone, not available in CI. Build with:
-#   cargo build --manifest-path jitson/Cargo.toml
-exclude = ["jitson"]
+# NOTE: jitson/ is NOT a workspace member — it depends on AdaWorldAPI/wasmtime
+# Cranelift fork (AVX-512 JIT) which pulls in the full wasmtime workspace.
+# Build locally: cargo build --manifest-path jitson/Cargo.toml
+# Do NOT add exclude = ["jitson"] — that causes Cargo to read its deps.
 
 [workspace.package]
 rust-version = "1.93"
