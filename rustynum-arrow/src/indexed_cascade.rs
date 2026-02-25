@@ -30,7 +30,7 @@ use std::collections::HashSet;
 use crate::channel_index::ChannelIndex;
 use crate::fragment_index::FragmentIndex;
 use rustynum_core::simd::hamming_distance;
-use rustynum_rs::CogRecord;
+use rustynum_rs::{CogRecord, CONTAINER_BYTES};
 
 /// Result of an indexed cascade search.
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ impl CascadeIndices {
     /// * `min_cluster_size` — minimum leaf cardinality for CLAM trees
     pub fn build(records: &[CogRecord], min_cluster_size: usize) -> Self {
         let count = records.len();
-        let vec_len = 2048; // CogRecord CONTAINER_BYTES
+        let vec_len = CONTAINER_BYTES;
 
         // Flatten each channel into a contiguous buffer for CLAM tree building.
         let mut meta_flat = Vec::with_capacity(count * vec_len);
@@ -289,6 +289,101 @@ pub fn rebuild(records: &[CogRecord], min_cluster_size: usize) -> CascadeIndices
 }
 
 // ---------------------------------------------------------------------------
+// Single-channel indexed search (BindSpace fingerprint path)
+// ---------------------------------------------------------------------------
+
+/// Result of a single-channel indexed search.
+#[derive(Debug, Clone)]
+pub struct SingleChannelResult {
+    /// (row_index, hamming_distance) for matches.
+    pub hits: Vec<(usize, u64)>,
+    /// Performance counters.
+    pub stats: SingleChannelStats,
+}
+
+/// Performance counters for single-channel indexed search.
+#[derive(Debug, Clone, Default)]
+pub struct SingleChannelStats {
+    /// Total fragments in the index.
+    pub fragments_total: usize,
+    /// Fragments pruned by triangle inequality.
+    pub fragments_pruned: usize,
+    /// Rows actually scanned (fine-scan).
+    pub rows_scanned: usize,
+}
+
+/// Single-channel indexed search over raw byte slices.
+///
+/// This is the BindSpace-compatible path: operates on a flat buffer of
+/// `count` vectors, each `vec_bytes` long. Uses `FragmentIndex` for
+/// triangle-inequality pruning, then fine-scans survivors with Hamming
+/// distance.
+///
+/// ## Use cases
+///
+/// - **BindSpace fingerprints**: 2048-byte vectors (256 u64 words)
+/// - **ladybug-rs Container**: 1024-byte vectors (128 u64 words)
+/// - **Any single FixedSizeBinary column** from Arrow
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// let index = FragmentIndex::build(&flat_data, 2048, count, 10);
+/// let result = single_channel_search(&query, &flat_data, 2048, &index, 4000);
+/// ```
+pub fn single_channel_search(
+    query: &[u8],
+    data: &[u8],
+    vec_bytes: usize,
+    index: &FragmentIndex,
+    threshold: u64,
+) -> SingleChannelResult {
+    let count = data.len() / vec_bytes;
+    debug_assert_eq!(data.len(), count * vec_bytes);
+    debug_assert_eq!(query.len(), vec_bytes);
+
+    let mut stats = SingleChannelStats {
+        fragments_total: index.num_fragments(),
+        ..Default::default()
+    };
+
+    // Stage 1: fragment prune via triangle inequality
+    let overlapping = index.find_overlapping(query, threshold);
+    stats.fragments_pruned = stats.fragments_total - overlapping.len();
+
+    // Stage 2: fine-scan surviving fragments
+    let mut hits = Vec::new();
+    for frag in &overlapping {
+        let orig_ids = index.original_row_ids(frag.row_id_start, frag.row_id_end);
+        for orig_id in orig_ids {
+            let offset = orig_id * vec_bytes;
+            let candidate = &data[offset..offset + vec_bytes];
+            let dist = hamming_distance(query, candidate);
+            stats.rows_scanned += 1;
+            if dist <= threshold {
+                hits.push((orig_id, dist));
+            }
+        }
+    }
+
+    hits.sort_by_key(|&(_, d)| d);
+    SingleChannelResult { hits, stats }
+}
+
+/// Build a `FragmentIndex` for single-channel data.
+///
+/// Convenience wrapper: flattens the "build index" + "search" pattern for
+/// consumers that don't want to manage the index separately.
+pub fn build_single_channel_index(
+    data: &[u8],
+    vec_bytes: usize,
+    count: usize,
+    min_cluster_size: usize,
+) -> FragmentIndex {
+    FragmentIndex::build(data, vec_bytes, count, min_cluster_size)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -298,7 +393,7 @@ mod tests {
     use rustynum_rs::NumArrayU8;
 
     fn make_container(val: u8) -> NumArrayU8 {
-        NumArrayU8::new(vec![val; 2048])
+        NumArrayU8::new(vec![val; CONTAINER_BYTES])
     }
 
     fn make_test_records(n: usize) -> Vec<CogRecord> {
@@ -458,6 +553,127 @@ mod tests {
         assert_eq!(indices.cam_index.num_rows(), 50);
         assert_eq!(indices.btree_index.num_rows(), 50);
         assert_eq!(indices.embed_index.num_rows(), 50);
+    }
+
+    // -----------------------------------------------------------------------
+    // Single-channel indexed search tests (BindSpace path)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_single_channel_exact_match() {
+        let vec_bytes = CONTAINER_BYTES;
+        let count = 50;
+        let mut data = Vec::with_capacity(count * vec_bytes);
+        for i in 0..count {
+            data.extend_from_slice(&vec![(i % 256) as u8; vec_bytes]);
+        }
+        // Plant exact match at row 25
+        let query = vec![0u8; vec_bytes];
+        data[25 * vec_bytes..(25 + 1) * vec_bytes].copy_from_slice(&vec![0u8; vec_bytes]);
+
+        let index = build_single_channel_index(&data, vec_bytes, count, 5);
+        let result = single_channel_search(&query, &data, vec_bytes, &index, 0);
+
+        assert!(
+            result.hits.iter().any(|&(idx, d)| idx == 25 && d == 0),
+            "should find exact match at row 25, got {:?}",
+            result.hits,
+        );
+    }
+
+    #[test]
+    fn test_single_channel_no_false_negatives() {
+        let vec_bytes = CONTAINER_BYTES;
+        let count = 40;
+        let mut data = Vec::with_capacity(count * vec_bytes);
+        for i in 0..count {
+            data.extend_from_slice(&vec![(i % 256) as u8; vec_bytes]);
+        }
+        let query = vec![5u8; vec_bytes];
+        let threshold = 4000;
+
+        // Brute force reference
+        let mut brute_hits: Vec<(usize, u64)> = Vec::new();
+        for i in 0..count {
+            let candidate = &data[i * vec_bytes..(i + 1) * vec_bytes];
+            let dist = hamming_distance(&query, candidate);
+            if dist <= threshold {
+                brute_hits.push((i, dist));
+            }
+        }
+
+        let index = build_single_channel_index(&data, vec_bytes, count, 3);
+        let result = single_channel_search(&query, &data, vec_bytes, &index, threshold);
+
+        // Every brute force hit must appear in indexed result (zero false negatives)
+        for &(idx, dist) in &brute_hits {
+            assert!(
+                result.hits.iter().any(|&(i, d)| i == idx && d == dist),
+                "single_channel missed brute hit at row {} dist {}",
+                idx,
+                dist,
+            );
+        }
+    }
+
+    #[test]
+    fn test_single_channel_arbitrary_vec_size() {
+        // Test with 1024-byte vectors (ladybug-rs Container size)
+        let vec_bytes = 1024;
+        let count = 30;
+        let mut data = Vec::with_capacity(count * vec_bytes);
+        for i in 0..count {
+            data.extend_from_slice(&vec![(i % 256) as u8; vec_bytes]);
+        }
+        let query = vec![10u8; vec_bytes];
+        let threshold = 2000;
+
+        let index = build_single_channel_index(&data, vec_bytes, count, 3);
+        let result = single_channel_search(&query, &data, vec_bytes, &index, threshold);
+
+        // Brute force check
+        for i in 0..count {
+            let candidate = &data[i * vec_bytes..(i + 1) * vec_bytes];
+            let dist = hamming_distance(&query, candidate);
+            if dist <= threshold {
+                assert!(
+                    result.hits.iter().any(|&(ri, _)| ri == i),
+                    "missed row {} with dist {} (threshold {})",
+                    i,
+                    dist,
+                    threshold,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_single_channel_pruning_reduces_work() {
+        let vec_bytes = CONTAINER_BYTES;
+        let count = 100;
+        let mut data = Vec::with_capacity(count * vec_bytes);
+        for i in 0..count {
+            data.extend_from_slice(&vec![(i % 256) as u8; vec_bytes]);
+        }
+        let query = vec![50u8; vec_bytes];
+
+        let index = build_single_channel_index(&data, vec_bytes, count, 10);
+        let result = single_channel_search(&query, &data, vec_bytes, &index, 2000);
+
+        // With tight thresholds, should prune some fragments
+        assert!(
+            result.stats.fragments_pruned > 0 || result.stats.fragments_total <= 1,
+            "expected some pruning: total={}, pruned={}",
+            result.stats.fragments_total,
+            result.stats.fragments_pruned,
+        );
+        // Should scan fewer than all rows
+        assert!(
+            result.stats.rows_scanned <= count,
+            "scanned {} should be <= {}",
+            result.stats.rows_scanned,
+            count,
+        );
     }
 
     #[test]

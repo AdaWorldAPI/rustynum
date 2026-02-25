@@ -12,7 +12,9 @@ use arrow::array::{
 };
 use arrow::buffer::{Buffer, ScalarBuffer};
 use arrow::datatypes::{DataType, Field, Schema};
-use rustynum_rs::{CogRecord, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};
+use rustynum_rs::{
+    CogRecord, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8, CONTAINER_BYTES,
+};
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -63,17 +65,18 @@ impl_arrow_bridge!(NumArrayU8, UInt8Array, u8);
 // CogRecord <-> Arrow RecordBatch
 // ---------------------------------------------------------------------------
 
-/// Container size in bytes (each container is 2048 bytes = 16384 bits).
-const CONTAINER_BYTES: i32 = 2048;
+/// Container size as i32 for Arrow FixedSizeBinary schema.
+/// Derived from the canonical `CONTAINER_BYTES` (usize) in rustynum-rs.
+const CONTAINER_BYTES_I32: i32 = CONTAINER_BYTES as i32;
 
 /// Arrow schema for a batch of CogRecords.
 /// Each container is a `FixedSizeBinary(2048)`.
 pub fn cogrecord_schema() -> Schema {
     Schema::new(vec![
-        Field::new("meta", DataType::FixedSizeBinary(CONTAINER_BYTES), false),
-        Field::new("cam", DataType::FixedSizeBinary(CONTAINER_BYTES), false),
-        Field::new("btree", DataType::FixedSizeBinary(CONTAINER_BYTES), false),
-        Field::new("embed", DataType::FixedSizeBinary(CONTAINER_BYTES), false),
+        Field::new("meta", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
+        Field::new("cam", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
+        Field::new("btree", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
+        Field::new("embed", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
     ])
 }
 
@@ -84,10 +87,10 @@ pub fn cogrecords_to_record_batch(
     let schema = Arc::new(cogrecord_schema());
     let n = records.len();
 
-    let mut meta_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES);
-    let mut cam_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES);
-    let mut btree_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES);
-    let mut embed_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES);
+    let mut meta_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES_I32);
+    let mut cam_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES_I32);
+    let mut btree_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES_I32);
+    let mut embed_builder = FixedSizeBinaryBuilder::with_capacity(n, CONTAINER_BYTES_I32);
 
     for rec in records {
         meta_builder.append_value(rec.meta.data_slice())?;
@@ -201,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_cogrecord_record_batch_round_trip() {
-        let make_container = |val: u8| NumArrayU8::new(vec![val; 2048]);
+        let make_container = |val: u8| NumArrayU8::new(vec![val; CONTAINER_BYTES]);
         let records: Vec<CogRecord> = (0..10)
             .map(|i| {
                 CogRecord::new(
@@ -237,7 +240,7 @@ mod tests {
         assert_eq!(schema.field(2).name(), "btree");
         assert_eq!(schema.field(3).name(), "embed");
         for f in schema.fields() {
-            assert_eq!(*f.data_type(), DataType::FixedSizeBinary(2048));
+            assert_eq!(*f.data_type(), DataType::FixedSizeBinary(CONTAINER_BYTES_I32));
             assert!(!f.is_nullable());
         }
     }
