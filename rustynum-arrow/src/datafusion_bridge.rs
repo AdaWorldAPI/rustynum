@@ -143,7 +143,7 @@ pub fn cascade_scan_4ch(
 mod tests {
     use super::*;
     use arrow::array::FixedSizeBinaryBuilder;
-    use rustynum_rs::NumArrayU8;
+    use rustynum_rs::{NumArrayU8, CONTAINER_BYTES};
 
     fn make_column(data: &[&[u8]], element_size: i32) -> FixedSizeBinaryArray {
         let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
@@ -155,30 +155,30 @@ mod tests {
 
     #[test]
     fn test_arrow_to_flat_bytes_contiguous() {
-        let row0 = vec![0u8; 2048];
-        let row1 = vec![1u8; 2048];
-        let col = make_column(&[&row0, &row1], 2048);
+        let row0 = vec![0u8; CONTAINER_BYTES];
+        let row1 = vec![1u8; CONTAINER_BYTES];
+        let col = make_column(&[&row0, &row1], CONTAINER_BYTES as i32);
 
         let flat = arrow_to_flat_bytes(&col);
-        assert_eq!(flat.len(), 4096);
+        assert_eq!(flat.len(), CONTAINER_BYTES * 2);
         assert_eq!(flat[0], 0);
-        assert_eq!(flat[2048], 1);
+        assert_eq!(flat[CONTAINER_BYTES], 1);
     }
 
     #[test]
     fn test_hamming_scan_column_exact_match() {
-        let query = vec![0xAAu8; 2048];
+        let query = vec![0xAAu8; CONTAINER_BYTES];
         let rows: Vec<Vec<u8>> = (0..10)
             .map(|i| {
                 if i == 5 {
-                    vec![0xAAu8; 2048] // exact match
+                    vec![0xAAu8; CONTAINER_BYTES] // exact match
                 } else {
-                    vec![i as u8; 2048]
+                    vec![i as u8; CONTAINER_BYTES]
                 }
             })
             .collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         let results = hamming_scan_column(&query, &col, 0);
         assert_eq!(results.len(), 1);
@@ -188,10 +188,10 @@ mod tests {
 
     #[test]
     fn test_hamming_scan_column_threshold() {
-        let query = vec![0u8; 2048];
-        let close = vec![1u8; 2048]; // Hamming distance = 2048 * 1 bit = 2048
-        let far = vec![0xFFu8; 2048]; // Hamming distance = 2048 * 8 = 16384
-        let col = make_column(&[&close, &far], 2048);
+        let query = vec![0u8; CONTAINER_BYTES];
+        let close = vec![1u8; CONTAINER_BYTES]; // Hamming distance = CONTAINER_BYTES * 1 bit
+        let far = vec![0xFFu8; CONTAINER_BYTES]; // Hamming distance = CONTAINER_BYTES * 8
+        let col = make_column(&[&close, &far], CONTAINER_BYTES as i32);
 
         let results = hamming_scan_column(&query, &col, 3000);
         assert_eq!(results.len(), 1);
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_cascade_scan_4ch() {
-        let make_container = |val: u8| NumArrayU8::new(vec![val; 2048]);
+        let make_container = |val: u8| NumArrayU8::new(vec![val; CONTAINER_BYTES]);
         let query = CogRecord::new(
             make_container(0),
             make_container(0),
@@ -251,10 +251,10 @@ mod tests {
         let b_refs: Vec<&[u8]> = btree_rows.iter().map(|r| r.as_slice()).collect();
         let e_refs: Vec<&[u8]> = embed_rows.iter().map(|r| r.as_slice()).collect();
 
-        let meta_col = make_column(&m_refs, 2048);
-        let cam_col = make_column(&c_refs, 2048);
-        let btree_col = make_column(&b_refs, 2048);
-        let embed_col = make_column(&e_refs, 2048);
+        let meta_col = make_column(&m_refs, CONTAINER_BYTES as i32);
+        let cam_col = make_column(&c_refs, CONTAINER_BYTES as i32);
+        let btree_col = make_column(&b_refs, CONTAINER_BYTES as i32);
+        let embed_col = make_column(&e_refs, CONTAINER_BYTES as i32);
 
         // Threshold: 3000 bits per channel — only record 2 should pass all 4
         let results = cascade_scan_4ch(

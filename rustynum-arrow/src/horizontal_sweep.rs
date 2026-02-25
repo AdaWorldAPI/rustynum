@@ -467,6 +467,7 @@ pub struct HybridCascadeResult {
 mod tests {
     use super::*;
     use arrow::array::FixedSizeBinaryBuilder;
+    use rustynum_rs::CONTAINER_BYTES;
 
     fn make_column(data: &[&[u8]], element_size: i32) -> FixedSizeBinaryArray {
         let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
@@ -478,18 +479,18 @@ mod tests {
 
     #[test]
     fn test_horizontal_sweep_exact_match() {
-        let query = vec![0xAAu8; 2048];
+        let query = vec![0xAAu8; CONTAINER_BYTES];
         let rows: Vec<Vec<u8>> = (0..20)
             .map(|i| {
                 if i == 12 {
-                    vec![0xAAu8; 2048] // exact match
+                    vec![0xAAu8; CONTAINER_BYTES] // exact match
                 } else {
-                    vec![i as u8; 2048]
+                    vec![i as u8; CONTAINER_BYTES]
                 }
             })
             .collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         let config = HorizontalSweepConfig {
             threshold: 0,
@@ -505,16 +506,17 @@ mod tests {
     #[test]
     fn test_horizontal_sweep_no_false_negatives() {
         // Create 100 random-ish records, plant 3 close ones.
-        let query = vec![0u8; 2048];
-        let mut rows: Vec<Vec<u8>> = (0..100).map(|i| vec![(i % 256) as u8; 2048]).collect();
+        let query = vec![0u8; CONTAINER_BYTES];
+        let mut rows: Vec<Vec<u8>> =
+            (0..100).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
 
-        // Records 10, 50, 90 are close (val=1, Hamming dist=2048)
-        rows[10] = vec![1u8; 2048];
-        rows[50] = vec![1u8; 2048];
-        rows[90] = vec![1u8; 2048];
+        // Records 10, 50, 90 are close (val=1, Hamming dist=CONTAINER_BYTES)
+        rows[10] = vec![1u8; CONTAINER_BYTES];
+        rows[50] = vec![1u8; CONTAINER_BYTES];
+        rows[90] = vec![1u8; CONTAINER_BYTES];
 
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         let config = HorizontalSweepConfig {
             threshold: 3000,
@@ -559,10 +561,10 @@ mod tests {
     #[test]
     fn test_horizontal_sweep_early_exit_reduces_work() {
         // All records are very far from query — should exit early.
-        let query = vec![0u8; 2048];
-        let rows: Vec<Vec<u8>> = (0..50).map(|_| vec![0xFFu8; 2048]).collect();
+        let query = vec![0u8; CONTAINER_BYTES];
+        let rows: Vec<Vec<u8>> = (0..50).map(|_| vec![0xFFu8; CONTAINER_BYTES]).collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         let config = HorizontalSweepConfig {
             threshold: 100, // very tight
@@ -589,8 +591,8 @@ mod tests {
 
     #[test]
     fn test_horizontal_sweep_empty() {
-        let query = vec![0u8; 2048];
-        let col = make_column(&[], 2048);
+        let query = vec![0u8; CONTAINER_BYTES];
+        let col = make_column(&[], CONTAINER_BYTES as i32);
         let config = HorizontalSweepConfig::default();
         let result = horizontal_sweep(&query, &col, &config);
         assert_eq!(result.hits.len(), 0);
@@ -599,11 +601,11 @@ mod tests {
 
     #[test]
     fn test_horizontal_sweep_top_k() {
-        let query = vec![0u8; 2048];
+        let query = vec![0u8; CONTAINER_BYTES];
         // Plant 5 exact matches.
-        let rows: Vec<Vec<u8>> = (0..10).map(|_| vec![0u8; 2048]).collect();
+        let rows: Vec<Vec<u8>> = (0..10).map(|_| vec![0u8; CONTAINER_BYTES]).collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         let config = HorizontalSweepConfig {
             threshold: 0,
@@ -616,12 +618,13 @@ mod tests {
 
     #[test]
     fn test_horizontal_sweep_filtered() {
-        let query = vec![0u8; 2048];
-        let mut rows: Vec<Vec<u8>> = (0..50).map(|i| vec![(i % 256) as u8; 2048]).collect();
-        rows[25] = vec![0u8; 2048]; // exact match
+        let query = vec![0u8; CONTAINER_BYTES];
+        let mut rows: Vec<Vec<u8>> =
+            (0..50).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
+        rows[25] = vec![0u8; CONTAINER_BYTES]; // exact match
 
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
 
         // Only search among candidates [20, 25, 30, 35]
         let candidates = vec![20, 25, 30, 35];
@@ -638,23 +641,24 @@ mod tests {
 
     #[test]
     fn test_hybrid_cascade_sweep() {
-        let hdc_query = vec![0u8; 2048];
+        let hdc_query = vec![0u8; CONTAINER_BYTES];
         let dense_query = vec![0u8; 512]; // smaller dense embedding
 
-        let mut hdc_rows: Vec<Vec<u8>> = (0..30).map(|i| vec![(i % 256) as u8; 2048]).collect();
+        let mut hdc_rows: Vec<Vec<u8>> =
+            (0..30).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
         let mut dense_rows: Vec<Vec<u8>> = (0..30).map(|i| vec![(i % 256) as u8; 512]).collect();
 
         // Row 15: close in both HDC and dense
-        hdc_rows[15] = vec![1u8; 2048];
+        hdc_rows[15] = vec![1u8; CONTAINER_BYTES];
         dense_rows[15] = vec![1u8; 512];
 
         // Row 20: close in HDC but far in dense
-        hdc_rows[20] = vec![1u8; 2048];
+        hdc_rows[20] = vec![1u8; CONTAINER_BYTES];
         dense_rows[20] = vec![0xFFu8; 512];
 
         let hdc_refs: Vec<&[u8]> = hdc_rows.iter().map(|r| r.as_slice()).collect();
         let dense_refs: Vec<&[u8]> = dense_rows.iter().map(|r| r.as_slice()).collect();
-        let hdc_col = make_column(&hdc_refs, 2048);
+        let hdc_col = make_column(&hdc_refs, CONTAINER_BYTES as i32);
         let dense_col = make_column(&dense_refs, 512);
 
         let hdc_config = HorizontalSweepConfig {
@@ -699,15 +703,15 @@ mod tests {
     fn test_horizontal_vs_brute_force_agreement() {
         // Exhaustive validation: horizontal sweep must return exactly the same
         // results as brute-force full-vector scan.
-        let query = vec![42u8; 2048];
+        let query = vec![42u8; CONTAINER_BYTES];
         let rows: Vec<Vec<u8>> = (0..80)
             .map(|i| {
                 let v = (i * 3 + 7) as u8;
-                vec![v; 2048]
+                vec![v; CONTAINER_BYTES]
             })
             .collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
-        let col = make_column(&refs, 2048);
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
         let threshold = 5000;
 
         // Brute force

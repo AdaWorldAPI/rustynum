@@ -65,8 +65,9 @@ pub use channel_index::{ChannelIndex, ClusterMeta};
 
 #[cfg(feature = "arrow")]
 pub use indexed_cascade::{
-    indexed_cascade_search, learn, rebuild, CascadeIndices, IndexedCascadeResult,
-    IndexedCascadeStats,
+    build_single_channel_index, indexed_cascade_search, learn, rebuild,
+    single_channel_search, CascadeIndices, IndexedCascadeResult, IndexedCascadeStats,
+    SingleChannelResult, SingleChannelStats,
 };
 
 #[cfg(feature = "arrow")]
