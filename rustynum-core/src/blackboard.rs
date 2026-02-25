@@ -79,6 +79,8 @@ struct BufferMeta {
 impl Drop for BufferMeta {
     fn drop(&mut self) {
         if !self.ptr.is_null() && self.layout.size() > 0 {
+            // SAFETY: ptr was allocated via alloc::alloc_zeroed with this exact layout.
+            // The null check and size > 0 guard ensure we only deallocate live allocations.
             unsafe { alloc::dealloc(self.ptr, self.layout) };
         }
     }
@@ -153,6 +155,8 @@ impl Blackboard {
         let ptr = if byte_len == 0 {
             std::ptr::null_mut()
         } else {
+            // SAFETY: layout has valid size (>0) and alignment (64). alloc_zeroed
+            // returns a pointer to zeroed memory or null on failure.
             let p = unsafe { alloc::alloc_zeroed(layout) };
             if p.is_null() {
                 alloc::handle_alloc_error(layout);
@@ -188,6 +192,10 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&[]);
         }
+        // SAFETY: ptr is non-null (len_elements > 0 implies a live allocation),
+        // 64-byte aligned (satisfies f32 alignment of 4), dtype is verified as F32,
+        // and len_elements matches the allocation size. &self borrows the Blackboard
+        // immutably so no mutable aliases exist.
         Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const f32, meta.len_elements) })
     }
 
@@ -199,6 +207,10 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&mut []);
         }
+        // SAFETY: ptr is non-null (len_elements > 0 implies a live allocation),
+        // 64-byte aligned (satisfies f32 alignment of 4), dtype is verified as F32,
+        // and len_elements matches the allocation size. &mut self guarantees exclusive
+        // access so no other references to this buffer exist.
         Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f32, meta.len_elements) })
     }
 
@@ -210,6 +222,8 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&[]);
         }
+        // SAFETY: ptr is non-null, 64-byte aligned (satisfies f64 alignment of 8),
+        // dtype verified as F64, len_elements matches allocation. &self borrows immutably.
         Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const f64, meta.len_elements) })
     }
 
@@ -221,6 +235,8 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&mut []);
         }
+        // SAFETY: ptr is non-null, 64-byte aligned, dtype verified as F64,
+        // len_elements matches allocation. &mut self guarantees exclusive access.
         Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f64, meta.len_elements) })
     }
 
@@ -232,6 +248,8 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&[]);
         }
+        // SAFETY: ptr is non-null, u8 has alignment 1 (always satisfied),
+        // dtype verified as U8, len_elements matches allocation. &self borrows immutably.
         Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const u8, meta.len_elements) })
     }
 
@@ -243,6 +261,8 @@ impl Blackboard {
         if meta.len_elements == 0 {
             return Some(&mut []);
         }
+        // SAFETY: ptr is non-null, u8 has alignment 1, dtype verified as U8,
+        // len_elements matches allocation. &mut self guarantees exclusive access.
         Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr, meta.len_elements) })
     }
 
@@ -289,6 +309,9 @@ impl Blackboard {
         let ma = self.meta_checked(a, DType::F32)?;
         let mb = self.meta_checked(b, DType::F32)?;
         let mc = self.meta_checked(c, DType::F32)?;
+        // SAFETY: &mut self guarantees exclusive access to the Blackboard. The assert
+        // above ensures all three names are distinct, so the pointers refer to different
+        // heap allocations. No aliasing occurs.
         unsafe {
             Some((
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f32, ma.len_elements),
@@ -315,6 +338,9 @@ impl Blackboard {
         let ma = self.meta_checked(a, DType::F64)?;
         let mb = self.meta_checked(b, DType::F64)?;
         let mc = self.meta_checked(c, DType::F64)?;
+        // SAFETY: &mut self guarantees exclusive access to the Blackboard. The assert
+        // above ensures all three names are distinct, so the pointers refer to different
+        // heap allocations. No aliasing occurs.
         unsafe {
             Some((
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f64, ma.len_elements),
