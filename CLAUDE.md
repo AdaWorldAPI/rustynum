@@ -579,27 +579,39 @@ These rustynum crates are battle-tested but NOT yet connected to the Lance data 
 
 ### P2 — Toolchain: Ship on Stable 1.93
 
-**Stable has EVERYTHING for the AVX-512 hot path.** Confirmed analysis:
+**Stable 1.93.1 has EVERYTHING.** Compile-tested 2026-02-27 — ZERO gaps:
 
-| Intrinsic | Stable 1.93 | Notes |
-|-----------|-------------|-------|
-| `_mm512_xor_si512` | Yes (avx512f) | XOR |
-| `_mm512_popcnt_epi64` | Yes (avx512vpopcntdq) | VPOPCNTDQ — the money instruction |
-| `_mm512_add_epi64` | Yes (avx512f) | Accumulate |
-| `_mm512_loadu_si512` | Yes | Load |
-| `_mm512_ternarylogic_epi64` | Yes (avx512f) | 3-input bitwise in ONE instruction |
-| `_mm512_cvtne2ps_pbh` | Yes (avx512bf16) | f32→bf16 pack |
-| `_mm512_dpbf16_ps` | Yes (avx512bf16) | bf16 dot→f32 |
-| `_mm512_reduce_add_epi64` | Missing | Pseudo-instruction, 5-op manual reduce (once at end, irrelevant) |
+| Category | Intrinsic | Stable 1.93.1 | Feature Gate |
+|----------|-----------|---------------|--------------|
+| **Core** | `_mm512_xor_si512` | Yes | avx512f |
+| **Core** | `_mm512_popcnt_epi64` | Yes | avx512vpopcntdq |
+| **Core** | `_mm512_add_epi64` | Yes | avx512f |
+| **Core** | `_mm512_loadu_si512` | Yes | avx512f |
+| **Core** | `_mm512_ternarylogic_epi64` | Yes | avx512f |
+| **BF16** | `_mm512_cvtne2ps_pbh` | Yes | avx512bf16 |
+| **BF16** | `_mm512_dpbf16_ps` | Yes | avx512bf16 |
+| **BF16** | `_mm512_cvtpbh_ps` | Yes | avx512bf16 |
+| **Reduce** | `_mm512_reduce_add_epi64` | Yes | avx512f |
+| **Reduce** | `_mm512_reduce_or_epi64` | Yes | avx512f |
+| **Mask** | `_kand_mask16` | Yes | avx512f |
+| **Mask** | `_knot_mask16` | Yes | avx512f |
+| **Mask** | `_kor_mask16` | Yes | avx512f |
+| **Mask** | `_kxor_mask16` | Yes | avx512f |
+| **Mask** | `_kand_mask8` | Yes | avx512dq |
+| **Mask** | `_knot_mask8` | Yes | avx512dq |
+| **Mask** | `_mm512_movepi8_mask` | Yes | avx512bw |
+| **Mask** | `_mm512_movm_epi8` | Yes | avx512bw |
+| **Blend** | `_mm512_mask_blend_epi64` | Yes | avx512f |
+| **Compare** | `_mm512_cmpeq_epi64_mask` | Yes | avx512f |
 
-The 16K Hamming hot path: `loadu → xor → vpopcntdq → add → manual reduce` = 100% stable.
-BF16: No native bf16 type in either path. Store u16, widen f32, compute, narrow back — all stable.
-portable_simd adds nothing for AVX-512-only: one ISA, explicit intrinsics, no portability needed.
+The 16K Hamming hot path, BF16 pipeline, mask arithmetic, horizontal reduces —
+ALL available on stable 1.93.1. ZERO intrinsics missing. The portable_simd
+dependency is purely syntactic sugar.
 
 - [ ] **Port portable_simd to std::arch** — Enables stable 1.93 across entire stack
   - ~879 call sites across: rustyblas (158), rustymkl (198), rustynum-rs (523)
   - Mechanical: `Simd::<f32,16>::from_slice(a)` → `_mm512_loadu_ps(a.as_ptr())`
-  - Mechanical: `.reduce_sum()` → manual 5-instruction reduce (extract+add chain, once at end)
+  - Mechanical: `.reduce_sum()` → `_mm512_reduce_add_epi64()` (AVAILABLE on stable, not missing!)
   - Mechanical: `Simd::splat(x)` → `_mm512_set1_ps(x)`
   - After port: change `rust-toolchain.toml` from `nightly` to `channel = "1.93"`
   - Result: ALL 4 repos build on same stable toolchain, no nightly dep management
@@ -611,8 +623,6 @@ portable_simd adds nothing for AVX-512-only: one ISA, explicit intrinsics, no po
 
 ### DONE
 
-<!-- Move completed items here with date -->
-<!-- Example: - [x] 2026-02-27: Added §12 Lance Zero-Copy Contract to CLAUDE.md -->
 - [x] 2026-02-27: DeltaLayer + LayerStack + CollapseGate implemented in rustynum-core
 - [x] 2026-02-27: Overlay + AlignedBuf2K + MultiOverlay in rustynum-holo
 - [x] 2026-02-27: as_fingerprint_words() zero-copy bridge
@@ -621,6 +631,62 @@ portable_simd adds nothing for AVX-512-only: one ISA, explicit intrinsics, no po
 - [x] 2026-02-27: NumElement supertrait
 - [x] 2026-02-27: cascade_scan_4ch() zero-copy via arrow_to_flat_bytes()
 - [x] 2026-02-27: CI workflows with lint + miri (5 min timeout per crate)
+- [x] 2026-02-27: Compile-tested ALL AVX-512 intrinsics on stable 1.93.1 — ZERO gaps
+
+---
+
+## 14. Nightly ↔ Stable Change Audit Trail (2026-02-27)
+
+> **Why this exists:** Session resets lose context. This tracks every nightly/stable
+> decision so future sessions can trace back WHY the toolchain is what it is.
+
+### Current State
+
+- `rust-toolchain.toml` pins **nightly** (because of `portable_simd`)
+- 4 crates use `#![feature(portable_simd)]`: rustyblas, rustymkl, rustynum-rs, rustynum-archive
+- rustynum-core: conditional (`cfg_attr(any(feature = "avx512", feature = "avx2"))`)
+- ladybug-rs, crewai-rust, n8n-rs: all build on **stable 1.93**
+- All AVX-512 intrinsics (core, BF16, mask, reduce) confirmed available on stable 1.93.1
+- `portable_simd` is ONLY syntactic sugar — port to `std::arch` has zero blockers
+
+### Changes Made This Session (all in branch `claude/check-ladybug-rs-access-yVeJG`)
+
+| Commit | Repo | File | What Changed |
+|--------|------|------|-------------|
+| `3291c86` | rustynum | `CLAUDE.md` | Version Discipline table: `Nightly: ONLY for testing AMX` → `Nightly: NEVER — nightly changes deps across the whole stack` |
+| `3291c86` | rustynum | `CLAUDE.md` | Anti-patterns: `DO NOT use nightly features in non-test code` → `DO NOT use nightly Rust — the whole stack is optimized for stable` |
+| `3291c86` | rustynum | `CLAUDE.md` | Python bindings test: removed `(requires nightly for PyO3)` |
+| `37ba508` | ladybug-rs | `CLAUDE.md` | Section rename: `Nightly Blocker` → `portable_simd → std::arch Port (TODO)` |
+| `37ba508` | ladybug-rs | `CLAUDE.md` | Rewrote section: from "blocker" framing to "one-time mechanical port, not a blocker" |
+| `5fa2769` | rustynum | `CLAUDE.md` | Added Miri commands with `cargo +nightly` and note: "this is the ONLY acceptable use of nightly" |
+| `c868cdc` | rustynum | `CLAUDE.md` | Corrected Miri: removed `+nightly` (rust-toolchain.toml already pins nightly) |
+| `c868cdc` | rustynum | `CLAUDE.md` | Corrected anti-pattern: `DO NOT use nightly` → `DO NOT add new nightly features — portable_simd is the ONLY nightly dep` |
+| `c868cdc` | rustynum | `CLAUDE.md` | Added note: `rust-toolchain.toml pins nightly because rustyblas/rustymkl/rustynum-rs use portable_simd` |
+| `c868cdc` | rustynum | `.github/workflows/rust.yml` | CI: uses `dtolnay/rust-toolchain@nightly` (required by portable_simd) |
+| `c868cdc` | rustynum | `.github/workflows/rust.yml` | CI: added `EXCLUDED: "--exclude qualia_xor"` (broken deps) |
+| `9aeefdd` | ladybug-rs | `.github/workflows/ci-master.yml` | CI: added Miri job with `dtolnay/rust-toolchain@nightly` + 5min timeout |
+| `0c298e4` | crewai-rust | `.github/workflows/rust.yml` | CI: build/test use `dtolnay/rust-toolchain@stable`, Miri uses `@nightly` |
+| `d694cd32` | n8n-rs | `.github/workflows/ci-rust-master.yml` | CI: added Miri job with `dtolnay/rust-toolchain@nightly` + 5min timeout |
+| `4ba0a7f` | rustynum | `CLAUDE.md` | P2 TODO: added full intrinsic coverage table, noted `_mm512_reduce_add_epi64` as "Missing" |
+| `028574d` | ladybug-rs | `CLAUDE.md` | P2 TODO: updated with stable AVX-512 coverage, "unblocks deleting simd.rs" |
+| *this commit* | rustynum | `CLAUDE.md` | Corrected: ALL intrinsics including reduce/mask/bf16-unpack confirmed stable 1.93.1. ZERO gaps. |
+
+### Key Decisions
+
+1. **`rust-toolchain.toml` stays nightly FOR NOW** — because 4 crates use `portable_simd`
+2. **Goal is stable 1.93** — the port is mechanical (~879 call sites), zero blockers
+3. **CI uses nightly for build** (rustynum only) — other repos use stable
+4. **CI uses nightly for Miri** (all repos) — Miri always requires nightly, this is standard
+5. **No new `#![feature(...)]` allowed** — portable_simd is the only exception, being ported out
+
+### Files NOT Changed (important to track)
+
+- `rust-toolchain.toml` — still says `channel = "nightly"` (NOT changed this session)
+- `rustyblas/src/lib.rs` line 51 — still has `#![feature(portable_simd)]` (NOT changed)
+- `rustymkl/src/lib.rs` line 36 — still has `#![feature(portable_simd)]` (NOT changed)
+- `rustynum-rs/src/lib.rs` line 10 — still has `#![feature(portable_simd)]` (NOT changed)
+- `rustynum-archive/src/lib.rs` line 24 — still has `#![feature(portable_simd)]` (NOT changed)
+- `rustynum-core/src/lib.rs` line 13 — conditional `cfg_attr` (NOT changed)
 
 ---
 
