@@ -1147,6 +1147,218 @@ impl PartialEq for U64x8 {
 }
 
 // ============================================================================
+// AVX2 wrapper types — 256-bit (F32x8, F64x4)
+// ============================================================================
+// Same pattern as AVX-512 wrappers above. Used by simd_avx2.rs when
+// compiling with --features avx2 --no-default-features.
+// All intrinsics are stable std::arch::x86_64 (avx/avx2).
+
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+pub struct F32x8(pub __m256);
+
+impl F32x8 {
+    pub const LANES: usize = 8;
+
+    #[inline(always)]
+    pub fn splat(v: f32) -> Self {
+        Self(unsafe { _mm256_set1_ps(v) })
+    }
+
+    #[inline(always)]
+    pub fn from_slice(s: &[f32]) -> Self {
+        assert!(s.len() >= 8);
+        Self(unsafe { _mm256_loadu_ps(s.as_ptr()) })
+    }
+
+    #[inline(always)]
+    pub fn from_array(a: [f32; 8]) -> Self {
+        Self(unsafe { _mm256_loadu_ps(a.as_ptr()) })
+    }
+
+    #[inline(always)]
+    pub fn to_array(self) -> [f32; 8] {
+        let mut out = [0.0f32; 8];
+        unsafe { _mm256_storeu_ps(out.as_mut_ptr(), self.0) };
+        out
+    }
+
+    #[inline(always)]
+    pub fn copy_to_slice(self, s: &mut [f32]) {
+        assert!(s.len() >= 8);
+        unsafe { _mm256_storeu_ps(s.as_mut_ptr(), self.0) };
+    }
+
+    #[inline(always)]
+    pub fn reduce_sum(self) -> f32 {
+        unsafe {
+            // Extract upper 128 and add to lower 128
+            let hi = _mm256_extractf128_ps(self.0, 1);
+            let lo = _mm256_castps256_ps128(self.0);
+            let sum128 = _mm_add_ps(lo, hi);
+            // Horizontal reduce 4 floats
+            let hi64 = _mm_movehl_ps(sum128, sum128);
+            let sum64 = _mm_add_ps(sum128, hi64);
+            let hi32 = _mm_shuffle_ps(sum64, sum64, 0x55);
+            let sum32 = _mm_add_ss(sum64, hi32);
+            _mm_cvtss_f32(sum32)
+        }
+    }
+
+    #[inline(always)]
+    pub fn abs(self) -> Self {
+        // Clear sign bit: AND with 0x7FFFFFFF
+        unsafe {
+            let mask = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFF_FFFFi32));
+            Self(_mm256_and_ps(self.0, mask))
+        }
+    }
+}
+
+impl Add for F32x8 {
+    type Output = Self;
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self {
+        Self(unsafe { _mm256_add_ps(self.0, rhs.0) })
+    }
+}
+
+impl AddAssign for F32x8 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = unsafe { _mm256_add_ps(self.0, rhs.0) };
+    }
+}
+
+impl Mul for F32x8 {
+    type Output = Self;
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self {
+        Self(unsafe { _mm256_mul_ps(self.0, rhs.0) })
+    }
+}
+
+impl MulAssign for F32x8 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        self.0 = unsafe { _mm256_mul_ps(self.0, rhs.0) };
+    }
+}
+
+impl fmt::Debug for F32x8 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "F32x8({:?})", self.to_array())
+    }
+}
+
+impl PartialEq for F32x8 {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_array() == other.to_array()
+    }
+}
+
+// --- F64x4 (AVX2: 4 × f64) ---
+
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+pub struct F64x4(pub __m256d);
+
+impl F64x4 {
+    pub const LANES: usize = 4;
+
+    #[inline(always)]
+    pub fn splat(v: f64) -> Self {
+        Self(unsafe { _mm256_set1_pd(v) })
+    }
+
+    #[inline(always)]
+    pub fn from_slice(s: &[f64]) -> Self {
+        assert!(s.len() >= 4);
+        Self(unsafe { _mm256_loadu_pd(s.as_ptr()) })
+    }
+
+    #[inline(always)]
+    pub fn from_array(a: [f64; 4]) -> Self {
+        Self(unsafe { _mm256_loadu_pd(a.as_ptr()) })
+    }
+
+    #[inline(always)]
+    pub fn to_array(self) -> [f64; 4] {
+        let mut out = [0.0f64; 4];
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr(), self.0) };
+        out
+    }
+
+    #[inline(always)]
+    pub fn copy_to_slice(self, s: &mut [f64]) {
+        assert!(s.len() >= 4);
+        unsafe { _mm256_storeu_pd(s.as_mut_ptr(), self.0) };
+    }
+
+    #[inline(always)]
+    pub fn reduce_sum(self) -> f64 {
+        unsafe {
+            let hi = _mm256_extractf128_pd(self.0, 1);
+            let lo = _mm256_castpd256_pd128(self.0);
+            let sum128 = _mm_add_pd(lo, hi);
+            let hi64 = _mm_unpackhi_pd(sum128, sum128);
+            let sum64 = _mm_add_sd(sum128, hi64);
+            _mm_cvtsd_f64(sum64)
+        }
+    }
+
+    #[inline(always)]
+    pub fn abs(self) -> Self {
+        unsafe {
+            let mask = _mm256_castsi256_pd(_mm256_set1_epi64x(0x7FFF_FFFF_FFFF_FFFFi64));
+            Self(_mm256_and_pd(self.0, mask))
+        }
+    }
+}
+
+impl Add for F64x4 {
+    type Output = Self;
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self {
+        Self(unsafe { _mm256_add_pd(self.0, rhs.0) })
+    }
+}
+
+impl AddAssign for F64x4 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = unsafe { _mm256_add_pd(self.0, rhs.0) };
+    }
+}
+
+impl Mul for F64x4 {
+    type Output = Self;
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self {
+        Self(unsafe { _mm256_mul_pd(self.0, rhs.0) })
+    }
+}
+
+impl MulAssign for F64x4 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        self.0 = unsafe { _mm256_mul_pd(self.0, rhs.0) };
+    }
+}
+
+impl fmt::Debug for F64x4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "F64x4({:?})", self.to_array())
+    }
+}
+
+impl PartialEq for F64x4 {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_array() == other.to_array()
+    }
+}
+
+// ============================================================================
 // Type aliases — lowercase names matching portable_simd convention
 // ============================================================================
 
@@ -1164,6 +1376,12 @@ pub type i64x8 = I64x8;
 pub type u32x16 = U32x16;
 #[allow(non_camel_case_types)]
 pub type u64x8 = U64x8;
+
+// AVX2 aliases (256-bit)
+#[allow(non_camel_case_types)]
+pub type f32x8 = F32x8;
+#[allow(non_camel_case_types)]
+pub type f64x4 = F64x4;
 
 // ============================================================================
 // Tests
