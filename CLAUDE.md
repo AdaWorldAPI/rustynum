@@ -425,10 +425,11 @@ cargo clippy --workspace -- -D warnings
 
 # Miri — catches UB in split_at_mut / raw pointer patterns
 # ALWAYS use timeout — without it Miri runs 1-3 hours on full workspace
-timeout 300 cargo +nightly miri test -p rustynum-core   # 5 min cap
-timeout 300 cargo +nightly miri test -p rustynum-holo   # 5 min cap
-# NOTE: Miri requires nightly toolchain — this is the ONLY acceptable
-# use of nightly. It does NOT affect the build. Build always uses stable 1.93.
+timeout 300 cargo miri test -p rustynum-core   # 5 min cap
+timeout 300 cargo miri test -p rustynum-holo   # 5 min cap
+# NOTE: rust-toolchain.toml pins nightly because rustyblas, rustymkl,
+# rustynum-rs use #![feature(portable_simd)]. This is ergonomics — std::arch
+# produces identical machine code. See P2 TODO for the stable port plan.
 ```
 
 ### Test Counts (2026-02-25)
@@ -453,7 +454,10 @@ timeout 300 cargo +nightly miri test -p rustynum-holo   # 5 min cap
 - **DO NOT** hardcode AVX-512 in test assertions — use conditional
 - **DO NOT** add `jitson` to workspace members or use `exclude`
 - **DO NOT** delete archive crates
-- **DO NOT** use nightly Rust — the whole stack (Rust 1.93, Arrow 57, DataFusion 51) is optimized for stable. Nightly changes dependencies across ALL repos.
+- **DO NOT** add new nightly features — `portable_simd` is the ONLY nightly dep (P2 TODO to port to std::arch).
+  The whole stack targets stable Rust 1.93, Arrow 57, DataFusion 51. `rust-toolchain.toml` pins nightly
+  only because of portable_simd in rustyblas/rustymkl/rustynum-rs. Other repos (ladybug-rs, crewai-rust,
+  n8n-rs) build on stable. Do NOT add new `#![feature(...)]` attributes.
 - **DO NOT** store intermediate BF16 values — accumulate in FP32
 - **DO NOT** use dynamic SKU sizing — K0/K1/K2 are fixed at 16K or 64K
 - **DO NOT** use `RefCell`, `UnsafeCell`, or runtime borrow checks — the algebra handles isolation
@@ -517,6 +521,93 @@ These rustynum crates are battle-tested but NOT yet connected to the Lance data 
 - `ladybug-rs/PLAN-RUSTYNUM-INTEGRATION.md` — 5-phase integration roadmap
 - `crewai-rust/CLAUDE.md` § "Storage Strategy"
 - `n8n-rs/CLAUDE.md` § "Arrow Zero-Copy Chain"
+
+---
+
+## 13. OPEN TODOs — Wiring Checklist (SESSION-DURABLE)
+
+> **READ THIS EVERY SESSION.** These are the concrete tasks that remain.
+> Do NOT invent new code. Wire EXISTING acceleration. Mark items DONE with
+> date when completed. If you skip an item, explain why in a comment.
+
+### P0 — Zero-Copy Breaks (must fix before any new features)
+
+- [ ] **CogRecordView<'a>** — Create borrowing variant of CogRecord in `rustynum-arrow/src/arrow_bridge.rs`
+  - Currently: `record_batch_to_cogrecords()` (line ~114) calls `.to_vec()` 4× per row = 819MB/100K records
+  - Fix: Add `CogRecordView<'a> { meta: &'a [u8], cam: &'a [u8], btree: &'a [u8], embed: &'a [u8] }`
+  - Then: `record_batch_to_cogrecord_views()` returns `Vec<CogRecordView<'a>>` borrowing from Arrow
+  - File: `rustynum-arrow/src/arrow_bridge.rs:114-147`
+
+- [ ] **CascadeIndices::build_from_arrow()** — Eliminate second copy in `rustynum-arrow/src/indexed_cascade.rs`
+  - Currently: `build()` (line ~80) calls `extend_from_slice()` 4× into new Vecs = another 819MB
+  - Fix: Add `build_from_arrow(meta: &[u8], cam: &[u8], btree: &[u8], embed: &[u8])` that takes raw column bytes
+  - Use `arrow_to_flat_bytes()` from `datafusion_bridge.rs` to get `&[u8]` from Arrow columns
+  - File: `rustynum-arrow/src/indexed_cascade.rs:80-108`
+
+- [ ] **Delete ladybug-rs/src/core/simd.rs** — 348 lines duplicating rustynum's SIMD dispatch
+  - Currently: ladybug-rs has its own `hamming_distance()`, `hamming_avx512()`, `hamming_avx2()`, `HammingEngine`
+  - Fix: Delete file, replace all call sites with `rustynum_core::simd::select_hamming_fn()`
+  - Blocker: rustynum's simd.rs uses `portable_simd` (nightly). ladybug-rs builds on stable.
+  - Workaround: Use `rustynum_core::simd::hamming_distance()` which has scalar fallback
+  - Also fix: `ladybug-rs/src/storage/bind_space.rs:1848-1855` — scalar hamming loop, replace with rustynum call
+  - Also fix: `ladybug-rs/src/core/rustynum_accel.rs:148` — `.to_vec()` in container_bundle
+
+### P1 — Wire Existing Acceleration Into Data Path
+
+- [ ] **rustyblas GEMM for batch similarity** — After cascade filtering, survivors need pairwise distance
+  - Entry point: `rustyblas::level3::sgemm()` (138 GFLOPS)
+  - Wire into: `rustynum-arrow/src/horizontal_sweep.rs` for batch post-filtering
+  - Input: Survivors from K0/K1/K2 as `&[f32]` slices (quantized from fingerprints)
+  - Use Blackboard for aligned memory: `alloc_f32("A", n) + alloc_f32("B", n) + alloc_f32("C", n)`
+
+- [ ] **rustymkl VML for NARS truth scoring** — sigmoid, exp, log on truth values
+  - Entry point: `rustymkl::vml::vsexp()` — vectorized exp on `&[f32]`
+  - Wire into: ladybug-rs NARS truth computation (post-search confidence scoring)
+  - Input: Truth frequency/confidence arrays
+
+- [ ] **jitson JIT scan for per-query kernels** — Compile search config to native code
+  - Entry point: `jitson::JitEngine::compile_scan(params) -> ScanKernel`
+  - Wire into: `rustynum-arrow/src/horizontal_sweep.rs` — add `jit_kernel: Option<ScanKernel>` to config
+  - Input: JSON/YAML thinking style → `ScanParams { threshold, top_k, prefetch_ahead, focus_mask }`
+  - Already connected from crewai-rust: `src/persona/jit_link.rs` produces `JitScanParams`
+  - NOTE: jitson is NOT a workspace member (depends on wasmtime Cranelift fork). Build separately.
+
+- [ ] **Wire rustynum_accel into core search** — Currently only called from Python FFI
+  - `ladybug-rs/src/core/rustynum_accel.rs` has `fingerprint_hamming()`, `container_hamming()`, `slice_hamming()`
+  - These call rustynum's runtime-dispatched SIMD — but only used in `python/mod.rs:39`
+  - Wire into: `ladybug-rs/src/storage/bind_space.rs` search functions
+
+### P2 — Toolchain & Build
+
+- [ ] **Port portable_simd to std::arch** — Ergonomics only, NOT performance
+  - ~879 call sites across: rustyblas (158), rustymkl (198), rustynum-rs (523)
+  - Mechanical: `Simd::<f32,16>::from_slice(a)` → `_mm512_loadu_ps(a.as_ptr())`
+  - Mechanical: `.reduce_sum()` → `_mm512_reduce_add_ps()`
+  - Mechanical: `Simd::splat(x)` → `_mm512_set1_ps(x)`
+  - std::arch intrinsics produce IDENTICAL machine code — portable_simd is prettier, not faster
+  - BF16: Neither path has native bf16 type. Store as u16, widen to f32 for compute.
+    AVX-512 BF16 intrinsics (_mm256_dpbf16_ps) are std::arch on stable anyway.
+  - Stable alternatives: `wide` crate, `pulp` crate, or manual std::arch
+  - After port: change `rust-toolchain.toml` from `nightly` to `channel = "1.93"`
+  - Priority: LOW — nightly works fine, this is code quality not performance
+
+- [ ] **Fix qualia_xor crate** — Missing candle_core, candle_nn, tokenizers dependencies
+  - 7 compilation errors: unresolved imports
+  - Either add deps to Cargo.toml or gate behind feature flag
+  - Currently excluded from CI (`--exclude qualia_xor`)
+
+### DONE
+
+<!-- Move completed items here with date -->
+<!-- Example: - [x] 2026-02-27: Added §12 Lance Zero-Copy Contract to CLAUDE.md -->
+- [x] 2026-02-27: DeltaLayer + LayerStack + CollapseGate implemented in rustynum-core
+- [x] 2026-02-27: Overlay + AlignedBuf2K + MultiOverlay in rustynum-holo
+- [x] 2026-02-27: as_fingerprint_words() zero-copy bridge
+- [x] 2026-02-27: split_at_mut / parallel_into_slices (Arc<Mutex> eliminated)
+- [x] 2026-02-27: Blackboard takes &mut self (UB fixed)
+- [x] 2026-02-27: NumElement supertrait
+- [x] 2026-02-27: cascade_scan_4ch() zero-copy via arrow_to_flat_bytes()
+- [x] 2026-02-27: CI workflows with lint + miri (5 min timeout per crate)
 
 ---
 
