@@ -451,6 +451,66 @@ cd bindings/python && cargo test
 
 ---
 
+## 12. The Lance Zero-Copy Contract (HARD-WON — 6 REWRITES)
+
+> **After 1.5M lines of code and 6 rewrites across sessions, this lesson was
+> learned the hard way. DO NOT UNLEARN IT.**
+
+### The Insight
+
+**Arrow is the zero-copy computational backbone. Lance is a persistence layer (cold tier).**
+
+When rustynum is wired into ladybug-rs through Lance:
+- Lance mmap's data into Arrow `Buffer`s (64-byte aligned)
+- rustynum's `Blackboard` allocations are 64-byte aligned
+- `Fingerprint<256>` is `[u64; 256]` = 2048 bytes, same as `AlignedBuf2K`
+- **They are pointer-compatible. NEVER copy between them.**
+
+### The 3 Breaks That Were Found (and must not recur)
+
+| Break | Location | What Went Wrong | Fix Applied |
+|-------|----------|----------------|-------------|
+| **Arrow → CogRecord copies** | `rustynum-arrow/arrow_bridge.rs` | `.to_vec()` per row × 4 channels = 819MB/100K records | P1 debt: needs `CogRecordView<'a>` borrowing variant |
+| **Index build copies again** | `rustynum-arrow/indexed_cascade.rs` | `extend_from_slice()` into 4 new Vecs = 819MB more | P1 debt: needs column views over Arrow buffers |
+| **Duplicate SIMD in ladybug** | `ladybug-rs/src/core/simd.rs` | Compile-time dispatch, not runtime; reimplements what rustynum already has | Should call `rustynum_core::simd::select_hamming_fn()` |
+
+### The Rule When Wiring rustynum Into Lance
+
+```
+DO:   Arrow Buffer → &[u8] pointer reinterpret → rustynum SIMD kernels
+DO:   FingerprintBuffer.get(i) → &[u64; 256] directly into mmap'd buffer
+DO:   Overlay.as_fingerprint_words() → &[u64; 256] zero-copy view
+DO:   Use select_hamming_fn() for runtime-dispatched SIMD (one impl, all CPUs)
+
+DON'T: .to_vec() on Arrow columns
+DON'T: NumArrayU8::new(arrow_slice.to_vec()) — this copies
+DON'T: Build a second SIMD implementation alongside rustynum's
+DON'T: Use compile-time #[cfg(target_feature)] for SIMD — use runtime dispatch
+```
+
+### What's Still Not Wired (Acceleration Stack)
+
+These rustynum crates are battle-tested but NOT yet connected to the Lance data path:
+
+| Crate | What It Has | Where It Should Wire |
+|-------|-------------|---------------------|
+| **rustyblas** | 138 GFLOPS GEMM, INT8 VNNI, BF16 mixed-precision | `rustynum-arrow` for batch similarity, projection |
+| **rustymkl** | VML (exp, ln, sin, sqrt), LAPACK, FFT | NARS truth scoring (sigmoid), spectral analysis |
+| **jitson** | JSON config → native AVX-512 scan kernels | Per-query compiled scans on Arrow buffers |
+| **rustynum-core/kernels** | K0/K1/K2 cascade | Already wired via indexed_cascade |
+| **rustynum-core/hybrid** | Tiered dispatch pipeline | Wired for search, not for bulk ingest |
+
+### Cross-Repo References
+
+- `ladybug-rs/CLAUDE.md` § "The Rustynum Acceleration Contract"
+- `ladybug-rs/docs/LANCE_HARVEST.md` — why Lance is cold-tier only
+- `ladybug-rs/docs/BINDSPACE_UNIFICATION.md:1122` — the `Buffer::from_slice_ref()` warning
+- `ladybug-rs/PLAN-RUSTYNUM-INTEGRATION.md` — 5-phase integration roadmap
+- `crewai-rust/CLAUDE.md` § "Storage Strategy"
+- `n8n-rs/CLAUDE.md` § "Arrow Zero-Copy Chain"
+
+---
+
 *This document governs rustynum development. Read
 [ada-docs/architecture/FOUR_LEVEL_ARCHITECTURE.md](https://github.com/AdaWorldAPI/ada-docs/blob/main/architecture/FOUR_LEVEL_ARCHITECTURE.md)
 for the cross-repo architectural contract.*
