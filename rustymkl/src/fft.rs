@@ -21,8 +21,7 @@
 //!   where odd_swapped has re/im swapped and wi_sign alternates [-sin, +sin].
 //! - ifft conjugate and scale loops use SIMD sign-mask and broadcast multiply.
 
-use std::simd::f32x16;
-use std::simd::f64x8;
+use rustynum_core::simd_compat::{f32x16, f64x8};
 
 use rustynum_core::simd::{F32_LANES, F64_LANES};
 

@@ -1,7 +1,4 @@
-#![feature(portable_simd)]
-
-use std::simd::f32x16;
-use std::simd::num::SimdFloat;
+use rustynum_core::simd_compat::f32x16;
 use std::time::Instant;
 
 /// Old rustynum-rs approach: transpose B then dot product each row

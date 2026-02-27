@@ -15,9 +15,7 @@
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
-use std::simd::f32x16;
-use std::simd::num::SimdFloat;
-use std::simd::StdFloat;
+use rustynum_core::simd_compat::f32x16;
 
 /// f32 SIMD lane count (16 for AVX-512).
 const F32_LANES: usize = 16;
@@ -134,7 +132,7 @@ pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
         // quantized = round(v / scale) + zero_point, clamped to [0, 255]
         let scaled = (v * inv_scale_v).round() + zp_v;
         let clamped = scaled.simd_clamp(lo_v, hi_v);
-        let as_i32 = clamped.cast::<i32>();
+        let as_i32 = clamped.cast_i32();
         let arr = as_i32.to_array();
         for j in 0..F32_LANES {
             quantized[base + j] = arr[j] as u8;
@@ -181,7 +179,7 @@ pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
         let v = f32x16::from_slice(&data[base..]);
         let scaled = (v * inv_scale_v).round();
         let clamped = scaled.simd_clamp(lo_v, hi_v);
-        let as_i32 = clamped.cast::<i32>();
+        let as_i32 = clamped.cast_i32();
         let arr = as_i32.to_array();
         for j in 0..F32_LANES {
             quantized[base + j] = arr[j] as i8;
@@ -234,7 +232,7 @@ pub fn quantize_per_channel_i8(
             let v = f32x16::from_slice(&row[base..]);
             let scaled = (v * inv_scale_v).round();
             let clamped = scaled.simd_clamp(lo_v, hi_v);
-            let as_i32 = clamped.cast::<i32>();
+            let as_i32 = clamped.cast_i32();
             let arr = as_i32.to_array();
             for j in 0..F32_LANES {
                 out_row[base + j] = arr[j] as i8;
@@ -581,7 +579,7 @@ pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
         let v = f32x16::from_slice(&data[base..]);
         let s = (v * inv_scale_v).round();
         let clamped = s.simd_clamp(lo_v, hi_v);
-        let as_i32 = clamped.cast::<i32>();
+        let as_i32 = clamped.cast_i32();
         let arr = as_i32.to_array();
         for j in 0..F32_LANES {
             scaled_vals[base + j] = arr[j] as i8;

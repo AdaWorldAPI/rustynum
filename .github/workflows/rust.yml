@@ -8,9 +8,40 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  # Nightly required: rustyblas, rustymkl, rustynum-rs, rustynum-archive
+  # use #![feature(portable_simd)]. Once ported to std::arch, switch to stable.
+  # qualia_xor excluded: missing candle/tokenizers deps (not wired yet).
+  EXCLUDED: "--exclude qualia_xor"
 
 jobs:
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-lint-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (workspace, excluding qualia_xor)
+        run: cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -34,22 +65,16 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-test-
 
-      - name: cargo fmt --check
-        run: cargo fmt --all -- --check
-
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: cargo test
-        run: cargo test --workspace
+      - name: cargo test (workspace, excluding qualia_xor)
+        run: cargo test --workspace ${{ env.EXCLUDED }}
 
   miri:
     name: Miri (unsafe validation)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +93,19 @@ jobs:
           key: ${{ runner.os }}-miri-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-miri-
 
-      - name: cargo miri test (rustynum-core)
-        run: cargo miri test -p rustynum-core
+      # Each crate gets its own timeout. Without timeout, Miri can run 1-3 hours.
+      # 5 min per crate is enough to catch UB in split_at_mut / raw pointer patterns.
+      - name: Miri — rustynum-core (5 min timeout)
+        run: timeout 300 cargo miri test -p rustynum-core || { echo "::warning::Miri timed out on rustynum-core"; exit 1; }
+        env:
+          MIRIFLAGS: "-Zmiri-disable-isolation"
+
+      - name: Miri — rustynum-holo (5 min timeout)
+        run: timeout 300 cargo miri test -p rustynum-holo || { echo "::warning::Miri timed out on rustynum-holo"; exit 1; }
+        env:
+          MIRIFLAGS: "-Zmiri-disable-isolation"
+
+      - name: Miri — rustynum-arrow (5 min timeout)
+        run: timeout 300 cargo miri test -p rustynum-arrow || { echo "::warning::Miri timed out on rustynum-arrow"; exit 1; }
         env:
           MIRIFLAGS: "-Zmiri-disable-isolation"

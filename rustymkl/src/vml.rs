@@ -7,22 +7,9 @@
 //! `vd` prefix = double-precision vector.
 
 use rustynum_core::simd::{F32_LANES, F64_LANES};
-use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
-use std::simd::num::SimdFloat;
-use std::simd::{Select, StdFloat};
-
-// SIMD vector types selected by feature flag
-#[cfg(feature = "avx512")]
-use std::simd::{f32x16 as F32Simd, f64x8 as F64Simd};
-#[cfg(not(feature = "avx512"))]
-use std::simd::{f32x8 as F32Simd, f64x4 as F64Simd};
-
-// Integer SIMD types matching float lane widths — for bit manipulation in
-// transcendental functions (ldexp, exponent extraction, sign flip).
-#[cfg(feature = "avx512")]
-use std::simd::{u32x16 as U32Simd, u64x8 as U64Simd};
-#[cfg(not(feature = "avx512"))]
-use std::simd::{u32x8 as U32Simd, u64x4 as U64Simd};
+use rustynum_core::simd_compat::{
+    F32x16 as F32Simd, F64x8 as F64Simd, U32x16 as U32Simd, U64x8 as U64Simd,
+};
 
 // ============================================================================
 // EXP: e^x

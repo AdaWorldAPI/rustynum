@@ -179,9 +179,9 @@ macro_rules! impl_bitwise_ops {
     };
 }
 
-impl_bitwise_ops!(NumArrayU8, u8, std::simd::u8x64);
-impl_bitwise_ops!(NumArrayI32, i32, std::simd::i32x16);
-impl_bitwise_ops!(NumArrayI64, i64, std::simd::i64x8);
+impl_bitwise_ops!(NumArrayU8, u8, rustynum_core::simd_compat::u8x64);
+impl_bitwise_ops!(NumArrayI32, i32, rustynum_core::simd_compat::i32x16);
+impl_bitwise_ops!(NumArrayI64, i64, rustynum_core::simd_compat::i64x8);
 
 // ===========================================================================
 // Hamming distance methods on NumArrayU8
@@ -213,7 +213,7 @@ impl NumArrayU8 {
             other.data.len(),
             "Arrays must have the same length for hamming distance"
         );
-        <std::simd::u8x64 as HammingSimdOps>::hamming_distance(&self.data, &other.data)
+        <rustynum_core::simd_compat::u8x64 as HammingSimdOps>::hamming_distance(&self.data, &other.data)
     }
 
     /// Count the total number of set bits (popcount) in the array.
@@ -229,7 +229,7 @@ impl NumArrayU8 {
         if self.data.is_empty() {
             return 0;
         }
-        <std::simd::u8x64 as HammingSimdOps>::popcount(&self.data)
+        <rustynum_core::simd_compat::u8x64 as HammingSimdOps>::popcount(&self.data)
     }
 
     /// Batch hamming distance: compute hamming distances between corresponding
@@ -266,7 +266,7 @@ impl NumArrayU8 {
             vec_len * count,
             "other length must be vec_len * count"
         );
-        <std::simd::u8x64 as HammingSimdOps>::hamming_distance_batch(
+        <rustynum_core::simd_compat::u8x64 as HammingSimdOps>::hamming_distance_batch(
             &self.data,
             &other.data,
             vec_len,

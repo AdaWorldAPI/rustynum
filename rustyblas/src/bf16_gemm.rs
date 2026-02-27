@@ -20,12 +20,7 @@
 
 use rustynum_core::simd::{dot_f32, F32_LANES};
 
-#[cfg(feature = "avx512")]
-use std::simd::{f32x16 as F32Simd, u32x16 as U32Simd};
-#[cfg(not(feature = "avx512"))]
-use std::simd::{f32x8 as F32Simd, u32x8 as U32Simd};
-
-use std::simd::num::SimdFloat;
+use rustynum_core::simd_compat::{F32x16 as F32Simd, U32x16 as U32Simd};
 
 /// BFloat16 stored as raw u16 bits.
 /// Layout: [1 sign][8 exponent][7 mantissa]

@@ -50,8 +50,7 @@ pub fn approx_mean_std_f32(data: &[f32]) -> (f32, f32) {
     let len = data.len();
     let chunks = len / 16;
     if chunks > 0 {
-        use std::simd::f32x16;
-        use std::simd::num::SimdFloat;
+        use crate::simd_compat::f32x16;
         let mut vmin = f32x16::splat(f32::INFINITY);
         let mut vmax = f32x16::splat(f32::NEG_INFINITY);
         for i in 0..chunks {

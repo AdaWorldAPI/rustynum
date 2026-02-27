@@ -48,7 +48,7 @@
 //!               m, n, k, 1.0, a, k, b, n, 0.0, c, n);
 //! ```
 
-#![feature(portable_simd)]
+// No nightly features required — all SIMD uses rustynum_core::simd_compat.
 
 pub mod bf16_gemm;
 pub mod int8_gemm;

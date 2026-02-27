@@ -3,9 +3,7 @@
 //! These are low-level building blocks — the actual BLAS/LAPACK/FFT
 //! implementations in rustyblas and rustymkl compose these primitives.
 
-use std::simd::f32x16;
-use std::simd::f64x8;
-use std::simd::num::SimdFloat;
+use crate::simd_compat::{f32x16, f64x8};
 
 // ============================================================================
 // AVX-512 lane counts
