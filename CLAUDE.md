@@ -577,19 +577,32 @@ These rustynum crates are battle-tested but NOT yet connected to the Lance data 
   - These call rustynum's runtime-dispatched SIMD — but only used in `python/mod.rs:39`
   - Wire into: `ladybug-rs/src/storage/bind_space.rs` search functions
 
-### P2 — Toolchain & Build
+### P2 — Toolchain: Ship on Stable 1.93
 
-- [ ] **Port portable_simd to std::arch** — Ergonomics only, NOT performance
+**Stable has EVERYTHING for the AVX-512 hot path.** Confirmed analysis:
+
+| Intrinsic | Stable 1.93 | Notes |
+|-----------|-------------|-------|
+| `_mm512_xor_si512` | Yes (avx512f) | XOR |
+| `_mm512_popcnt_epi64` | Yes (avx512vpopcntdq) | VPOPCNTDQ — the money instruction |
+| `_mm512_add_epi64` | Yes (avx512f) | Accumulate |
+| `_mm512_loadu_si512` | Yes | Load |
+| `_mm512_ternarylogic_epi64` | Yes (avx512f) | 3-input bitwise in ONE instruction |
+| `_mm512_cvtne2ps_pbh` | Yes (avx512bf16) | f32→bf16 pack |
+| `_mm512_dpbf16_ps` | Yes (avx512bf16) | bf16 dot→f32 |
+| `_mm512_reduce_add_epi64` | Missing | Pseudo-instruction, 5-op manual reduce (once at end, irrelevant) |
+
+The 16K Hamming hot path: `loadu → xor → vpopcntdq → add → manual reduce` = 100% stable.
+BF16: No native bf16 type in either path. Store u16, widen f32, compute, narrow back — all stable.
+portable_simd adds nothing for AVX-512-only: one ISA, explicit intrinsics, no portability needed.
+
+- [ ] **Port portable_simd to std::arch** — Enables stable 1.93 across entire stack
   - ~879 call sites across: rustyblas (158), rustymkl (198), rustynum-rs (523)
   - Mechanical: `Simd::<f32,16>::from_slice(a)` → `_mm512_loadu_ps(a.as_ptr())`
-  - Mechanical: `.reduce_sum()` → `_mm512_reduce_add_ps()`
+  - Mechanical: `.reduce_sum()` → manual 5-instruction reduce (extract+add chain, once at end)
   - Mechanical: `Simd::splat(x)` → `_mm512_set1_ps(x)`
-  - std::arch intrinsics produce IDENTICAL machine code — portable_simd is prettier, not faster
-  - BF16: Neither path has native bf16 type. Store as u16, widen to f32 for compute.
-    AVX-512 BF16 intrinsics (_mm256_dpbf16_ps) are std::arch on stable anyway.
-  - Stable alternatives: `wide` crate, `pulp` crate, or manual std::arch
   - After port: change `rust-toolchain.toml` from `nightly` to `channel = "1.93"`
-  - Priority: LOW — nightly works fine, this is code quality not performance
+  - Result: ALL 4 repos build on same stable toolchain, no nightly dep management
 
 - [ ] **Fix qualia_xor crate** — Missing candle_core, candle_nn, tokenizers dependencies
   - 7 compilation errors: unresolved imports
