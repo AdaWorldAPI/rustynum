@@ -213,7 +213,10 @@ impl NumArrayU8 {
             other.data.len(),
             "Arrays must have the same length for hamming distance"
         );
-        <rustynum_core::simd_compat::u8x64 as HammingSimdOps>::hamming_distance(&self.data, &other.data)
+        <rustynum_core::simd_compat::u8x64 as HammingSimdOps>::hamming_distance(
+            &self.data,
+            &other.data,
+        )
     }
 
     /// Count the total number of set bits (popcount) in the array.

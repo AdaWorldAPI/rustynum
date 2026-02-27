@@ -33,8 +33,8 @@ use core::arch::x86_64::*;
 
 use core::fmt;
 use core::ops::{
-    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div,
-    DivAssign, Mul, MulAssign, Neg, Not, Shl, Shr, Sub, SubAssign,
+    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
+    Mul, MulAssign, Neg, Not, Shl, Shr, Sub, SubAssign,
 };
 
 // ============================================================================
@@ -1222,8 +1222,9 @@ mod tests {
 
     #[test]
     fn f32x16_comparison_select() {
-        let a = F32x16::from_array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
-                                     9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]);
+        let a = F32x16::from_array([
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ]);
         let threshold = F32x16::splat(8.5);
         let mask = a.simd_lt(threshold);
         let result = mask.select(F32x16::splat(1.0), F32x16::splat(0.0));

@@ -287,7 +287,9 @@ mod tests {
         // The exact match should be the top result with distance 0
         assert!(!results.is_empty());
         assert!(
-            results.iter().any(|h| h.index == target_idx && h.distance == 0),
+            results
+                .iter()
+                .any(|h| h.index == target_idx && h.distance == 0),
             "Exact match not found in top-5 results"
         );
     }
@@ -398,7 +400,10 @@ mod tests {
         let hv2 = GraphHV::random(&mut rng);
         let h3 = cam.projectors[0].hash(&hv2);
         // Not guaranteed to differ, but overwhelmingly likely for random vectors
-        assert_ne!(h1, h3, "Random vectors should produce different hashes (probabilistic)");
+        assert_ne!(
+            h1, h3,
+            "Random vectors should produce different hashes (probabilistic)"
+        );
     }
 
     #[test]

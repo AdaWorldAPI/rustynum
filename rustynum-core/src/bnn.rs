@@ -158,7 +158,7 @@ impl BnnNeuron {
     pub fn from_weights(weights: Fingerprint<256>, rng: &mut SplitMix64) -> Self {
         let mut state = GraphHV::zero();
         state.channels[1] = weights; // edge channel = weights
-        // Initialize plastic channel with the weight pattern
+                                     // Initialize plastic channel with the weight pattern
         state.channels[2] = state.channels[1].clone();
         // Random initial activation
         let mut words = [0u64; 256];
@@ -201,11 +201,8 @@ impl BnnNeuron {
 
         // Plasticity: bundle input into plastic channel (white matter learning)
         if learn {
-            let input_hv = GraphHV::from_channels(
-                input.clone(),
-                Fingerprint::zero(),
-                Fingerprint::zero(),
-            );
+            let input_hv =
+                GraphHV::from_channels(input.clone(), Fingerprint::zero(), Fingerprint::zero());
             let new_plastic = bundle_into(&self.state, &input_hv, learning_rate, 1.0, rng);
             self.state.channels[2] = new_plastic.channels[2].clone();
         }
@@ -525,7 +522,8 @@ mod tests {
         assert!(
             (result.score - scalar_score).abs() < f32::EPSILON,
             "score mismatch: SIMD={} scalar={}",
-            result.score, scalar_score
+            result.score,
+            scalar_score
         );
     }
 

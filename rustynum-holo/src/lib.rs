@@ -112,6 +112,8 @@ pub use holograph::{
     spatial_unbind_i8,
     // BLAS acceleration
     spectral_analysis_blas,
+    // Overlay / blackboard layer — unified bindspace surface
+    AlignedBuf2K,
     AxisCrystallizer,
     // Container lifecycle and migration
     ContainerMode,
@@ -123,8 +125,6 @@ pub use holograph::{
     // Core Gabor wavelet types and operations
     GaussianLUT,
     MigrationResult,
-    // Overlay / blackboard layer — unified bindspace surface
-    AlignedBuf2K,
     MultiOverlay,
     Overlay,
     // Spatial transforms

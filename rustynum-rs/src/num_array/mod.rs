@@ -18,8 +18,8 @@ pub use binding_matrix::{
     binding_popcount_3d, find_discriminative_spots, find_holographic_sweet_spot,
 };
 pub use cogrecord::{
-    sweep_cogrecords, CogRecord, SweepMode, SweepResult, COGRECORD_BYTES, CONTAINER_BITS,
-    CONTAINER_BYTES, BTREE, CAM, EMBED, META,
+    sweep_cogrecords, CogRecord, SweepMode, SweepResult, BTREE, CAM, COGRECORD_BYTES,
+    CONTAINER_BITS, CONTAINER_BYTES, EMBED, META,
 };
 pub use graph::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
 pub use projection::{simhash_batch_project, simhash_project};

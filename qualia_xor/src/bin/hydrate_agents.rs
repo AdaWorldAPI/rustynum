@@ -33,9 +33,9 @@
 //!                                                           (turn-based SPO reasoning)
 //! ```
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
-use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // BF16 utilities (inline, standalone)
@@ -58,7 +58,9 @@ fn xor_bind(a: &[u8], b: &[u8]) -> Vec<u8> {
 fn bf16_distance(a: &[u8], b: &[u8]) -> u64 {
     let mut total: u64 = 0;
     for i in (0..a.len().min(b.len())).step_by(2) {
-        if i + 1 >= a.len() || i + 1 >= b.len() { break; }
+        if i + 1 >= a.len() || i + 1 >= b.len() {
+            break;
+        }
         let va = u16::from_le_bytes([a[i], a[i + 1]]);
         let vb = u16::from_le_bytes([b[i], b[i + 1]]);
         let xor = va ^ vb;
@@ -74,8 +76,10 @@ fn bf16_structural_diff(a: &[u8], b: &[u8]) -> (usize, usize, usize) {
     let (mut s, mut e, mut m) = (0, 0, 0);
     for d in 0..n {
         let i = d * 2;
-        let xor = u16::from_le_bytes([a[i], a[i+1]]) ^ u16::from_le_bytes([b[i], b[i+1]]);
-        if xor & 0x8000 != 0 { s += 1; }
+        let xor = u16::from_le_bytes([a[i], a[i + 1]]) ^ u16::from_le_bytes([b[i], b[i + 1]]);
+        if xor & 0x8000 != 0 {
+            s += 1;
+        }
         e += ((xor >> 7) & 0xFF).count_ones() as usize;
         m += (xor & 0x7F).count_ones() as usize;
     }
@@ -154,7 +158,9 @@ fn parse_graph_from_cypher(input: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
 
     for line in input.lines() {
         let t = line.trim();
-        if t.is_empty() || t.starts_with("//") { continue; }
+        if t.is_empty() || t.starts_with("//") {
+            continue;
+        }
 
         // Node: MERGE (nX:QualiaItem {id: '...', ...})
         if t.starts_with("MERGE (n") && t.contains(":QualiaItem") {
@@ -170,19 +176,30 @@ fn parse_graph_from_cypher(input: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
 
                 // Parse nib4 to BF16
                 let bf16_vec = if !nib4.is_empty() {
-                    let nibbles: Vec<f32> = nib4.split(':')
+                    let nibbles: Vec<f32> = nib4
+                        .split(':')
                         .filter_map(|s| u8::from_str_radix(s, 16).ok())
                         .map(|n| n as f32 / 15.0)
                         .collect();
-                    if nibbles.len() == 16 { f32_to_bf16_bytes(&nibbles) }
-                    else { hash_to_bf16(&id) }
+                    if nibbles.len() == 16 {
+                        f32_to_bf16_bytes(&nibbles)
+                    } else {
+                        hash_to_bf16(&id)
+                    }
                 } else {
                     hash_to_bf16(&id)
                 };
 
                 alias_to_idx.insert(alias.clone(), nodes.len());
                 nodes.push(GraphNode {
-                    alias, id, label, family, mode, tau, nib4, bf16_vec,
+                    alias,
+                    id,
+                    label,
+                    family,
+                    mode,
+                    tau,
+                    nib4,
+                    bf16_vec,
                 });
             }
         }
@@ -200,7 +217,12 @@ fn parse_graph_from_cypher(input: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
                     .and_then(|s| s.parse::<f64>().ok())
                     .unwrap_or(1.0);
 
-                edges.push(GraphEdge { src, dst, rel_type, weight });
+                edges.push(GraphEdge {
+                    src,
+                    dst,
+                    rel_type,
+                    weight,
+                });
             }
         }
     }
@@ -221,7 +243,7 @@ fn extract_prop(s: &str, key: &str) -> Option<String> {
     let rest = &s[i..];
     if rest.starts_with('\'') {
         let end = rest[1..].find('\'')?;
-        Some(rest[1..1+end].to_string())
+        Some(rest[1..1 + end].to_string())
     } else {
         let end = rest.find([',', '}', ')'].as_ref())?;
         Some(rest[..end].trim().to_string())
@@ -270,74 +292,119 @@ fn predicate_vectors() -> HashMap<&'static str, Vec<u8>> {
     let preds: Vec<(&str, [f32; 16])> = vec![
         ("NIB4_NEAR", [0.5; 16]),
         ("BERT_NEAR", {
-            let mut a = [0.5; 16]; a[5] = 0.8; a
+            let mut a = [0.5; 16];
+            a[5] = 0.8;
+            a
         }),
         ("STRUCTURAL_TRUTH", {
-            let mut a = [0.8; 16]; a[10] = 0.1; a[12] = 0.1; a[14] = 0.1; a
+            let mut a = [0.8; 16];
+            a[10] = 0.1;
+            a[12] = 0.1;
+            a[14] = 0.1;
+            a
         }),
         ("CADENCE_TRUTH", {
-            let mut a = [0.5; 16]; a[2] = 0.7; a[5] = 0.3; a[7] = 0.7; a
+            let mut a = [0.5; 16];
+            a[2] = 0.7;
+            a[5] = 0.3;
+            a[7] = 0.7;
+            a
         }),
         ("SURFACE_SYNONYMY", {
-            let mut a = [0.5; 16]; a[2] = 0.2; a[5] = 0.9; a[7] = 0.2; a
+            let mut a = [0.5; 16];
+            a[2] = 0.2;
+            a[5] = 0.9;
+            a[7] = 0.2;
+            a
         }),
         ("BELONGS_TO", {
-            let mut a = [0.5; 16]; a[2] = 0.8; a[3] = 0.3; a[6] = 0.7; a
+            let mut a = [0.5; 16];
+            a[2] = 0.8;
+            a[3] = 0.3;
+            a[6] = 0.7;
+            a
         }),
         ("HAS_MODE", {
-            let mut a = [0.5; 16]; a[5] = 0.9; a[15] = 0.9; a
+            let mut a = [0.5; 16];
+            a[5] = 0.9;
+            a[15] = 0.9;
+            a
         }),
         ("CAUSES", {
-            let mut a = [0.5; 16]; a[3] = 0.9; a[7] = 0.1; a[9] = 0.8; a
+            let mut a = [0.5; 16];
+            a[3] = 0.9;
+            a[7] = 0.1;
+            a[9] = 0.8;
+            a
         }),
         ("IS_CAUSED_BY", {
-            let mut a = [0.5; 16]; a[3] = 0.1; a[7] = 0.9; a[9] = 0.2; a
+            let mut a = [0.5; 16];
+            a[3] = 0.1;
+            a[7] = 0.9;
+            a[9] = 0.2;
+            a
         }),
         ("TRANSFORMS", {
-            let mut a = [0.5; 16]; a[10] = 0.8; a[14] = 0.8; a
+            let mut a = [0.5; 16];
+            a[10] = 0.8;
+            a[14] = 0.8;
+            a
         }),
         ("DISSOLVES_INTO", {
-            let mut a = [0.5; 16]; a[0] = 0.8; a[4] = 0.9; a[3] = 0.1; a
+            let mut a = [0.5; 16];
+            a[0] = 0.8;
+            a[4] = 0.9;
+            a[3] = 0.1;
+            a
         }),
     ];
-    preds.into_iter()
+    preds
+        .into_iter()
         .map(|(name, dims)| (name, f32_to_bf16_bytes(&dims)))
         .collect()
 }
 
-fn hydrate_nodes(
-    nodes: &[GraphNode],
-    edges: &[GraphEdge],
-) -> Vec<HydratedNode> {
-    let alias_to_idx: HashMap<&str, usize> = nodes.iter()
+fn hydrate_nodes(nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<HydratedNode> {
+    let alias_to_idx: HashMap<&str, usize> = nodes
+        .iter()
         .enumerate()
         .map(|(i, n)| (n.alias.as_str(), i))
         .collect();
     let pred_vecs = predicate_vectors();
     let n_bytes = 32; // 16 dims × 2 bytes
 
-    let mut hydrated: Vec<HydratedNode> = nodes.iter().map(|n| HydratedNode {
-        alias: n.alias.clone(),
-        node: n.clone(),
-        awareness_vec: vec![0u8; n_bytes],
-        edge_count: 0,
-        crystallization: 0.0,
-        rel_awareness: HashMap::new(),
-        subject_count: 0,
-        object_count: 0,
-        causal_sign: 0,
-    }).collect();
+    let mut hydrated: Vec<HydratedNode> = nodes
+        .iter()
+        .map(|n| HydratedNode {
+            alias: n.alias.clone(),
+            node: n.clone(),
+            awareness_vec: vec![0u8; n_bytes],
+            edge_count: 0,
+            crystallization: 0.0,
+            rel_awareness: HashMap::new(),
+            subject_count: 0,
+            object_count: 0,
+            causal_sign: 0,
+        })
+        .collect();
 
     // For each edge, XOR-bind (src ⊕ pred ⊕ dst) and accumulate per-node
     let mut per_node_edges: HashMap<usize, Vec<Vec<u8>>> = HashMap::new();
 
     for edge in edges {
-        let src_idx = match alias_to_idx.get(edge.src.as_str()) { Some(&i) => i, None => continue };
-        let dst_idx = match alias_to_idx.get(edge.dst.as_str()) { Some(&i) => i, None => continue };
+        let src_idx = match alias_to_idx.get(edge.src.as_str()) {
+            Some(&i) => i,
+            None => continue,
+        };
+        let dst_idx = match alias_to_idx.get(edge.dst.as_str()) {
+            Some(&i) => i,
+            None => continue,
+        };
 
         let src_vec = &nodes[src_idx].bf16_vec;
         let dst_vec = &nodes[dst_idx].bf16_vec;
-        let pred_vec = pred_vecs.get(edge.rel_type.as_str())
+        let pred_vec = pred_vecs
+            .get(edge.rel_type.as_str())
             .cloned()
             .unwrap_or_else(|| hash_to_bf16(&edge.rel_type));
 
@@ -346,7 +413,8 @@ fn hydrate_nodes(
             xor_bind(src_vec, &pred_vec),
             xor_bind(&pred_vec, dst_vec),
             xor_bind(src_vec, dst_vec),
-        ].concat();
+        ]
+        .concat();
 
         // Truncate/pad to n_bytes for bundling
         let edge_sig: Vec<u8> = spo_flat.iter().take(n_bytes).copied().collect();
@@ -359,8 +427,14 @@ fn hydrate_nodes(
         };
 
         // Accumulate for both src and dst nodes
-        per_node_edges.entry(src_idx).or_default().push(edge_sig.clone());
-        per_node_edges.entry(dst_idx).or_default().push(edge_sig.clone());
+        per_node_edges
+            .entry(src_idx)
+            .or_default()
+            .push(edge_sig.clone());
+        per_node_edges
+            .entry(dst_idx)
+            .or_default()
+            .push(edge_sig.clone());
 
         // Track subject/object counts
         hydrated[src_idx].subject_count += 1;
@@ -380,7 +454,8 @@ fn hydrate_nodes(
         }
 
         // Per-rel-type awareness accumulation
-        let rel_entry = hydrated[src_idx].rel_awareness
+        let rel_entry = hydrated[src_idx]
+            .rel_awareness
             .entry(edge.rel_type.clone())
             .or_insert_with(|| vec![0u8; n_bytes]);
         for (i, &b) in edge_sig.iter().enumerate().take(n_bytes) {
@@ -390,7 +465,9 @@ fn hydrate_nodes(
 
     // Majority-vote bundle per node
     for (idx, edge_vecs) in &per_node_edges {
-        if edge_vecs.is_empty() { continue; }
+        if edge_vecs.is_empty() {
+            continue;
+        }
         let refs: Vec<&[u8]> = edge_vecs.iter().map(|v| v.as_slice()).collect();
         hydrated[*idx].awareness_vec = majority_bundle(&refs, n_bytes);
         hydrated[*idx].edge_count = edge_vecs.len();
@@ -407,7 +484,8 @@ fn hydrate_nodes(
                 }
             }
         }
-        let crystallized = bit_counts.iter()
+        let crystallized = bit_counts
+            .iter()
             .filter(|&&c| c > threshold_75 || c < (edge_vecs.len() as u32 - threshold_75))
             .count();
         hydrated[*idx].crystallization = crystallized as f32 / (n_bytes * 8) as f32;
@@ -438,7 +516,8 @@ fn fanout(
     max_rounds: usize,
 ) -> Vec<FanoutRound> {
     // Build index from owned strings to avoid lifetime issues
-    let alias_to_idx: HashMap<String, usize> = hydrated.iter()
+    let alias_to_idx: HashMap<String, usize> = hydrated
+        .iter()
         .enumerate()
         .map(|(i, h)| (h.alias.clone(), i))
         .collect();
@@ -448,14 +527,18 @@ fn fanout(
     for round in 0..max_rounds {
         let t0 = Instant::now();
         let mut total_bits_changed = 0usize;
-        let mut new_vecs: Vec<Vec<u8>> = hydrated.iter()
-            .map(|h| h.awareness_vec.clone())
-            .collect();
+        let mut new_vecs: Vec<Vec<u8>> = hydrated.iter().map(|h| h.awareness_vec.clone()).collect();
 
         // For each edge, XOR neighbor's awareness into this node
         for edge in edges {
-            let src_idx = match alias_to_idx.get(&edge.src) { Some(&i) => i, None => continue };
-            let dst_idx = match alias_to_idx.get(&edge.dst) { Some(&i) => i, None => continue };
+            let src_idx = match alias_to_idx.get(&edge.src) {
+                Some(&i) => i,
+                None => continue,
+            };
+            let dst_idx = match alias_to_idx.get(&edge.dst) {
+                Some(&i) => i,
+                None => continue,
+            };
 
             // src absorbs dst's awareness (XOR blend)
             let dst_awareness = hydrated[dst_idx].awareness_vec.clone();
@@ -477,11 +560,16 @@ fn fanout(
         let mut converged = 0usize;
 
         for (i, h) in hydrated.iter_mut().enumerate() {
-            let bits = h.awareness_vec.iter().zip(new_vecs[i].iter())
+            let bits = h
+                .awareness_vec
+                .iter()
+                .zip(new_vecs[i].iter())
                 .map(|(a, b)| (a ^ b).count_ones() as usize)
                 .sum::<usize>();
             total_bits_changed += bits;
-            if bits == 0 { converged += 1; }
+            if bits == 0 {
+                converged += 1;
+            }
 
             h.awareness_vec = new_vecs[i].clone();
 
@@ -553,11 +641,11 @@ struct AwarenessSummary {
 
 #[derive(Debug, Clone, Serialize)]
 struct ThinkingStyle {
-    analytical: f32,   // high crystallization → analytical
-    creative: f32,     // high edge diversity → creative
-    causal: f32,       // high subject_count → causal thinker
-    receptive: f32,    // high object_count → receptive
-    integrative: f32,  // balanced subject/object → integrative
+    analytical: f32,  // high crystallization → analytical
+    creative: f32,    // high edge diversity → creative
+    causal: f32,      // high subject_count → causal thinker
+    receptive: f32,   // high object_count → receptive
+    integrative: f32, // balanced subject/object → integrative
 }
 
 fn spawn_agents(
@@ -570,14 +658,18 @@ fn spawn_agents(
     // Group edges by source for SPO prompt generation
     let mut edges_by_node: HashMap<&str, Vec<&GraphEdge>> = HashMap::new();
     for edge in edges {
-        edges_by_node.entry(edge.src.as_str()).or_default().push(edge);
-        edges_by_node.entry(edge.dst.as_str()).or_default().push(edge);
+        edges_by_node
+            .entry(edge.src.as_str())
+            .or_default()
+            .push(edge);
+        edges_by_node
+            .entry(edge.dst.as_str())
+            .or_default()
+            .push(edge);
     }
 
     // Only spawn agents for nodes with enough edges (interesting actors)
-    let interesting: Vec<&HydratedNode> = hydrated.iter()
-        .filter(|h| h.edge_count >= 5)
-        .collect();
+    let interesting: Vec<&HydratedNode> = hydrated.iter().filter(|h| h.edge_count >= 5).collect();
 
     // Take top 20 by edge count (most connected = most interesting actors)
     let mut sorted = interesting.clone();
@@ -598,9 +690,12 @@ fn spawn_agents(
         };
 
         // Dominant relationship type
-        let dominant_rel = h.rel_awareness.keys()
+        let dominant_rel = h
+            .rel_awareness
+            .keys()
             .max_by_key(|k| {
-                edges_by_node.get(h.alias.as_str())
+                edges_by_node
+                    .get(h.alias.as_str())
                     .map(|e| e.iter().filter(|ed| &ed.rel_type == *k).count())
                     .unwrap_or(0)
             })
@@ -608,7 +703,8 @@ fn spawn_agents(
             .unwrap_or_else(|| "UNKNOWN".into());
 
         // Generate SPO reasoning prompt
-        let node_edges = edges_by_node.get(h.alias.as_str())
+        let node_edges = edges_by_node
+            .get(h.alias.as_str())
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
         let spo_prompt = generate_spo_prompt(&h.node, node_edges, &style);
@@ -623,11 +719,20 @@ fn spawn_agents(
 
         let role = format!("{} Analyst ({})", h.node.family, h.node.mode);
         let goal = if h.causal_sign > 0 {
-            format!("Investigate what '{}' CAUSES in the graph — trace forward causal chains", h.node.label)
+            format!(
+                "Investigate what '{}' CAUSES in the graph — trace forward causal chains",
+                h.node.label
+            )
         } else if h.causal_sign < 0 {
-            format!("Investigate what CAUSES '{}' — trace backward causal chains", h.node.label)
+            format!(
+                "Investigate what CAUSES '{}' — trace backward causal chains",
+                h.node.label
+            )
         } else {
-            format!("Map the symmetric relationships around '{}' — find structural truths", h.node.label)
+            format!(
+                "Map the symmetric relationships around '{}' — find structural truths",
+                h.node.label
+            )
         };
 
         let backstory = format!(
@@ -644,9 +749,13 @@ fn spawn_agents(
             h.object_count,
             dominant_rel,
             h.causal_sign,
-            if style.analytical > 0.6 { "carefully and precisely" }
-            else if style.creative > 0.6 { "divergently and associatively" }
-            else { "balancedly and integratively" },
+            if style.analytical > 0.6 {
+                "carefully and precisely"
+            } else if style.creative > 0.6 {
+                "divergently and associatively"
+            } else {
+                "balancedly and integratively"
+            },
             style.analytical * 100.0,
             style.creative * 100.0,
             style.integrative * 100.0,
@@ -660,7 +769,11 @@ fn spawn_agents(
             llm: llm_provider.to_string(),
             max_iter: 10,
             reasoning: true,
-            tools: vec!["graph_query".into(), "spo_search".into(), "web_search".into()],
+            tools: vec![
+                "graph_query".into(),
+                "spo_search".into(),
+                "web_search".into(),
+            ],
             spo_prompt,
             awareness_summary: awareness,
             thinking_style: style,
@@ -670,11 +783,7 @@ fn spawn_agents(
     configs
 }
 
-fn generate_spo_prompt(
-    node: &GraphNode,
-    edges: &[&GraphEdge],
-    style: &ThinkingStyle,
-) -> String {
+fn generate_spo_prompt(node: &GraphNode, edges: &[&GraphEdge], style: &ThinkingStyle) -> String {
     let mut prompt = format!(
         "You are reasoning about the qualia state '{}' (family: {}, mode: {}).\n\n",
         node.label, node.family, node.mode
@@ -683,16 +792,21 @@ fn generate_spo_prompt(
     // Group edges by relationship type
     let mut by_type: HashMap<&str, Vec<&GraphEdge>> = HashMap::new();
     for edge in edges {
-        by_type.entry(edge.rel_type.as_str()).or_default().push(edge);
+        by_type
+            .entry(edge.rel_type.as_str())
+            .or_default()
+            .push(edge);
     }
 
     prompt.push_str("Your SPO relationships:\n");
     for (rel_type, type_edges) in &by_type {
-        let as_subject: Vec<_> = type_edges.iter()
+        let as_subject: Vec<_> = type_edges
+            .iter()
             .filter(|e| e.src == node.alias)
             .take(3)
             .collect();
-        let as_object: Vec<_> = type_edges.iter()
+        let as_object: Vec<_> = type_edges
+            .iter()
             .filter(|e| e.dst == node.alias)
             .take(3)
             .collect();
@@ -714,8 +828,11 @@ fn generate_spo_prompt(
     prompt.push_str("\nReasoning tasks:\n");
 
     if style.causal > 0.6 {
-        prompt.push_str("1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n");
-        prompt.push_str("2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n");
+        prompt
+            .push_str("1. What causal chains does this state INITIATE? Trace forward 2-3 hops.\n");
+        prompt.push_str(
+            "2. Are any of these chains SURFACE_SYNONYMY traps (BERT close, Nib4 far)?\n",
+        );
         prompt.push_str("3. What would DISSOLVE if this state were removed (counterfactual)?\n");
     } else if style.receptive > 0.6 {
         prompt.push_str("1. What states CAUSE this one? Trace backward 2-3 hops.\n");
@@ -727,7 +844,9 @@ fn generate_spo_prompt(
         prompt.push_str("3. Which neighbors are surface synonyms vs deep structural matches?\n");
     }
 
-    prompt.push_str("\nUse web_search to find real-world examples that illustrate these qualia transitions.\n");
+    prompt.push_str(
+        "\nUse web_search to find real-world examples that illustrate these qualia transitions.\n",
+    );
     prompt.push_str("Report any new entities or relationships discovered for graph enrichment.\n");
 
     prompt
@@ -771,7 +890,7 @@ struct ThinkingEfficiency {
     agent_id: String,
     style_name: String,
     crystallization: f32,
-    edge_coverage: f32,  // what fraction of graph this agent "sees"
+    edge_coverage: f32,   // what fraction of graph this agent "sees"
     reasoning_depth: u32, // max hops in causal chain
 }
 
@@ -808,23 +927,30 @@ fn generate_crew(
     }
 
     // Benchmark thinking efficiency
-    let thinking_efficiency: Vec<ThinkingEfficiency> = agents.iter().map(|a| {
-        let style_name = if a.thinking_style.analytical > 0.6 { "analytical" }
-            else if a.thinking_style.creative > 0.6 { "creative" }
-            else { "integrative" };
+    let thinking_efficiency: Vec<ThinkingEfficiency> = agents
+        .iter()
+        .map(|a| {
+            let style_name = if a.thinking_style.analytical > 0.6 {
+                "analytical"
+            } else if a.thinking_style.creative > 0.6 {
+                "creative"
+            } else {
+                "integrative"
+            };
 
-        ThinkingEfficiency {
-            agent_id: a.id.clone(),
-            style_name: style_name.into(),
-            crystallization: a.awareness_summary.crystallization,
-            edge_coverage: a.awareness_summary.edge_count as f32 / total_edges.max(1) as f32,
-            reasoning_depth: if a.thinking_style.causal > 0.5 { 3 } else { 2 },
-        }
-    }).collect();
+            ThinkingEfficiency {
+                agent_id: a.id.clone(),
+                style_name: style_name.into(),
+                crystallization: a.awareness_summary.crystallization,
+                edge_coverage: a.awareness_summary.edge_count as f32 / total_edges.max(1) as f32,
+                reasoning_depth: if a.thinking_style.causal > 0.5 { 3 } else { 2 },
+            }
+        })
+        .collect();
 
     let db_size = hydrated.len() * 32 // awareness vectors
         + total_edges * 96             // SPO triples (3 × 32 bytes)
-        + agents.len() * 512;          // agent configs (approx)
+        + agents.len() * 512; // agent configs (approx)
 
     CrewConfig {
         name: "Qualia Graph Reasoning Crew".into(),
@@ -886,44 +1012,57 @@ fn main() {
     let mut by_cryst: Vec<&HydratedNode> = hydrated.iter().collect();
     by_cryst.sort_by(|a, b| b.crystallization.partial_cmp(&a.crystallization).unwrap());
     println!("\n  Top 10 most crystallized (settled awareness):");
-    println!("  {:>5}  {:>40}  {:>5}  {:>5}  {:>4}  {:>6}",
-        "cryst", "label", "edges", "S/O", "sign", "family");
+    println!(
+        "  {:>5}  {:>40}  {:>5}  {:>5}  {:>4}  {:>6}",
+        "cryst", "label", "edges", "S/O", "sign", "family"
+    );
     for h in by_cryst.iter().take(10) {
-        println!("  {:>4.0}%  {:>40}  {:>5}  {}/{}  {:>4}  {:>6}",
+        println!(
+            "  {:>4.0}%  {:>40}  {:>5}  {}/{}  {:>4}  {:>6}",
             h.crystallization * 100.0,
             &h.node.label[..h.node.label.len().min(40)],
             h.edge_count,
-            h.subject_count, h.object_count,
+            h.subject_count,
+            h.object_count,
             h.causal_sign,
-            h.node.family);
+            h.node.family
+        );
     }
 
     // Bottom 10 (most tensioned / uncertain)
     println!("\n  Bottom 10 (most tensioned / uncertain):");
     for h in by_cryst.iter().rev().take(10) {
-        println!("  {:>4.0}%  {:>40}  {:>5}  {}/{}  {:>4}  {:>6}",
+        println!(
+            "  {:>4.0}%  {:>40}  {:>5}  {}/{}  {:>4}  {:>6}",
             h.crystallization * 100.0,
             &h.node.label[..h.node.label.len().min(40)],
             h.edge_count,
-            h.subject_count, h.object_count,
+            h.subject_count,
+            h.object_count,
             h.causal_sign,
-            h.node.family);
+            h.node.family
+        );
     }
 
     // === Step 3: Fanout ===
     println!("\n--- Step 3: Fanout propagation (awareness spreading) ---\n");
     let fanout_rounds = fanout(&mut hydrated, &edges, 8);
 
-    println!("  {:>5}  {:>12}  {:>8}  {:>8}  {:>8}  {:>6}  {:>8}",
-        "Round", "Bits changed", "Avg crys", "Max crys", "Min crys", "Conv'd", "Time μs");
+    println!(
+        "  {:>5}  {:>12}  {:>8}  {:>8}  {:>8}  {:>6}  {:>8}",
+        "Round", "Bits changed", "Avg crys", "Max crys", "Min crys", "Conv'd", "Time μs"
+    );
     for r in &fanout_rounds {
-        println!("  {:>5}  {:>12}  {:>7.1}%  {:>7.1}%  {:>7.1}%  {:>6}  {:>8}",
-            r.round, r.total_bits_changed,
+        println!(
+            "  {:>5}  {:>12}  {:>7.1}%  {:>7.1}%  {:>7.1}%  {:>6}  {:>8}",
+            r.round,
+            r.total_bits_changed,
             r.avg_crystallization * 100.0,
             r.max_crystallization * 100.0,
             r.min_crystallization * 100.0,
             r.converged_nodes,
-            r.duration_us);
+            r.duration_us
+        );
     }
 
     // Database growth
@@ -937,16 +1076,26 @@ fn main() {
     // === Step 4: Spawn agents ===
     println!("\n--- Step 4: Spawn crewai-rust agents ---\n");
     let agents = spawn_agents(&hydrated, &edges, "xai/grok-3");
-    println!("  Agents spawned: {} (top actors by edge count)\n", agents.len());
+    println!(
+        "  Agents spawned: {} (top actors by edge count)\n",
+        agents.len()
+    );
 
-    println!("  {:>30}  {:>6}  {:>5}  {:>5}  {:>5}  {:>5}  style",
-        "Role", "cryst%", "edges", "S/O", "sign", "depth");
+    println!(
+        "  {:>30}  {:>6}  {:>5}  {:>5}  {:>5}  {:>5}  style",
+        "Role", "cryst%", "edges", "S/O", "sign", "depth"
+    );
     for a in &agents {
-        let style = if a.thinking_style.analytical > 0.6 { "analytical" }
-            else if a.thinking_style.creative > 0.6 { "creative" }
-            else { "integrative" };
+        let style = if a.thinking_style.analytical > 0.6 {
+            "analytical"
+        } else if a.thinking_style.creative > 0.6 {
+            "creative"
+        } else {
+            "integrative"
+        };
         let depth = if a.thinking_style.causal > 0.5 { 3 } else { 2 };
-        println!("  {:>30}  {:>5.0}%  {:>5}  {:.1}/{:.1}  {:>4}  {:>5}  {}",
+        println!(
+            "  {:>30}  {:>5.0}%  {:>5}  {:.1}/{:.1}  {:>4}  {:>5}  {}",
             &a.role[..a.role.len().min(30)],
             a.awareness_summary.crystallization * 100.0,
             a.awareness_summary.edge_count,
@@ -954,14 +1103,20 @@ fn main() {
             a.thinking_style.receptive,
             a.awareness_summary.causal_sign,
             depth,
-            style);
+            style
+        );
     }
 
     // === Step 5: Generate crew config ===
     println!("\n--- Step 5: Generate crew config ---\n");
     let crew = generate_crew(
-        &agents, &hydrated, &edges, &fanout_rounds,
-        hydration_us, nodes.len(), edges.len(),
+        &agents,
+        &hydrated,
+        &edges,
+        &fanout_rounds,
+        hydration_us,
+        nodes.len(),
+        edges.len(),
     );
 
     let crew_json = serde_json::to_string_pretty(&crew).expect("serialize crew");
@@ -973,14 +1128,24 @@ fn main() {
     println!("\n--- Step 6: Benchmark ---\n");
     let bench = &crew.benchmark;
 
-    println!("  Graph:        {} nodes, {} edges", bench.total_nodes, bench.total_edges);
-    println!("  Hydration:    {}μs ({:.1} μs/node)",
+    println!(
+        "  Graph:        {} nodes, {} edges",
+        bench.total_nodes, bench.total_edges
+    );
+    println!(
+        "  Hydration:    {}μs ({:.1} μs/node)",
         bench.hydration_time_us,
-        bench.hydration_time_us as f64 / bench.total_nodes.max(1) as f64);
-    println!("  Fanout:       {} rounds to converge", bench.fanout_rounds.len());
-    println!("  DB size:      {:.1} KB ({:.1} bytes/node)",
+        bench.hydration_time_us as f64 / bench.total_nodes.max(1) as f64
+    );
+    println!(
+        "  Fanout:       {} rounds to converge",
+        bench.fanout_rounds.len()
+    );
+    println!(
+        "  DB size:      {:.1} KB ({:.1} bytes/node)",
         bench.db_size_bytes as f64 / 1024.0,
-        bench.db_size_bytes as f64 / bench.total_nodes.max(1) as f64);
+        bench.db_size_bytes as f64 / bench.total_nodes.max(1) as f64
+    );
     println!("  Agents:       {} spawned", bench.agents_spawned);
 
     println!("\n  Thinking style distribution:");
@@ -992,10 +1157,16 @@ fn main() {
         println!("    {:<15} {} agents", style, count);
     }
 
-    let avg_coverage: f32 = bench.thinking_efficiency.iter()
+    let avg_coverage: f32 = bench
+        .thinking_efficiency
+        .iter()
         .map(|t| t.edge_coverage)
-        .sum::<f32>() / bench.thinking_efficiency.len().max(1) as f32;
-    println!("  Avg coverage: {:.1}% of graph per agent", avg_coverage * 100.0);
+        .sum::<f32>()
+        / bench.thinking_efficiency.len().max(1) as f32;
+    println!(
+        "  Avg coverage: {:.1}% of graph per agent",
+        avg_coverage * 100.0
+    );
 
     // === Verdict ===
     println!("\n╔══════════════════════════════════════════════════════════════╗");
@@ -1005,12 +1176,16 @@ fn main() {
     println!("║  Hydration: every node now carries a BF16 awareness        ║");
     println!("║  vector = majority bundle of ALL edge SPO signatures.      ║");
     println!("║                                                            ║");
-    println!("║  Fanout: awareness propagated through {} rounds.            ║",
-        fanout_rounds.len());
+    println!(
+        "║  Fanout: awareness propagated through {} rounds.            ║",
+        fanout_rounds.len()
+    );
     println!("║  Each round XOR-blends neighbor awareness.                 ║");
     println!("║                                                            ║");
-    println!("║  Agents: {} crewai-rust agents spawned, each with:         ║",
-        agents.len());
+    println!(
+        "║  Agents: {} crewai-rust agents spawned, each with:         ║",
+        agents.len()
+    );
     println!("║  - Hydrated awareness (crystallization %)                  ║");
     println!("║  - Thinking style (analytical/creative/integrative)        ║");
     println!("║  - SPO reasoning prompt (causal chain analysis)            ║");

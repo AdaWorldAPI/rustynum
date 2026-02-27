@@ -189,13 +189,12 @@ impl DNTree {
         );
 
         // Determine BTSP boost for this update
-        let btsp_boost = if self.config.btsp_gate_prob > 0.0
-            && rng.next_f64() < self.config.btsp_gate_prob
-        {
-            self.config.btsp_boost
-        } else {
-            1.0
-        };
+        let btsp_boost =
+            if self.config.btsp_gate_prob > 0.0 && rng.next_f64() < self.config.btsp_gate_prob {
+                self.config.btsp_boost
+            } else {
+                1.0
+            };
 
         let lr = self.config.learning_rate;
         let growth = self.config.growth_factor;
@@ -204,21 +203,17 @@ impl DNTree {
         let mut node_idx = 0usize;
         loop {
             // Increment access count
-            self.nodes[node_idx].access_count =
-                self.nodes[node_idx].access_count.saturating_add(1);
+            self.nodes[node_idx].access_count = self.nodes[node_idx].access_count.saturating_add(1);
 
             // Bundle HV into node's summary
-            let new_summary =
-                bundle_into(&self.summaries[node_idx], hv, lr, btsp_boost, rng);
+            let new_summary = bundle_into(&self.summaries[node_idx], hv, lr, btsp_boost, rng);
             self.summaries[node_idx] = new_summary;
 
             if self.nodes[node_idx].children.is_none() {
                 // Leaf: check if we should split
                 let level = self.nodes[node_idx].level;
-                let threshold =
-                    (threshold_base as f64 * growth.powi(level as i32)) as u32;
-                let range_size =
-                    self.nodes[node_idx].range_hi - self.nodes[node_idx].range_lo;
+                let threshold = (threshold_base as f64 * growth.powi(level as i32)) as u32;
+                let range_size = self.nodes[node_idx].range_hi - self.nodes[node_idx].range_lo;
 
                 if self.nodes[node_idx].access_count >= threshold && range_size >= 4 {
                     self.split_node(node_idx);
@@ -273,8 +268,8 @@ impl DNTree {
                     .iter()
                     .filter(|&&c| self.nodes[c].access_count > 0)
                     .map(|&c| {
-                        let sim = query
-                            .partial_similarity(&self.summaries[c], self.config.partial_bits);
+                        let sim =
+                            query.partial_similarity(&self.summaries[c], self.config.partial_bits);
                         (c, sim)
                     })
                     .collect();
@@ -284,9 +279,8 @@ impl DNTree {
                 }
 
                 // Sort by similarity (descending)
-                child_sims.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-                });
+                child_sims
+                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
                 // Early exit: if best child exceeds threshold, prune beam
                 let best_sim = child_sims[0].1;
@@ -298,8 +292,7 @@ impl DNTree {
 
                 for &(child_idx, _) in child_sims.iter().take(follow_count) {
                     let child_weight = if node.access_count > 0 {
-                        self.nodes[child_idx].access_count as f64
-                            / node.access_count as f64
+                        self.nodes[child_idx].access_count as f64 / node.access_count as f64
                     } else {
                         1.0
                     };
@@ -323,7 +316,11 @@ impl DNTree {
         }
 
         // Sort by score descending, truncate to top_k
-        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         hits.truncate(top_k);
         hits
     }

@@ -53,7 +53,10 @@ where
                 shape_product: new_size,
             });
         }
-        Ok(NumArray::new_with_shape(self.data.clone(), new_shape.to_owned()))
+        Ok(NumArray::new_with_shape(
+            self.data.clone(),
+            new_shape.to_owned(),
+        ))
     }
 
     /// Reshapes the array to a new shape.
@@ -200,7 +203,12 @@ where
     }
 
     /// Fallible slice: returns `Err` on axis out of bounds or invalid range.
-    pub fn try_slice(&self, axis: usize, start: usize, end: usize) -> Result<Self, crate::NumError> {
+    pub fn try_slice(
+        &self,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> Result<Self, crate::NumError> {
         if axis >= self.shape.len() {
             return Err(crate::NumError::AxisOutOfBounds {
                 axis,
