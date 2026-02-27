@@ -371,6 +371,24 @@ unsafe { _mm512_popcnt_epi64(xor_result) }
 | DataFusion | 51 |
 | Nightly | NEVER — nightly changes deps across the whole stack |
 
+### AVX-512 Intrinsic Availability (audited 2026-02-27)
+
+Every AVX-512 intrinsic used by rustynum compiles on stable 1.93.1:
+VPOPCNTDQ, BF16 (dpbf16_ps, cvtne2ps_pbh, cvtpbh_ps), VNNI (dpbusd),
+BITALG, mask registers (_kand/_knot/_kor/_kxor for mask8/mask16),
+movepi8_mask, movm_epi8, ternarylogic, and all horizontal reduces
+(reduce_add_epi64, reduce_or_epi64, etc.).
+
+AMX is unstable on BOTH stable AND nightly (rust-lang/rust#126622).
+Not usable. Not on the roadmap until Rust stabilizes it.
+
+`std::simd` (portable SIMD) is nightly-only and permanently out of scope
+— single-ISA target with zero benefit over `std::arch`.
+
+Nightly use: **none**. There is no reason to use nightly.
+
+Full audit: `docs/AVX512_TOOLCHAIN_AUDIT.md`
+
 ---
 
 ## 9. Key Files
