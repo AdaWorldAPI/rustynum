@@ -104,7 +104,6 @@ Tier 0: INT8 Prefilter  (VNNI vpdpbusd)      — 90% pruned, cheapest
 Tier 1: Binary Hamming   (VPOPCNTDQ)          — HDC distance, 2ns/2KB
 Tier 2: BF16 Structured  (BITALG vpshufb)     — sign/exp/man weighted
 Tier 3: FP32 AVX-512     (vmulps/vaddps)       — full precision, expensive
-Tier 4: AMX Tiles / GPU                        — NOT YET IMPLEMENTED
 ```
 
 ---
@@ -370,7 +369,7 @@ unsafe { _mm512_popcnt_epi64(xor_result) }
 | `edition` | 2021 (core), 2024 acceptable for leaf |
 | Arrow | 57 |
 | DataFusion | 51 |
-| Nightly | NEVER — nightly changes deps across the whole stack. AMX is future, not now. |
+| Nightly | NEVER — nightly changes deps across the whole stack |
 
 ---
 
