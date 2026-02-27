@@ -48,7 +48,8 @@ pub mod horizontal_sweep;
 // Re-exports for convenience
 #[cfg(feature = "arrow")]
 pub use arrow_bridge::{
-    cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords, FromArrow, IntoArrow,
+    cogrecord_schema, cogrecord_views, cogrecords_to_record_batch, column_flat_data,
+    record_batch_to_cogrecords, CogRecordView, FromArrow, IntoArrow,
 };
 
 #[cfg(feature = "arrow")]
@@ -65,8 +66,8 @@ pub use channel_index::{ChannelIndex, ClusterMeta};
 
 #[cfg(feature = "arrow")]
 pub use indexed_cascade::{
-    build_single_channel_index, indexed_cascade_search, learn, rebuild,
-    single_channel_search, CascadeIndices, IndexedCascadeResult, IndexedCascadeStats,
+    build_single_channel_index, indexed_cascade_search, indexed_cascade_search_batch, learn,
+    rebuild, single_channel_search, CascadeIndices, IndexedCascadeResult, IndexedCascadeStats,
     SingleChannelResult, SingleChannelStats,
 };
 

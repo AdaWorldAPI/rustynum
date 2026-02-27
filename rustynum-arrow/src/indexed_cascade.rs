@@ -27,6 +27,9 @@
 
 use std::collections::HashSet;
 
+use arrow::array::{Array, FixedSizeBinaryArray, RecordBatch};
+
+use crate::arrow_bridge::column_flat_data;
 use crate::channel_index::ChannelIndex;
 use crate::fragment_index::FragmentIndex;
 use rustynum_core::simd::hamming_distance;
@@ -98,6 +101,56 @@ impl CascadeIndices {
         let cam_index = ChannelIndex::build(1, &cam_flat, vec_len, count, min_cluster_size);
         let btree_index = ChannelIndex::build(2, &btree_flat, vec_len, count, min_cluster_size);
         let embed_index = ChannelIndex::build(3, &embed_flat, vec_len, count, min_cluster_size);
+
+        CascadeIndices {
+            meta_index,
+            cam_index,
+            btree_index,
+            embed_index,
+        }
+    }
+
+    /// Build indices directly from an Arrow RecordBatch (zero-copy).
+    ///
+    /// Eliminates the 4 × `extend_from_slice` copies in `build()`.
+    /// For 100K records this saves 819 MB of temporary allocation.
+    ///
+    /// The RecordBatch must match `cogrecord_schema()` (4 FixedSizeBinary(2048) columns).
+    pub fn build_from_arrow(batch: &RecordBatch, min_cluster_size: usize) -> Self {
+        let count = batch.num_rows();
+        let vec_len = CONTAINER_BYTES;
+
+        let meta_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .expect("meta column");
+        let cam_col = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .expect("cam column");
+        let btree_col = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .expect("btree column");
+        let embed_col = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .expect("embed column");
+
+        // Zero-copy: flat buffers directly from Arrow column data.
+        let meta_flat = column_flat_data(meta_col);
+        let cam_flat = column_flat_data(cam_col);
+        let btree_flat = column_flat_data(btree_col);
+        let embed_flat = column_flat_data(embed_col);
+
+        let meta_index = FragmentIndex::build(meta_flat, vec_len, count, min_cluster_size);
+        let cam_index = ChannelIndex::build(1, cam_flat, vec_len, count, min_cluster_size);
+        let btree_index = ChannelIndex::build(2, btree_flat, vec_len, count, min_cluster_size);
+        let embed_index = ChannelIndex::build(3, embed_flat, vec_len, count, min_cluster_size);
 
         CascadeIndices {
             meta_index,
@@ -241,6 +294,160 @@ pub fn indexed_cascade_search(
     }
 
     // Sort by embed distance for consistent output.
+    hits.sort_by_key(|&(_, dists)| dists[3]);
+
+    IndexedCascadeResult { hits, stats }
+}
+
+/// 4-channel indexed cascade search directly on Arrow RecordBatch (zero-copy).
+///
+/// Same algorithm as `indexed_cascade_search` but reads container data
+/// directly from Arrow column buffers instead of owned CogRecords.
+/// Eliminates the `record_batch_to_cogrecords()` copy entirely.
+///
+/// ## Bandwidth savings (100K records)
+///
+/// | Method                         | Pre-copy   | Search I/O |
+/// |-------------------------------|------------|------------|
+/// | `indexed_cascade_search`       | 819 MB     | 2.7 MB     |
+/// | `indexed_cascade_search_batch` | 0 MB       | 2.7 MB     |
+pub fn indexed_cascade_search_batch(
+    query: &CogRecord,
+    batch: &RecordBatch,
+    indices: &CascadeIndices,
+    thresholds: [u64; 4],
+) -> IndexedCascadeResult {
+    let meta_col = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .expect("meta column");
+    let cam_col = batch
+        .column(1)
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .expect("cam column");
+    let btree_col = batch
+        .column(2)
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .expect("btree column");
+    let embed_col = batch
+        .column(3)
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .expect("embed column");
+
+    let mut stats = IndexedCascadeStats {
+        fragments_total: indices.meta_index.num_fragments(),
+        ..Default::default()
+    };
+
+    let q_meta = query.meta.data_slice();
+    let q_cam = query.cam.data_slice();
+    let q_btree = query.btree.data_slice();
+    let q_embed = query.embed.data_slice();
+
+    // ── Stage 1: META via fragment index ──
+    let overlapping = indices.meta_index.find_overlapping(q_meta, thresholds[0]);
+    stats.fragments_pruned = stats.fragments_total - overlapping.len();
+
+    let mut survivor_rows: HashSet<usize> = HashSet::new();
+    for frag in &overlapping {
+        let orig_ids = indices
+            .meta_index
+            .original_row_ids(frag.row_id_start, frag.row_id_end);
+        for orig_id in orig_ids {
+            let dist = hamming_distance(q_meta, meta_col.value(orig_id));
+            stats.meta_scanned += 1;
+            if dist <= thresholds[0] {
+                survivor_rows.insert(orig_id);
+            }
+        }
+    }
+
+    // ── Stage 2: CAM via sidecar index ──
+    let cam_candidates = indices.cam_index.overlapping_row_ids(q_cam, thresholds[1]);
+    let cam_check: Vec<usize> = if survivor_rows.len() <= cam_candidates.len() {
+        survivor_rows
+            .iter()
+            .filter(|id| cam_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        cam_candidates
+            .iter()
+            .filter(|id| survivor_rows.contains(id))
+            .copied()
+            .collect()
+    };
+    stats.cam_fetched = cam_check.len();
+
+    let mut cam_survivors: HashSet<usize> = HashSet::new();
+    for &row_id in &cam_check {
+        let dist = hamming_distance(q_cam, cam_col.value(row_id));
+        if dist <= thresholds[1] {
+            cam_survivors.insert(row_id);
+        }
+    }
+
+    // ── Stage 3: BTREE via sidecar index ──
+    let btree_candidates = indices
+        .btree_index
+        .overlapping_row_ids(q_btree, thresholds[2]);
+    let btree_check: Vec<usize> = if cam_survivors.len() <= btree_candidates.len() {
+        cam_survivors
+            .iter()
+            .filter(|id| btree_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        btree_candidates
+            .iter()
+            .filter(|id| cam_survivors.contains(id))
+            .copied()
+            .collect()
+    };
+    stats.btree_fetched = btree_check.len();
+
+    let mut btree_survivors: HashSet<usize> = HashSet::new();
+    for &row_id in &btree_check {
+        let dist = hamming_distance(q_btree, btree_col.value(row_id));
+        if dist <= thresholds[2] {
+            btree_survivors.insert(row_id);
+        }
+    }
+
+    // ── Stage 4: EMBED via sidecar index ──
+    let embed_candidates = indices
+        .embed_index
+        .overlapping_row_ids(q_embed, thresholds[3]);
+    let embed_check: Vec<usize> = if btree_survivors.len() <= embed_candidates.len() {
+        btree_survivors
+            .iter()
+            .filter(|id| embed_candidates.contains(id))
+            .copied()
+            .collect()
+    } else {
+        embed_candidates
+            .iter()
+            .filter(|id| btree_survivors.contains(id))
+            .copied()
+            .collect()
+    };
+    stats.embed_fetched = embed_check.len();
+
+    let mut hits = Vec::new();
+    for &row_id in &embed_check {
+        let embed_dist = hamming_distance(q_embed, embed_col.value(row_id));
+        if embed_dist <= thresholds[3] {
+            let meta_dist = hamming_distance(q_meta, meta_col.value(row_id));
+            let cam_dist = hamming_distance(q_cam, cam_col.value(row_id));
+            let btree_dist = hamming_distance(q_btree, btree_col.value(row_id));
+            hits.push((row_id, [meta_dist, cam_dist, btree_dist, embed_dist]));
+        }
+    }
+
     hits.sort_by_key(|&(_, dists)| dists[3]);
 
     IndexedCascadeResult { hits, stats }
@@ -696,5 +903,81 @@ mod tests {
         assert!(result.stats.cam_fetched <= result.stats.meta_scanned);
         assert!(result.stats.btree_fetched <= result.stats.cam_fetched);
         assert!(result.stats.embed_fetched <= result.stats.btree_fetched);
+    }
+
+    // -------------------------------------------------------------------
+    // Arrow zero-copy tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_build_from_arrow_matches_build() {
+        let records = make_test_records(30);
+        let batch = crate::arrow_bridge::cogrecords_to_record_batch(&records).unwrap();
+
+        let indices_vec = CascadeIndices::build(&records, 5);
+        let indices_arrow = CascadeIndices::build_from_arrow(&batch, 5);
+
+        // Same structure: same number of fragments and rows
+        assert_eq!(
+            indices_vec.meta_index.num_fragments(),
+            indices_arrow.meta_index.num_fragments()
+        );
+        assert_eq!(
+            indices_vec.meta_index.num_rows(),
+            indices_arrow.meta_index.num_rows()
+        );
+        assert_eq!(
+            indices_vec.cam_index.num_rows(),
+            indices_arrow.cam_index.num_rows()
+        );
+    }
+
+    #[test]
+    fn test_search_batch_matches_search() {
+        let records = make_test_records(30);
+        let batch = crate::arrow_bridge::cogrecords_to_record_batch(&records).unwrap();
+        let query = CogRecord::new(
+            make_container(5),
+            make_container(6),
+            make_container(7),
+            make_container(8),
+        );
+        let thresholds = [4000, 4000, 4000, 4000];
+
+        let indices = CascadeIndices::build(&records, 3);
+        let result_vec = indexed_cascade_search(&query, &records, &indices, thresholds);
+        let result_arrow = indexed_cascade_search_batch(&query, &batch, &indices, thresholds);
+
+        // Both must find the same hits
+        let mut hits_vec: Vec<usize> = result_vec.hits.iter().map(|h| h.0).collect();
+        let mut hits_arrow: Vec<usize> = result_arrow.hits.iter().map(|h| h.0).collect();
+        hits_vec.sort();
+        hits_arrow.sort();
+        assert_eq!(hits_vec, hits_arrow, "Arrow search must match Vec search");
+    }
+
+    #[test]
+    fn test_search_batch_exact_match() {
+        let mut records = make_test_records(50);
+        let query = CogRecord::new(
+            make_container(0),
+            make_container(0),
+            make_container(0),
+            make_container(0),
+        );
+        records[25] = query.clone();
+
+        let batch = crate::arrow_bridge::cogrecords_to_record_batch(&records).unwrap();
+        let indices = CascadeIndices::build_from_arrow(&batch, 5);
+        let result = indexed_cascade_search_batch(&query, &batch, &indices, [0, 0, 0, 0]);
+
+        assert!(
+            result
+                .hits
+                .iter()
+                .any(|&(idx, dists)| idx == 25 && dists == [0, 0, 0, 0]),
+            "should find exact match at row 25, got {:?}",
+            result.hits,
+        );
     }
 }

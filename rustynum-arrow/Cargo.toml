@@ -3,7 +3,7 @@ name = "rustynum-arrow"
 version = "0.1.0"
 edition = "2021"
 description = "Optional Arrow/Lance bridge for rustynum — zero-copy NumArray ↔ Arrow, CogRecord ↔ Lance dataset"
-rust-version = "1.82.0"
+rust-version = "1.93"
 
 [features]
 default = ["arrow"]
