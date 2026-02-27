@@ -370,7 +370,7 @@ unsafe { _mm512_popcnt_epi64(xor_result) }
 | `edition` | 2021 (core), 2024 acceptable for leaf |
 | Arrow | 57 |
 | DataFusion | 51 |
-| Nightly | ONLY for testing AMX; upstream uses stable 1.93 |
+| Nightly | NEVER — nightly changes deps across the whole stack. AMX is future, not now. |
 
 ---
 
@@ -418,7 +418,7 @@ cargo test -p rustynum-arrow
 # BLAS (GEMM, level1-3)
 cargo test -p rustyblas
 
-# Python bindings (requires nightly for PyO3)
+# Python bindings
 cd bindings/python && cargo test
 ```
 
@@ -444,7 +444,7 @@ cd bindings/python && cargo test
 - **DO NOT** hardcode AVX-512 in test assertions — use conditional
 - **DO NOT** add `jitson` to workspace members or use `exclude`
 - **DO NOT** delete archive crates
-- **DO NOT** use nightly features in non-test code (upstream = stable 1.93)
+- **DO NOT** use nightly Rust — the whole stack (Rust 1.93, Arrow 57, DataFusion 51) is optimized for stable. Nightly changes dependencies across ALL repos.
 - **DO NOT** store intermediate BF16 values — accumulate in FP32
 - **DO NOT** use dynamic SKU sizing — K0/K1/K2 are fixed at 16K or 64K
 - **DO NOT** use `RefCell`, `UnsafeCell`, or runtime borrow checks — the algebra handles isolation
