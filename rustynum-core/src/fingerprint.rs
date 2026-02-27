@@ -115,6 +115,26 @@ impl<const N: usize> Fingerprint<N> {
     pub fn similarity(&self, other: &Self) -> f64 {
         1.0 - self.hamming_distance(other) as f64 / Self::BITS as f64
     }
+
+    /// Zero-copy view of the fingerprint as a byte slice.
+    ///
+    /// // SAFETY: `[u64; N]` is guaranteed contiguous in memory.
+    /// `u8` has no alignment requirements stricter than `u64`.
+    /// Pointer cast `*const u64` → `*const u8` is always valid.
+    /// Length `N * 8` is exact. Borrows from `&self` — no lifetime issues.
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: [u64; N] is contiguous. u64 is 8-byte aligned; u8 requires
+        // 1-byte alignment. Pointer cast is always valid. Length N * 8 is exact.
+        unsafe { std::slice::from_raw_parts(self.words.as_ptr() as *const u8, N * 8) }
+    }
+
+    /// Zero-copy mutable view as byte slice.
+    #[inline]
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        // SAFETY: Same as as_bytes(). Mutable borrow from &mut self guarantees exclusivity.
+        unsafe { std::slice::from_raw_parts_mut(self.words.as_mut_ptr() as *mut u8, N * 8) }
+    }
 }
 
 // XOR group operations — the algebraic foundation for delta layers.
@@ -358,5 +378,24 @@ mod tests {
         let mut c = a.clone();
         c ^= &b;
         assert_eq!(c, &a ^ &b);
+    }
+
+    #[test]
+    fn test_as_bytes_roundtrip() {
+        let fp = Fingerprint::<4> {
+            words: [0xDEAD_BEEF, 0xCAFE_BABE, 0x1234_5678, 0x9ABC_DEF0],
+        };
+        let bytes = fp.as_bytes();
+        assert_eq!(bytes.len(), 32);
+        let restored = Fingerprint::<4>::from_bytes(bytes);
+        assert_eq!(fp, restored);
+    }
+
+    #[test]
+    fn test_as_bytes_zero_copy() {
+        let fp = Fingerprint::<4>::zero();
+        let bytes_ptr = fp.as_bytes().as_ptr();
+        let words_ptr = fp.words.as_ptr() as *const u8;
+        assert_eq!(bytes_ptr, words_ptr, "as_bytes must be zero-copy");
     }
 }

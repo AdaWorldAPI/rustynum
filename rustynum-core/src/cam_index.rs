@@ -25,6 +25,7 @@
 //! | sample_size | 8         | Bits per hash projection (LSH quality) |
 //! | window_size | 32        | Scan window around hash insertion point|
 
+use crate::fingerprint::Fingerprint;
 use crate::graph_hv::GraphHV;
 use crate::rng::SplitMix64;
 
@@ -54,38 +55,53 @@ impl Default for CamConfig {
 /// Each of 64 hash bits is the XOR-parity of `sample_size` randomly chosen
 /// input bits from across all 3 channels. This provides locality-sensitive
 /// hashing: similar inputs produce similar (low Hamming distance) hashes.
+///
+/// ## Precomputed Masks
+///
+/// Instead of storing scattered `(channel, word, bit)` tuples and doing random
+/// lookups, we precompute 3 × `Fingerprint<256>` masks per hash bit. The hash
+/// computation becomes contiguous AND + popcount per channel — no scattered loads.
 struct LshProjector {
-    // For each of 64 hash bits: Vec of (channel_idx, word_idx, bit_mask)
-    samples: Vec<Vec<(usize, usize, u64)>>,
+    // For each of 64 hash bits: 3 masks (one per channel).
+    // masks[i][ch] has bits set at the positions sampled for hash bit i.
+    masks: Vec<[Fingerprint<256>; 3]>,
 }
 
 impl LshProjector {
     fn new(rng: &mut SplitMix64, sample_size: usize) -> Self {
-        let mut samples = Vec::with_capacity(64);
+        let mut masks = Vec::with_capacity(64);
         for _ in 0..64 {
-            let mut bit_samples = Vec::with_capacity(sample_size);
+            let mut ch_masks = [
+                Fingerprint::<256>::zero(),
+                Fingerprint::<256>::zero(),
+                Fingerprint::<256>::zero(),
+            ];
             for _ in 0..sample_size {
                 let ch = (rng.next_u64() % 3) as usize;
                 let word = (rng.next_u64() % 256) as usize;
                 let bit = 1u64 << (rng.next_u64() % 64);
-                bit_samples.push((ch, word, bit));
+                ch_masks[ch].words[word] |= bit;
             }
-            samples.push(bit_samples);
+            masks.push(ch_masks);
         }
-        Self { samples }
+        Self { masks }
     }
 
     #[inline]
     fn hash(&self, hv: &GraphHV) -> u64 {
         let mut code = 0u64;
-        for (i, bit_samples) in self.samples.iter().enumerate() {
+        for (i, ch_masks) in self.masks.iter().enumerate() {
+            // AND + popcount across all 3 channels — contiguous, no scattered loads.
+            // Parity = (total matching bits) & 1.
             let mut parity = 0u32;
-            for &(ch, word, mask) in bit_samples {
-                if hv.channels[ch].words[word] & mask != 0 {
-                    parity ^= 1;
+            for (ch_mask, channel) in ch_masks.iter().zip(hv.channels.iter()) {
+                for (m, w) in ch_mask.words.iter().zip(channel.words.iter()) {
+                    if *m != 0 {
+                        parity += (m & w).count_ones();
+                    }
                 }
             }
-            if parity != 0 {
+            if parity & 1 != 0 {
                 code |= 1u64 << i;
             }
         }
@@ -364,6 +380,25 @@ mod tests {
             assert_eq!(b.index, a.index);
             assert_eq!(b.distance, a.distance);
         }
+    }
+
+    #[test]
+    fn test_lsh_hash_deterministic() {
+        // Verify that hashing the same vector twice gives the same result
+        // (precomputed mask consistency).
+        let mut rng = make_rng();
+        let cam = CamIndex::with_defaults(42);
+        let hv = GraphHV::random(&mut rng);
+
+        let h1 = cam.projectors[0].hash(&hv);
+        let h2 = cam.projectors[0].hash(&hv);
+        assert_eq!(h1, h2, "Same vector must produce same hash");
+
+        // Different vectors should usually produce different hashes
+        let hv2 = GraphHV::random(&mut rng);
+        let h3 = cam.projectors[0].hash(&hv2);
+        // Not guaranteed to differ, but overwhelmingly likely for random vectors
+        assert_ne!(h1, h3, "Random vectors should produce different hashes (probabilistic)");
     }
 
     #[test]

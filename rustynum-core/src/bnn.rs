@@ -38,6 +38,21 @@ use crate::fingerprint::Fingerprint;
 use crate::graph_hv::{bundle_into, GraphHV};
 use crate::rng::SplitMix64;
 
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+use std::sync::OnceLock;
+
+/// SIMD Hamming function pointer type.
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+type HammingFn = fn(&[u8], &[u8]) -> u64;
+
+/// Cached SIMD Hamming dispatch — resolved once at first call.
+/// Falls back to scalar when SIMD features are not compiled in.
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+fn hamming_simd() -> HammingFn {
+    static FN: OnceLock<HammingFn> = OnceLock::new();
+    *FN.get_or_init(crate::simd::select_hamming_fn)
+}
+
 /// Result of a binary convolution (XNOR + popcount).
 #[derive(Clone, Copy, Debug)]
 pub struct BnnDotResult {
@@ -57,15 +72,15 @@ pub struct BnnDotResult {
 ///
 /// Equivalent to the Hamming-similarity dual: identical bits contribute +1,
 /// differing bits contribute -1.
+///
+/// Uses the SIMD Hamming kernel (AVX-512 VPOPCNTDQ / AVX2 Harley-Seal / scalar)
+/// via `select_hamming_fn()` dispatch. The mathematical identity is:
+/// `XNOR_popcount(a, b) = TOTAL_BITS - XOR_popcount(a, b)`
 #[inline]
 pub fn bnn_dot(activation: &Fingerprint<256>, weight: &Fingerprint<256>) -> BnnDotResult {
-    let total_bits = Fingerprint::<256>::BITS as u32;
-    // XNOR = NOT(XOR): count matching bits
-    let mut match_count = 0u32;
-    for i in 0..256 {
-        // XNOR: bits that are the same in both vectors
-        match_count += (!(activation.words[i] ^ weight.words[i])).count_ones();
-    }
+    let total_bits = Fingerprint::<256>::BITS as u32; // 16,384
+    let xor_popcount = bnn_hamming_u32(activation.as_bytes(), weight.as_bytes());
+    let match_count = total_bits - xor_popcount;
     let score = (2.0 * match_count as f32 / total_bits as f32) - 1.0;
     BnnDotResult {
         match_count,
@@ -79,19 +94,37 @@ pub fn bnn_dot(activation: &Fingerprint<256>, weight: &Fingerprint<256>) -> BnnD
 /// Returns the sum of per-channel XNOR+popcount scores.
 /// This computes the full 49,152-bit binary correlation.
 pub fn bnn_dot_3ch(activation: &GraphHV, weight: &GraphHV) -> BnnDotResult {
-    let total_bits = (Fingerprint::<256>::BITS * 3) as u32;
-    let mut match_count = 0u32;
+    let total_bits = (Fingerprint::<256>::BITS * 3) as u32; // 49,152
+    let mut xor_total = 0u32;
     for ch in 0..3 {
-        for i in 0..256 {
-            match_count +=
-                (!(activation.channels[ch].words[i] ^ weight.channels[ch].words[i])).count_ones();
-        }
+        xor_total += bnn_hamming_u32(
+            activation.channels[ch].as_bytes(),
+            weight.channels[ch].as_bytes(),
+        );
     }
+    let match_count = total_bits - xor_total;
     let score = (2.0 * match_count as f32 / total_bits as f32) - 1.0;
     BnnDotResult {
         match_count,
         total_bits,
         score,
+    }
+}
+
+/// Internal: XOR + popcount as u32 — dispatches to SIMD when available.
+#[inline]
+fn bnn_hamming_u32(a: &[u8], b: &[u8]) -> u32 {
+    #[cfg(any(feature = "avx512", feature = "avx2"))]
+    {
+        hamming_simd()(a, b) as u32
+    }
+    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
+    {
+        // Scalar fallback: XOR + popcount per byte pair
+        a.iter()
+            .zip(b.iter())
+            .map(|(&x, &y)| (x ^ y).count_ones())
+            .sum()
     }
 }
 
@@ -457,6 +490,43 @@ mod tests {
         for &s in &scores {
             assert!(s.abs() < 2.0, "Score out of range: {}", s);
         }
+    }
+
+    #[test]
+    fn test_bnn_dot_matches_scalar() {
+        // Regression test: verify SIMD path produces identical results
+        // to scalar XNOR+popcount reference implementation.
+        let mut rng = make_rng();
+        let mut words_a = [0u64; 256];
+        let mut words_b = [0u64; 256];
+        for i in 0..256 {
+            words_a[i] = rng.next_u64();
+            words_b[i] = rng.next_u64();
+        }
+        let a = Fingerprint::from_words(words_a);
+        let b = Fingerprint::from_words(words_b);
+
+        // Scalar reference: XOR + popcount word by word
+        let scalar_xor_pop: u32 = words_a
+            .iter()
+            .zip(words_b.iter())
+            .map(|(&x, &y)| (x ^ y).count_ones())
+            .sum();
+        let scalar_match = 16_384 - scalar_xor_pop;
+        let scalar_score = (2.0 * scalar_match as f32 / 16_384.0) - 1.0;
+
+        // SIMD-dispatched path
+        let result = bnn_dot(&a, &b);
+        assert_eq!(
+            result.match_count, scalar_match,
+            "match_count mismatch: SIMD={} scalar={}",
+            result.match_count, scalar_match
+        );
+        assert!(
+            (result.score - scalar_score).abs() < f32::EPSILON,
+            "score mismatch: SIMD={} scalar={}",
+            result.score, scalar_score
+        );
     }
 
     #[test]

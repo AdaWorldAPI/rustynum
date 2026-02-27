@@ -205,10 +205,18 @@ impl GraphHV {
 ///
 /// For each bit position across all channels, if more than half the input
 /// vectors have the bit set, the output bit is set. Ties are broken randomly
-/// by the provided RNG (true HDC randomized tiebreak).
+/// by the provided RNG (one RNG word per output word).
 ///
 /// This is the fundamental "superposition" operation: the result is similar
 /// to all inputs, preserving the most common patterns.
+///
+/// ## Implementation
+///
+/// - **N ≤ 15**: 4-bit carry-save adder tree — branchless word-parallel counting.
+///   All 64 bit positions counted simultaneously via `u64` word ops.
+/// - **N > 15**: Column-count with `u16` counters per position.
+///
+/// Both paths use one `rng.next_u64()` per output word for tiebreak (even N).
 pub fn bundle(vectors: &[&GraphHV], rng: &mut SplitMix64) -> GraphHV {
     if vectors.is_empty() {
         return GraphHV::zero();
@@ -222,26 +230,108 @@ pub fn bundle(vectors: &[&GraphHV], rng: &mut SplitMix64) -> GraphHV {
     let is_even = n.is_multiple_of(2);
     let mut result = GraphHV::zero();
 
-    for ch in 0..3 {
-        for w in 0..256 {
-            let mut word = 0u64;
-            for bit in 0..64 {
-                let mask = 1u64 << bit;
-                let count: usize = vectors
-                    .iter()
-                    .filter(|v| v.channels[ch].words[w] & mask != 0)
-                    .count();
-                if count > threshold
-                    || (is_even && count == threshold && rng.next_u64() & 1 == 1)
-                {
-                    word |= mask;
+    if n <= 15 {
+        // 4-bit carry-save adder tree: branchless word-parallel counting.
+        // Each bit position in (b0, b1, b2, b3) holds a 4-bit count of how
+        // many input vectors have that bit set. No per-bit loops.
+        for ch in 0..3 {
+            for w in 0..256 {
+                let mut b0 = 0u64;
+                let mut b1 = 0u64;
+                let mut b2 = 0u64;
+                let mut b3 = 0u64;
+
+                for v in vectors {
+                    csa_add(&mut b0, &mut b1, &mut b2, &mut b3, v.channels[ch].words[w]);
                 }
+
+                // count > threshold (= count >= threshold + 1)
+                let gt = threshold_gte(b0, b1, b2, b3, threshold + 1);
+                result.channels[ch].words[w] = if is_even {
+                    // Tiebreak: count == threshold → flip coin per bit
+                    let gte = threshold_gte(b0, b1, b2, b3, threshold);
+                    let eq = gte & !gt;
+                    gt | (eq & rng.next_u64())
+                } else {
+                    gt
+                };
             }
-            result.channels[ch].words[w] = word;
+        }
+    } else {
+        // Column-count: explicit u16 counters for N > 15.
+        #[allow(clippy::needless_range_loop)] // bit index needed for shift arithmetic
+        for ch in 0..3 {
+            for w in 0..256 {
+                let mut counts = [0u16; 64];
+                for v in vectors {
+                    let word = v.channels[ch].words[w];
+                    for bit in 0..64 {
+                        counts[bit] += ((word >> bit) & 1) as u16;
+                    }
+                }
+
+                let tiebreak = rng.next_u64();
+                let threshold_u16 = threshold as u16;
+                let mut out = 0u64;
+                for bit in 0..64 {
+                    if counts[bit] > threshold_u16
+                        || (is_even
+                            && counts[bit] == threshold_u16
+                            && tiebreak & (1u64 << bit) != 0)
+                    {
+                        out |= 1u64 << bit;
+                    }
+                }
+                result.channels[ch].words[w] = out;
+            }
         }
     }
 
     result
+}
+
+/// Word-parallel 4-bit carry-save adder: add one input word to the counter.
+///
+/// Counter bits (b0, b1, b2, b3) represent a 4-bit count at each of 64
+/// bit positions simultaneously. After calling this for each of N inputs
+/// (N ≤ 15), the counter holds the per-position popcount across all inputs.
+#[inline]
+fn csa_add(b0: &mut u64, b1: &mut u64, b2: &mut u64, b3: &mut u64, input: u64) {
+    let c0 = *b0 & input;
+    *b0 ^= input;
+    let c1 = *b1 & c0;
+    *b1 ^= c0;
+    let c2 = *b2 & c1;
+    *b2 ^= c1;
+    *b3 ^= c2;
+}
+
+/// Check if 4-bit parallel counter >= target for all 64 positions.
+///
+/// Returns a `u64` where bit j is 1 iff count[j] >= target.
+/// Uses two's complement subtraction: carry out = 1 means no borrow.
+#[inline]
+fn threshold_gte(b0: u64, b1: u64, b2: u64, b3: u64, target: usize) -> u64 {
+    // Broadcast target bits to all 64 positions
+    let t0: u64 = if target & 1 != 0 { u64::MAX } else { 0 };
+    let t1: u64 = if target & 2 != 0 { u64::MAX } else { 0 };
+    let t2: u64 = if target & 4 != 0 { u64::MAX } else { 0 };
+    let t3: u64 = if target & 8 != 0 { u64::MAX } else { 0 };
+
+    // Two's complement: count + ~target + 1
+    let nt0 = !t0;
+    let nt1 = !t1;
+    let nt2 = !t2;
+    let nt3 = !t3;
+
+    // Ripple carry addition with carry_in = 1 (the +1 in two's complement).
+    // Final carry out = 1 → count >= target (no borrow).
+    let cin = u64::MAX;
+    let c0 = (b0 & nt0) | (b0 & cin) | (nt0 & cin);
+    let c1 = (b1 & nt1) | (b1 & c0) | (nt1 & c0);
+    let c2 = (b2 & nt2) | (b2 & c1) | (nt2 & c1);
+
+    (b3 & nt3) | (b3 & c2) | (nt3 & c2)
 }
 
 /// Stochastic weighted merge of old summary and new observation.
@@ -341,9 +431,15 @@ fn random_fingerprint(rng: &mut SplitMix64) -> Fingerprint<256> {
 /// Circular left-shift a `Fingerprint<256>` by `shift` bit positions.
 ///
 /// Bits shifted past the MSB wrap around to the LSB.
-#[allow(clippy::needless_range_loop)]
+///
+/// ## Implementation
+///
+/// 1. `rotate_right(word_shift)` — moves whole words with no modulo arithmetic
+/// 2. Linear carry chain — shifts bits within words, propagating carries forward
+///
+/// Zero modulo operations. One copy + one linear pass.
 fn circular_shift(fp: &Fingerprint<256>, shift: u32) -> Fingerprint<256> {
-    let total_bits = 256 * 64;
+    let total_bits = 256 * 64; // 16,384
     let shift = (shift as usize) % total_bits;
     if shift == 0 {
         return fp.clone();
@@ -351,21 +447,23 @@ fn circular_shift(fp: &Fingerprint<256>, shift: u32) -> Fingerprint<256> {
 
     let word_shift = shift / 64;
     let bit_shift = shift % 64;
-    let mut words = [0u64; 256];
 
-    if bit_shift == 0 {
-        // Pure word rotation
-        for i in 0..256 {
-            words[(i + word_shift) % 256] = fp.words[i];
+    // Step 1: Word rotation. Source word i → destination (i + word_shift) % 256.
+    let mut words = fp.words;
+    if word_shift > 0 {
+        words.rotate_right(word_shift);
+    }
+
+    // Step 2: Intra-word bit shift with linear carry chain.
+    if bit_shift > 0 {
+        // Save the carry that wraps from word 255 → word 0.
+        let wrap_carry = words[255] >> (64 - bit_shift);
+        // Process backwards: each word shifts left, taking carry from word below.
+        // Since i decreases, words[i-1] is always unmodified when read.
+        for i in (1..256).rev() {
+            words[i] = (words[i] << bit_shift) | (words[i - 1] >> (64 - bit_shift));
         }
-    } else {
-        // Word rotation + intra-word bit shift
-        for i in 0..256 {
-            let dst = (i + word_shift) % 256;
-            let dst_next = (dst + 1) % 256;
-            words[dst] |= fp.words[i] << bit_shift;
-            words[dst_next] |= fp.words[i] >> (64 - bit_shift);
-        }
+        words[0] = (words[0] << bit_shift) | wrap_carry;
     }
 
     Fingerprint::from_words(words)
@@ -669,6 +767,63 @@ mod tests {
         assert_eq!(GRAPH_HV_BITS, 49_152);
         assert_eq!(GRAPH_HV_BYTES, 6_144);
         assert_eq!(GRAPH_HV_CHANNELS, 3);
+    }
+
+    #[test]
+    fn test_bundle_adder_tree_matches_scalar() {
+        // Regression: verify the adder-tree path (N ≤ 15) produces correct
+        // majority-vote results by comparing against a scalar reference.
+        let mut rng = SplitMix64::new(7777);
+        let vectors: Vec<GraphHV> = (0..7).map(|_| GraphHV::random(&mut rng)).collect();
+        let refs: Vec<&GraphHV> = vectors.iter().collect();
+
+        let mut bundle_rng = SplitMix64::new(42);
+        let bundled = bundle(&refs, &mut bundle_rng);
+
+        // Scalar reference: count each bit independently
+        let n = vectors.len();
+        let threshold = n / 2; // 3
+        let mut expected = GraphHV::zero();
+        for ch in 0..3 {
+            for w in 0..256 {
+                let mut word = 0u64;
+                for bit in 0..64 {
+                    let mask = 1u64 << bit;
+                    let count: usize = vectors
+                        .iter()
+                        .filter(|v| v.channels[ch].words[w] & mask != 0)
+                        .count();
+                    // Odd n=7: no tiebreak needed, strict majority
+                    if count > threshold {
+                        word |= mask;
+                    }
+                }
+                expected.channels[ch].words[w] = word;
+            }
+        }
+
+        assert_eq!(bundled, expected, "Adder tree must match scalar majority vote (odd N)");
+    }
+
+    #[test]
+    fn test_bundle_column_count_large_n() {
+        // Verify column-count path (N > 15) preserves majority-vote properties.
+        let mut rng = SplitMix64::new(8888);
+        let vectors: Vec<GraphHV> = (0..20).map(|_| GraphHV::random(&mut rng)).collect();
+        let refs: Vec<&GraphHV> = vectors.iter().collect();
+
+        let mut bundle_rng = SplitMix64::new(42);
+        let bundled = bundle(&refs, &mut bundle_rng);
+
+        // Result should be more similar to each input than random
+        for (i, v) in vectors.iter().enumerate() {
+            let sim = bundled.similarity(v);
+            assert!(
+                sim > 0.50,
+                "Bundle of 20 should be > 0.50 similar to input {}: {:.4}",
+                i, sim
+            );
+        }
     }
 
     #[test]
