@@ -86,3 +86,24 @@ pub use spatial_resonance::{
     SpatialAwareness, SpatialAxis, SpatialCrystal3D, SpatialDistances, SpatialLearningSignal,
     SpatialMatch,
 };
+
+// 3D Graph HDC: 16,384×3-bit hypervectors for plastic graph memory
+// GraphHV = 3 × Fingerprint<256> (node/edge/plastic channels)
+pub mod graph_hv;
+pub use graph_hv::{
+    bundle, bundle_into, decode_edge_source, encode_edge, GraphHV, GRAPH_HV_BITS, GRAPH_HV_BYTES,
+    GRAPH_HV_CHANNELS,
+};
+
+// Content-Addressable Memory index: multi-probe LSH for O(log N) lookup
+pub mod cam_index;
+pub use cam_index::{CamConfig, CamHit, CamIndex};
+
+// DN-tree: hierarchical plasticity tree with BTSP-gated bundling
+pub mod dn_tree;
+pub use dn_tree::{DNConfig, DNTree, DNTreeStats, TraversalHit};
+
+// BNN inference primitives: XNOR+popcount binary neural network kernels
+// Grey matter (inference) + White matter (connections) + Plasticity (learning)
+pub mod bnn;
+pub use bnn::{bnn_batch_dot, bnn_dot, bnn_dot_3ch, BnnDotResult, BnnLayer, BnnNeuron};
