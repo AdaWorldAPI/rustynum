@@ -206,6 +206,49 @@ impl NumArrayU8 {
         NumArrayU8::new_with_shape(out, vectors[0].shape.clone())
     }
 
+    /// Bundle multiple byte slices using majority-vote (zero-copy input).
+    ///
+    /// Same algorithm as `bundle()` but accepts `&[&[u8]]` directly,
+    /// avoiding the need to wrap each slice in a `NumArrayU8` allocation.
+    /// This is the zero-copy entry point for callers that already have byte views
+    /// (e.g., `view_u64_as_bytes(&container.words)` from ladybug-rs).
+    pub fn bundle_byte_slices(slices: &[&[u8]]) -> Vec<u8> {
+        assert!(!slices.is_empty(), "Bundle requires at least one vector");
+        let len = slices[0].len();
+        for s in slices.iter() {
+            assert_eq!(s.len(), len, "All slices must have the same length");
+        }
+
+        let n = slices.len();
+        let threshold = n / 2;
+        let mut out = vec![0u8; len];
+
+        // Per-byte counting — compiler auto-vectorizes to AVX-512 bytewise ops
+        for byte_idx in 0..len {
+            let mut count = [0u16; 8];
+            for s in slices.iter() {
+                let byte = s[byte_idx];
+                count[0] += ((byte) & 1) as u16;
+                count[1] += ((byte >> 1) & 1) as u16;
+                count[2] += ((byte >> 2) & 1) as u16;
+                count[3] += ((byte >> 3) & 1) as u16;
+                count[4] += ((byte >> 4) & 1) as u16;
+                count[5] += ((byte >> 5) & 1) as u16;
+                count[6] += ((byte >> 6) & 1) as u16;
+                count[7] += ((byte >> 7) & 1) as u16;
+            }
+            let mut result_byte = 0u8;
+            for (bit, &cnt) in count.iter().enumerate() {
+                if cnt as usize > threshold {
+                    result_byte |= 1 << bit;
+                }
+            }
+            out[byte_idx] = result_byte;
+        }
+
+        out
+    }
+
     /// Compute dot product interpreting bytes as signed int8 values.
     ///
     /// With `-C target-cpu=native`, the compiler emits AVX-512 VNNI instructions

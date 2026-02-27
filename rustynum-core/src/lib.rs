@@ -33,7 +33,7 @@ pub mod tail_backend;
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
 
-// SIMD backend selection: AVX-512 or AVX2 (requires nightly for portable_simd)
+// SIMD backend selection: AVX-512 (stable via simd_compat) or AVX2 (still uses std::simd)
 #[cfg(feature = "avx512")]
 pub mod simd;
 #[cfg(all(feature = "avx2", not(feature = "avx512")))]
