@@ -32,7 +32,7 @@
 //! so every SIMD path uses full u64x8 vectors with zero scalar tail.
 
 use super::NumArrayU8;
-use std::simd::u64x8;
+use rustynum_core::simd_compat::u64x8;
 
 /// Crossover point: use ripple-carry for n > this, naive per-byte for n ≤ this.
 /// Below this threshold, compiler auto-vectorization of the byte-level loop

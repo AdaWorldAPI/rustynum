@@ -1,12 +1,4 @@
-use std::simd::cmp::SimdOrd;
-use std::simd::f32x16;
-use std::simd::f64x8;
-use std::simd::i32x16;
-use std::simd::i64x8;
-use std::simd::num::SimdFloat;
-use std::simd::num::SimdInt;
-use std::simd::num::SimdUint;
-use std::simd::u8x64;
+use rustynum_core::simd_compat::{f32x16, f64x8, i32x16, i64x8, u8x64};
 
 const LANES_8: usize = 64;
 const LANES_32: usize = 16;

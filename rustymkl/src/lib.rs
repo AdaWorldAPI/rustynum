@@ -33,7 +33,7 @@
 //! vml::vsexp(inp, out);
 //! ```
 
-#![feature(portable_simd)]
+// No nightly features required — all SIMD uses rustynum_core::simd_compat.
 
 pub mod fft;
 pub mod lapack;
