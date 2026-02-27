@@ -419,6 +419,16 @@ cargo test -p rustyblas
 
 # Python bindings
 cd bindings/python && cargo test
+
+# Lint — run often, catches type errors and unused imports early
+cargo clippy --workspace -- -D warnings
+
+# Miri — catches UB in split_at_mut / raw pointer patterns
+# ALWAYS use timeout — without it Miri runs 1-3 hours on full workspace
+timeout 300 cargo +nightly miri test -p rustynum-core   # 5 min cap
+timeout 300 cargo +nightly miri test -p rustynum-holo   # 5 min cap
+# NOTE: Miri requires nightly toolchain — this is the ONLY acceptable
+# use of nightly. It does NOT affect the build. Build always uses stable 1.93.
 ```
 
 ### Test Counts (2026-02-25)
