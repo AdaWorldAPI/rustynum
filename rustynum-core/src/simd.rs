@@ -324,6 +324,102 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
 }
 
 // ============================================================================
+// BLAS Level 1: iamax — index of absolute maximum
+// ============================================================================
+
+/// SIMD index of absolute maximum for f32 slices.
+///
+/// Returns `(index, |x[index]|)` — the index of the element with the largest
+/// absolute value, and that absolute value. Uses AVX-512 `abs` + `reduce_max`
+/// for the SIMD path, with scalar fallback for the tail.
+///
+/// This is the BLAS `isamax` operation, used for pivot search in LAPACK.
+#[inline]
+pub fn iamax_f32(x: &[f32]) -> (usize, f32) {
+    if x.is_empty() {
+        return (0, 0.0);
+    }
+
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let mut global_max = 0.0f32;
+    let mut global_idx = 0usize;
+
+    for c in 0..chunks {
+        let base = c * F32_LANES;
+        let v = f32x16::from_slice(&x[base..]);
+        let abs_v = v.abs();
+        let chunk_max = abs_v.reduce_max();
+        if chunk_max > global_max {
+            // Find the lane index within this chunk
+            let arr = abs_v.to_array();
+            for (lane, &val) in arr.iter().enumerate() {
+                if val >= chunk_max - f32::EPSILON {
+                    global_max = val;
+                    global_idx = base + lane;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Scalar tail
+    for i in (chunks * F32_LANES)..len {
+        let v = x[i].abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = i;
+        }
+    }
+
+    (global_idx, global_max)
+}
+
+/// SIMD index of absolute maximum for f64 slices.
+///
+/// Returns `(index, |x[index]|)`. Uses AVX-512 `abs` + `reduce_max`.
+/// BLAS `idamax` operation.
+#[inline]
+pub fn iamax_f64(x: &[f64]) -> (usize, f64) {
+    if x.is_empty() {
+        return (0, 0.0);
+    }
+
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let mut global_max = 0.0f64;
+    let mut global_idx = 0usize;
+
+    for c in 0..chunks {
+        let base = c * F64_LANES;
+        let v = f64x8::from_slice(&x[base..]);
+        let abs_v = v.abs();
+        let chunk_max = abs_v.reduce_max();
+        if chunk_max > global_max {
+            let arr = abs_v.to_array();
+            for (lane, &val) in arr.iter().enumerate() {
+                if val >= chunk_max - f64::EPSILON {
+                    global_max = val;
+                    global_idx = base + lane;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Scalar tail
+    for i in (chunks * F64_LANES)..len {
+        let v = x[i].abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = i;
+        }
+    }
+
+    (global_idx, global_max)
+}
+
+// ============================================================================
 // VPOPCNTDQ: Hardware-accelerated Hamming distance for HDC/CogRecord
 // ============================================================================
 
@@ -1695,6 +1791,65 @@ mod tests {
     fn test_nrm2_f32() {
         let x = vec![3.0f32, 4.0];
         assert!((nrm2_f32(&x) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_iamax_f32_basic() {
+        let x = vec![1.0f32, -5.0, 3.0, 2.0];
+        let (idx, val) = iamax_f32(&x);
+        assert_eq!(idx, 1); // |-5.0| = 5.0 is the largest
+        assert!((val - 5.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_iamax_f32_large() {
+        // Test with > 16 elements (exercises SIMD path)
+        let mut x = vec![0.1f32; 100];
+        x[73] = -99.0;
+        let (idx, val) = iamax_f32(&x);
+        assert_eq!(idx, 73);
+        assert!((val - 99.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_iamax_f32_all_negative() {
+        let x = vec![-3.0f32, -1.0, -7.0, -2.0];
+        let (idx, val) = iamax_f32(&x);
+        assert_eq!(idx, 2); // |-7.0| = 7.0
+        assert!((val - 7.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_iamax_f64_basic() {
+        let x = vec![1.0f64, 2.0, -10.0, 4.0];
+        let (idx, val) = iamax_f64(&x);
+        assert_eq!(idx, 2);
+        assert!((val - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_iamax_f64_large() {
+        let mut x = vec![0.01f64; 200];
+        x[150] = 42.0;
+        let (idx, val) = iamax_f64(&x);
+        assert_eq!(idx, 150);
+        assert!((val - 42.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_iamax_empty() {
+        let x: Vec<f32> = vec![];
+        let (idx, val) = iamax_f32(&x);
+        assert_eq!(idx, 0);
+        assert_eq!(val, 0.0);
+    }
+
+    #[test]
+    fn test_iamax_single() {
+        let x = vec![-3.14f32];
+        let (idx, val) = iamax_f32(&x);
+        assert_eq!(idx, 0);
+        assert!((val - 3.14).abs() < f32::EPSILON);
     }
 
     #[test]

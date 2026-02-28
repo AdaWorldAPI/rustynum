@@ -20,7 +20,7 @@
 //! - **ColMajor**: columns are contiguous → restructure loops for SIMD on column slices
 //!
 //! The trailing submatrix update (rank-1) uses `simd::axpy` per row/column.
-//! Pivot search uses SIMD abs-max reduction on contiguous column data.
+//! Pivot search uses SIMD iamax (abs-max + argmax) via AVX-512 reduce_max.
 //! Cholesky inner products use `simd::dot` on contiguous partial rows/columns.
 //! QR Householder reflector application uses `simd::dot` + `simd::axpy`.
 
@@ -152,7 +152,10 @@ pub fn dgetrf(
 // ============================================================================
 
 /// Pivot search: find index of max |A[i, col]| for i in start_row..m.
-/// Uses SIMD when the column is contiguous (ColMajor).
+/// SIMD abs-max scan for pivot search.
+///
+/// For ColMajor: column is contiguous → SIMD iamax_f32 (AVX-512 abs + reduce_max).
+/// For RowMajor: column is strided → gather into temp buffer, then SIMD iamax_f32.
 #[inline]
 fn pivot_search_f32(a: &[f32], layout: Layout, col: usize, m: usize, lda: usize) -> (usize, f32) {
     let len = m - col;
@@ -165,34 +168,25 @@ fn pivot_search_f32(a: &[f32], layout: Layout, col: usize, m: usize, lda: usize)
             // Column is contiguous: a[col*lda + col .. col*lda + m]
             let base = col * lda + col;
             let slice = &a[base..base + len];
-            // SIMD abs-max scan
-            let mut max_val = 0.0f32;
-            let mut max_local = 0;
-            for i in 0..len {
-                let v = slice[i].abs();
-                if v > max_val {
-                    max_val = v;
-                    max_local = i;
-                }
-            }
-            (col + max_local, max_val)
+            let (local_idx, max_val) = simd::iamax_f32(slice);
+            (col + local_idx, max_val)
         }
         Layout::RowMajor => {
-            // Column is strided (stride = lda)
-            let mut max_val = 0.0f32;
-            let mut max_idx = col;
+            // Column is strided (stride = lda) — gather into contiguous buffer for SIMD
+            let mut buf = Vec::with_capacity(len);
             for i in col..m {
-                let val = a[i * lda + col].abs();
-                if val > max_val {
-                    max_val = val;
-                    max_idx = i;
-                }
+                buf.push(a[i * lda + col]);
             }
-            (max_idx, max_val)
+            let (local_idx, max_val) = simd::iamax_f32(&buf);
+            (col + local_idx, max_val)
         }
     }
 }
 
+/// SIMD abs-max scan for pivot search (f64).
+///
+/// Same strategy as f32: contiguous column → direct SIMD,
+/// strided column → gather + SIMD.
 #[inline]
 fn pivot_search_f64(a: &[f64], layout: Layout, col: usize, m: usize, lda: usize) -> (usize, f64) {
     let len = m - col;
@@ -204,28 +198,16 @@ fn pivot_search_f64(a: &[f64], layout: Layout, col: usize, m: usize, lda: usize)
         Layout::ColMajor => {
             let base = col * lda + col;
             let slice = &a[base..base + len];
-            let mut max_val = 0.0f64;
-            let mut max_local = 0;
-            for i in 0..len {
-                let v = slice[i].abs();
-                if v > max_val {
-                    max_val = v;
-                    max_local = i;
-                }
-            }
-            (col + max_local, max_val)
+            let (local_idx, max_val) = simd::iamax_f64(slice);
+            (col + local_idx, max_val)
         }
         Layout::RowMajor => {
-            let mut max_val = 0.0f64;
-            let mut max_idx = col;
+            let mut buf = Vec::with_capacity(len);
             for i in col..m {
-                let val = a[i * lda + col].abs();
-                if val > max_val {
-                    max_val = val;
-                    max_idx = i;
-                }
+                buf.push(a[i * lda + col]);
             }
-            (max_idx, max_val)
+            let (local_idx, max_val) = simd::iamax_f64(&buf);
+            (col + local_idx, max_val)
         }
     }
 }
@@ -280,7 +262,7 @@ fn swap_rows_f64(a: &mut [f64], layout: Layout, r1: usize, r2: usize, n: usize, 
 
 /// Scale column: A[i, col] *= alpha for i in start_row..end_row.
 /// For ColMajor: column is contiguous → SIMD scal.
-/// For RowMajor: column is strided → scalar loop.
+/// For RowMajor: column is strided → gather into buffer, SIMD scal, scatter back.
 #[inline]
 fn scale_column_f32(
     a: &mut [f32],
@@ -301,8 +283,15 @@ fn scale_column_f32(
             simd::scal_f32(alpha, &mut a[base..base + len]);
         }
         Layout::RowMajor => {
+            // Gather strided column into contiguous buffer for SIMD scal
+            let mut buf = Vec::with_capacity(len);
             for i in start_row..end_row {
-                a[i * lda + col] *= alpha;
+                buf.push(a[i * lda + col]);
+            }
+            simd::scal_f32(alpha, &mut buf);
+            // Scatter back
+            for (j, i) in (start_row..end_row).enumerate() {
+                a[i * lda + col] = buf[j];
             }
         }
     }
@@ -328,8 +317,13 @@ fn scale_column_f64(
             simd::scal_f64(alpha, &mut a[base..base + len]);
         }
         Layout::RowMajor => {
+            let mut buf = Vec::with_capacity(len);
             for i in start_row..end_row {
-                a[i * lda + col] *= alpha;
+                buf.push(a[i * lda + col]);
+            }
+            simd::scal_f64(alpha, &mut buf);
+            for (j, i) in (start_row..end_row).enumerate() {
+                a[i * lda + col] = buf[j];
             }
         }
     }
@@ -1256,9 +1250,16 @@ pub fn sgeqrf(
                 }
             }
             Layout::RowMajor => {
+                // Gather strided column, SIMD scal, scatter back
+                let hh_len = m - k - 1;
                 let inv_beta = 1.0 / beta;
+                let mut buf = Vec::with_capacity(hh_len);
                 for i in (k + 1)..m {
-                    a[i * lda + k] *= inv_beta;
+                    buf.push(a[i * lda + k]);
+                }
+                simd::scal_f32(inv_beta, &mut buf);
+                for (j, i) in ((k + 1)..m).enumerate() {
+                    a[i * lda + k] = buf[j];
                 }
             }
         }
@@ -1384,9 +1385,15 @@ pub fn dgeqrf(
                 }
             }
             Layout::RowMajor => {
+                let hh_len = m - k - 1;
                 let inv_beta = 1.0 / beta;
+                let mut buf = Vec::with_capacity(hh_len);
                 for i in (k + 1)..m {
-                    a[i * lda + k] *= inv_beta;
+                    buf.push(a[i * lda + k]);
+                }
+                simd::scal_f64(inv_beta, &mut buf);
+                for (j, i) in ((k + 1)..m).enumerate() {
+                    a[i * lda + k] = buf[j];
                 }
             }
         }

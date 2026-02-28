@@ -339,7 +339,7 @@ Exposed methods:
 |-----|----------|---------------|
 | **Oversold commit message** | `5aad405` | Claims "SIMD-accelerate all inner loops" but left primary GEMM/VNNI untouched (already SIMD) |
 | **K-unroll overstated** | `c8a908e` | Claims "interleaved FMA chains" but uses single accumulator (serial dep) |
-| **Doc lie** | `lapack.rs` pivot search | Comment says "SIMD abs-max scan" but code is scalar argmax |
+| **Doc lie** | `lapack.rs` pivot search | Comment said "SIMD abs-max scan" but was scalar — **FIXED 2026-02-28**: added `iamax_f32/f64` to simd.rs, wired into pivot search |
 | **BF16 doc/code mismatch** | `bf16_gemm.rs` | Module doc mentions `vdpbf16ps` but code uses generic f32 conversion path |
 | **cargo fmt as "fix"** | `bbc7f3a` | Whitespace-only changes to `int8_gemm.rs` listed as part of "fix test tolerance" commit |
 
@@ -368,6 +368,22 @@ For the record, here is exactly what this session modified in performance-critic
 | `rustynum-core/src/simd_compat.rs` | Added 212 lines (F32x8, F64x4 AVX2 wrappers) at bottom | LOW — new code, did not modify existing |
 | `rustynum-core/src/simd_avx2.rs` | Changed 3 import lines (`std::simd` → `simd_compat`) | LOW — import swap only |
 | `rustyblas/`, `rustymkl/` | NOT modified (beyond fmt) | ZERO |
+
+---
+
+---
+
+## 10. Changes Made This Session (2026-02-28)
+
+| File | Change | Impact |
+|------|--------|--------|
+| `rustynum-core/src/simd.rs` | Added `iamax_f32()`, `iamax_f64()` — AVX-512 abs + reduce_max + lane scan | LAPACK pivot search now genuinely SIMD |
+| `rustymkl/src/lapack.rs` | `pivot_search_f32/f64` → calls `simd::iamax_f32/f64` | Doc lie fixed |
+| `rustymkl/src/lapack.rs` | `scale_column_f32/f64` RowMajor → gather, SIMD scal, scatter | Strided column scale now SIMD |
+| `rustymkl/src/lapack.rs` | QR Householder f32/f64 RowMajor column scale → gather, SIMD scal, scatter | Same pattern |
+| `rustymkl/src/lapack.rs` | Module doc updated: "SIMD iamax" replaces dishonest "SIMD abs-max" | Doc matches code |
+
+All changes use **stable 1.93 std::arch** — no nightly, no portable_simd.
 
 ---
 
