@@ -64,9 +64,10 @@ pub use jitson::{
     from_json, BackendConfig, JitsonError, JitsonTemplate, PipelineStage, PrecompileQueue,
 };
 pub use kernels::{
-    bf16_tail_score, full_sweep, kernel_pipeline, kernel_pipeline_bytes, BenchmarkTranscript,
-    EnergyConflict, HdrScore, KernelResult, KernelStage, PipelineStats, SliceGate, SKU_16K_BITS,
-    SKU_16K_BYTES, SKU_16K_WORDS, SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+    bf16_tail_score, bytes_to_u64_words, full_sweep, k0_probe, k1_stats, k2_exact, kernel_pipeline,
+    kernel_pipeline_bytes, score_hdr, BenchmarkTranscript, EnergyConflict, HdrScore, KernelResult,
+    KernelStage, PipelineStats, SliceGate, SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
+    SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
 };
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
@@ -101,7 +102,7 @@ pub use cam_index::{CamConfig, CamHit, CamIndex};
 
 // DN-tree: hierarchical plasticity tree with BTSP-gated bundling
 pub mod dn_tree;
-pub use dn_tree::{DNConfig, DNTree, DNTreeStats, TraversalHit};
+pub use dn_tree::{DNConfig, DNNode, DNTree, DNTreeStats, TraversalHit};
 
 // BNN inference primitives: XNOR+popcount binary neural network kernels
 // Grey matter (inference) + White matter (connections) + Plasticity (learning)

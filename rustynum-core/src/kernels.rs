@@ -282,7 +282,7 @@ impl PipelineStats {
 /// already exceeds the proportional threshold, reject immediately.
 /// Zero branches in the hot path — just XOR + POPCNT + compare.
 #[inline]
-fn k0_probe(query_word0: u64, candidate_word0: u64, gate: &SliceGate) -> bool {
+pub fn k0_probe(query_word0: u64, candidate_word0: u64, gate: &SliceGate) -> bool {
     let xor = query_word0 ^ candidate_word0;
     let conflict = xor.count_ones();
     conflict <= gate.k0_reject
@@ -293,7 +293,7 @@ fn k0_probe(query_word0: u64, candidate_word0: u64, gate: &SliceGate) -> bool {
 /// XOR the first 8 words and popcount. Proportional threshold check.
 /// SIMD XOR, scalar popcount — Rule 5.
 #[inline]
-fn k1_stats(query: &[u64], candidate: &[u64], gate: &SliceGate) -> bool {
+pub fn k1_stats(query: &[u64], candidate: &[u64], gate: &SliceGate) -> bool {
     debug_assert!(query.len() >= K1_WORDS);
     debug_assert!(candidate.len() >= K1_WORDS);
 
@@ -319,7 +319,7 @@ fn k1_stats(query: &[u64], candidate: &[u64], gate: &SliceGate) -> bool {
 /// Rule 5: XOR and AND are vectorizable (SIMD), popcount is scalarized
 /// (hardware POPCNT on each u64 result).
 #[inline]
-fn k2_exact(query: &[u64], candidate: &[u64], n_words: usize) -> EnergyConflict {
+pub fn k2_exact(query: &[u64], candidate: &[u64], n_words: usize) -> EnergyConflict {
     debug_assert!(query.len() >= n_words);
     debug_assert!(candidate.len() >= n_words);
 
@@ -378,7 +378,7 @@ fn k2_exact(query: &[u64], candidate: &[u64], n_words: usize) -> EnergyConflict 
 
 /// Score an EnergyConflict result against SliceGate thresholds.
 #[inline]
-fn score_hdr(ec: &EnergyConflict, gate: &SliceGate) -> HdrScore {
+pub fn score_hdr(ec: &EnergyConflict, gate: &SliceGate) -> HdrScore {
     HdrScore {
         hot: if ec.conflict < gate.k2_hot { 3 } else { 0 },
         mid: if ec.conflict < gate.k2_mid { 2 } else { 0 },
@@ -579,7 +579,7 @@ pub fn bf16_tail_score(
 
 /// Reinterpret a byte slice as u64 words (little-endian).
 #[inline]
-fn bytes_to_u64_words(bytes: &[u8]) -> Vec<u64> {
+pub fn bytes_to_u64_words(bytes: &[u8]) -> Vec<u64> {
     assert!(bytes.len().is_multiple_of(8));
     let n_words = bytes.len() / 8;
     let mut words = Vec::with_capacity(n_words);
