@@ -27,9 +27,9 @@
 //!         └── vsa_distances.json      (pairwise causal distances)
 //! ```
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // Hardened Cypher Verb Contract
@@ -72,16 +72,24 @@ impl CypherVerb {
     fn causal_rung(&self) -> u8 {
         match self {
             // Rung 1: Association (observation, no intervention)
-            Self::Match | Self::OptionalMatch | Self::Where |
-            Self::Return | Self::With | Self::Unwind |
-            Self::OrderBy | Self::Skip | Self::Limit | Self::Distinct => 1,
+            Self::Match
+            | Self::OptionalMatch
+            | Self::Where
+            | Self::Return
+            | Self::With
+            | Self::Unwind
+            | Self::OrderBy
+            | Self::Skip
+            | Self::Limit
+            | Self::Distinct => 1,
             // Rung 2: Intervention (do-calculus)
             Self::Create | Self::Merge | Self::Set | Self::Remove => 2,
             // Rung 3: Counterfactual (deletion = "what if not?")
             Self::Delete | Self::DetachDelete => 3,
             // Meta (schema)
-            Self::CreateIndex | Self::CreateConstraint |
-            Self::DropIndex | Self::DropConstraint => 0,
+            Self::CreateIndex | Self::CreateConstraint | Self::DropIndex | Self::DropConstraint => {
+                0
+            }
             // Procedure
             Self::Call | Self::Yield => 1,
         }
@@ -185,8 +193,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             predicate_dims: [
                 0.3, 0.5, 0.5, 0.1, // agency=LOW
                 0.7, 0.5, 0.3, 0.9, // gravity=HIGH
-                0.6, 0.2, 0.3, 0.4,
-                0.3, 0.4, 0.3, 0.5,
+                0.6, 0.2, 0.3, 0.4, 0.3, 0.4, 0.3, 0.5,
             ],
         },
         RelTypeContract {
@@ -194,9 +201,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.4, 0.5,
-                0.5, 0.4, 0.3, 0.5,
-                0.4, 0.5, 0.8, 0.5, // dissonance=HIGH
+                0.5, 0.5, 0.4, 0.5, 0.5, 0.4, 0.3, 0.5, 0.4, 0.5, 0.8, 0.5, // dissonance=HIGH
                 0.2, 0.5, 0.8, 0.7, // friction=HIGH, equilibrium=HIGH
             ],
         },
@@ -218,9 +223,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             direction: "symmetric".into(),
             predicate_dims: [
                 0.5, 0.5, 0.5, 0.5, // neutral — pure distance metric
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.5, 0.5, 0.5,
+                0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
             ],
         },
         RelTypeContract {
@@ -228,10 +231,8 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "symmetric".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.8, 0.5, 0.5, // clarity boosted (surface language)
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.5, 0.5, 0.5,
+                0.5, 0.5, 0.5, 0.5, 0.5, 0.8, 0.5, 0.5, // clarity boosted (surface language)
+                0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
             ],
         },
         // === XOR Buckets ===
@@ -241,8 +242,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             direction: "symmetric".into(),
             predicate_dims: [
                 0.8, 0.8, 0.8, 0.5, // high glow, valence, rooting (both agree)
-                0.8, 0.8, 0.5, 0.5,
-                0.5, 0.5, 0.1, 0.5, // low dissonance (no conflict)
+                0.8, 0.8, 0.5, 0.5, 0.5, 0.5, 0.1, 0.5, // low dissonance (no conflict)
                 0.1, 0.8, 0.1, 0.8, // low loss, high optimism, low friction, high equilibrium
             ],
         },
@@ -275,8 +275,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             predicate_dims: [
                 0.5, 0.5, 0.8, 0.3, // high rooting, low agency (containment)
                 0.5, 0.5, 0.7, 0.8, // high social, high gravity
-                0.5, 0.3, 0.1, 0.3,
-                0.1, 0.5, 0.1, 0.7, // low loss, high equilibrium
+                0.5, 0.3, 0.1, 0.3, 0.1, 0.5, 0.1, 0.7, // low loss, high equilibrium
             ],
         },
         RelTypeContract {
@@ -284,10 +283,9 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.9, 0.3, 0.5, // high clarity (classification)
-                0.5, 0.5, 0.1, 0.5,
-                0.5, 0.5, 0.1, 0.9, // very high equilibrium (binary split)
+                0.5, 0.5, 0.5, 0.5, 0.5, 0.9, 0.3, 0.5, // high clarity (classification)
+                0.5, 0.5, 0.1, 0.5, 0.5, 0.5, 0.1,
+                0.9, // very high equilibrium (binary split)
             ],
         },
         // === AIWar Domain Relationships ===
@@ -298,8 +296,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             predicate_dims: [
                 0.5, 0.5, 0.7, 0.3, // high rooting, low agency (schema binding)
                 0.5, 0.9, 0.5, 0.5, // high clarity
-                0.5, 0.3, 0.1, 0.3,
-                0.1, 0.5, 0.1, 0.9,
+                0.5, 0.3, 0.1, 0.3, 0.1, 0.5, 0.1, 0.9,
             ],
         },
         RelTypeContract {
@@ -309,8 +306,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             predicate_dims: [
                 0.5, 0.5, 0.5, 0.2, // low agency (passive: was developed)
                 0.5, 0.5, 0.7, 0.8, // high social, high gravity
-                0.3, 0.2, 0.3, 0.3,
-                0.3, 0.5, 0.3, 0.5,
+                0.3, 0.2, 0.3, 0.3, 0.3, 0.5, 0.3, 0.5,
             ],
         },
         RelTypeContract {
@@ -318,10 +314,8 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "backward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.3,
-                0.5, 0.5, 0.8, 0.7, // high social, high gravity
-                0.3, 0.3, 0.5, 0.3,
-                0.3, 0.5, 0.5, 0.5,
+                0.5, 0.5, 0.5, 0.3, 0.5, 0.5, 0.8, 0.7, // high social, high gravity
+                0.3, 0.3, 0.5, 0.3, 0.3, 0.5, 0.5, 0.5,
             ],
         },
         RelTypeContract {
@@ -329,10 +323,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "backward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.5,
-                0.5, 0.5, 0.8, 0.6,
-                0.3, 0.5, 0.3, 0.3,
-                0.3, 0.5, 0.3, 0.5,
+                0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.8, 0.6, 0.3, 0.5, 0.3, 0.3, 0.3, 0.5, 0.3, 0.5,
             ],
         },
         RelTypeContract {
@@ -340,10 +331,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "backward".into(),
             predicate_dims: [
-                0.3, 0.5, 0.5, 0.2,
-                0.5, 0.5, 0.6, 0.7,
-                0.3, 0.2, 0.3, 0.3,
-                0.3, 0.4, 0.3, 0.5,
+                0.3, 0.5, 0.5, 0.2, 0.5, 0.5, 0.6, 0.7, 0.3, 0.2, 0.3, 0.3, 0.3, 0.4, 0.3, 0.5,
             ],
         },
         RelTypeContract {
@@ -352,8 +340,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             direction: "forward".into(),
             predicate_dims: [
                 0.5, 0.5, 0.5, 0.7, // high agency (active investment)
-                0.5, 0.5, 0.7, 0.5,
-                0.3, 0.7, 0.3, 0.3, // high volition
+                0.5, 0.5, 0.7, 0.5, 0.3, 0.7, 0.3, 0.3, // high volition
                 0.3, 0.7, 0.5, 0.5,
             ],
         },
@@ -363,8 +350,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             direction: "forward".into(),
             predicate_dims: [
                 0.3, 0.2, 0.5, 0.9, // low valence, high agency
-                0.3, 0.5, 0.3, 0.3,
-                0.2, 0.8, 0.8, 0.2, // high volition, high dissonance
+                0.3, 0.5, 0.3, 0.3, 0.2, 0.8, 0.8, 0.2, // high volition, high dissonance
                 0.5, 0.2, 0.8, 0.2, // high friction, low equilibrium
             ],
         },
@@ -392,7 +378,9 @@ fn xor_bind(a: &[u8], b: &[u8]) -> Vec<u8> {
 fn bf16_distance(a: &[u8], b: &[u8]) -> u64 {
     let mut total: u64 = 0;
     for i in (0..a.len()).step_by(2) {
-        if i + 1 >= a.len() || i + 1 >= b.len() { break; }
+        if i + 1 >= a.len() || i + 1 >= b.len() {
+            break;
+        }
         let va = u16::from_le_bytes([a[i], a[i + 1]]);
         let vb = u16::from_le_bytes([b[i], b[i + 1]]);
         let xor = va ^ vb;
@@ -414,7 +402,9 @@ fn bf16_structural_diff(a: &[u8], b: &[u8]) -> (usize, usize, usize) {
         let va = u16::from_le_bytes([a[i], a[i + 1]]);
         let vb = u16::from_le_bytes([b[i], b[i + 1]]);
         let xor = va ^ vb;
-        if xor & 0x8000 != 0 { sign_flips += 1; }
+        if xor & 0x8000 != 0 {
+            sign_flips += 1;
+        }
         exp_shifts += ((xor >> 7) & 0xFF).count_ones() as usize;
         man_changes += (xor & 0x7F).count_ones() as usize;
     }
@@ -511,28 +501,48 @@ fn parse_cypher(input: &str) -> CypherGraph {
 
         // Detect verb
         let upper = trimmed.to_uppercase();
-        let verb = if upper.starts_with("MERGE") { "MERGE" }
-            else if upper.starts_with("CREATE INDEX") { "CREATE INDEX" }
-            else if upper.starts_with("CREATE CONSTRAINT") { "CREATE CONSTRAINT" }
-            else if upper.starts_with("CREATE") { "CREATE" }
-            else if upper.starts_with("MATCH") { "MATCH" }
-            else if upper.starts_with("OPTIONAL MATCH") { "OPTIONAL MATCH" }
-            else if upper.starts_with("WHERE") { "WHERE" }
-            else if upper.starts_with("RETURN") { "RETURN" }
-            else if upper.starts_with("WITH") { "WITH" }
-            else if upper.starts_with("SET") { "SET" }
-            else if upper.starts_with("DELETE") { "DELETE" }
-            else if upper.starts_with("DETACH DELETE") { "DETACH DELETE" }
-            else if upper.starts_with("REMOVE") { "REMOVE" }
-            else if upper.starts_with("UNWIND") { "UNWIND" }
-            else if upper.starts_with("ORDER BY") { "ORDER BY" }
-            else if upper.starts_with("CALL") { "CALL" }
-            else { "UNKNOWN" };
+        let verb = if upper.starts_with("MERGE") {
+            "MERGE"
+        } else if upper.starts_with("CREATE INDEX") {
+            "CREATE INDEX"
+        } else if upper.starts_with("CREATE CONSTRAINT") {
+            "CREATE CONSTRAINT"
+        } else if upper.starts_with("CREATE") {
+            "CREATE"
+        } else if upper.starts_with("MATCH") {
+            "MATCH"
+        } else if upper.starts_with("OPTIONAL MATCH") {
+            "OPTIONAL MATCH"
+        } else if upper.starts_with("WHERE") {
+            "WHERE"
+        } else if upper.starts_with("RETURN") {
+            "RETURN"
+        } else if upper.starts_with("WITH") {
+            "WITH"
+        } else if upper.starts_with("SET") {
+            "SET"
+        } else if upper.starts_with("DELETE") {
+            "DELETE"
+        } else if upper.starts_with("DETACH DELETE") {
+            "DETACH DELETE"
+        } else if upper.starts_with("REMOVE") {
+            "REMOVE"
+        } else if upper.starts_with("UNWIND") {
+            "UNWIND"
+        } else if upper.starts_with("ORDER BY") {
+            "ORDER BY"
+        } else if upper.starts_with("CALL") {
+            "CALL"
+        } else {
+            "UNKNOWN"
+        };
 
         // Validate verb
         if CypherVerb::from_str_checked(verb).is_none() && verb != "UNKNOWN" {
             graph.validation_errors.push(format!(
-                "Line {}: unrecognized verb '{}'", line_idx + 1, verb
+                "Line {}: unrecognized verb '{}'",
+                line_idx + 1,
+                verb
             ));
         }
 
@@ -564,8 +574,12 @@ fn parse_node_patterns(line: &str, graph: &mut CypherGraph) {
             let mut depth = 1;
             i += 1;
             while i < chars.len() && depth > 0 {
-                if chars[i] == '(' { depth += 1; }
-                if chars[i] == ')' { depth -= 1; }
+                if chars[i] == '(' {
+                    depth += 1;
+                }
+                if chars[i] == ')' {
+                    depth -= 1;
+                }
                 i += 1;
             }
             let inner: String = chars[start + 1..i - 1].iter().collect();
@@ -578,7 +592,9 @@ fn parse_node_patterns(line: &str, graph: &mut CypherGraph) {
 
 fn parse_single_node(inner: &str, graph: &mut CypherGraph) {
     let inner = inner.trim();
-    if inner.is_empty() { return; }
+    if inner.is_empty() {
+        return;
+    }
 
     // Split into alias:labels and {properties}
     let (prefix, props_str) = if let Some(brace_pos) = inner.find('{') {
@@ -589,14 +605,19 @@ fn parse_single_node(inner: &str, graph: &mut CypherGraph) {
     };
 
     let prefix = prefix.trim();
-    if prefix.is_empty() { return; }
+    if prefix.is_empty() {
+        return;
+    }
 
     // Parse alias:Label1:Label2
     let parts: Vec<&str> = prefix.split(':').collect();
     let alias = parts[0].trim().to_string();
-    if alias.is_empty() { return; }
+    if alias.is_empty() {
+        return;
+    }
 
-    let labels: Vec<String> = parts[1..].iter()
+    let labels: Vec<String> = parts[1..]
+        .iter()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
@@ -634,8 +655,12 @@ fn parse_edge_patterns(line: &str, graph: &mut CypherGraph) {
             let mut bracket_end = bracket_start;
             let mut depth = 1;
             while bracket_end < chars.len() && depth > 0 {
-                if chars[bracket_end] == '[' { depth += 1; }
-                if chars[bracket_end] == ']' { depth -= 1; }
+                if chars[bracket_end] == '[' {
+                    depth += 1;
+                }
+                if chars[bracket_end] == ']' {
+                    depth -= 1;
+                }
                 bracket_end += 1;
             }
             let bracket_content: String = chars[bracket_start..bracket_end - 1].iter().collect();
@@ -645,9 +670,13 @@ fn parse_edge_patterns(line: &str, graph: &mut CypherGraph) {
                 && chars[bracket_end] == '-'
                 && chars[bracket_end + 1] == '>';
 
-            let direction = if direction_left { "<-" }
-                else if direction_right { "->" }
-                else { "-" };
+            let direction = if direction_left {
+                "<-"
+            } else if direction_right {
+                "->"
+            } else {
+                "-"
+            };
 
             // Parse :TYPE {props}
             let (rel_type, props) = parse_rel_content(&bracket_content);
@@ -657,7 +686,8 @@ fn parse_edge_patterns(line: &str, graph: &mut CypherGraph) {
 
                 // Find src and dst aliases by scanning backward/forward for parens
                 let src_alias = find_alias_before(line_str, if direction_left { i - 1 } else { i });
-                let dst_alias = find_alias_after(line_str, bracket_end + if direction_right { 2 } else { 1 });
+                let dst_alias =
+                    find_alias_after(line_str, bracket_end + if direction_right { 2 } else { 1 });
 
                 graph.edges.push(CypherEdge {
                     src_alias,
@@ -684,7 +714,8 @@ fn parse_rel_content(content: &str) -> (String, HashMap<String, String>) {
         (content, "")
     };
 
-    let rel_type = type_part.trim()
+    let rel_type = type_part
+        .trim()
         .strip_prefix(':')
         .unwrap_or(type_part.trim())
         .trim()
@@ -696,7 +727,9 @@ fn parse_rel_content(content: &str) -> (String, HashMap<String, String>) {
 
 fn parse_properties(props_str: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    if props_str.trim().is_empty() { return map; }
+    if props_str.trim().is_empty() {
+        return map;
+    }
 
     // Simple key: value parser (handles strings with commas inside quotes)
     let mut key = String::new();
@@ -718,14 +751,20 @@ fn parse_properties(props_str: &str) -> HashMap<String, String> {
             '\'' | '"' => {
                 in_string = true;
                 string_char = ch;
-                if !in_key { value.push(ch); }
+                if !in_key {
+                    value.push(ch);
+                }
             }
             ':' if in_key => {
                 in_key = false;
             }
             ',' => {
                 let k = key.trim().to_string();
-                let v = value.trim().trim_matches('\'').trim_matches('"').to_string();
+                let v = value
+                    .trim()
+                    .trim_matches('\'')
+                    .trim_matches('"')
+                    .to_string();
                 if !k.is_empty() {
                     map.insert(k, v);
                 }
@@ -734,14 +773,22 @@ fn parse_properties(props_str: &str) -> HashMap<String, String> {
                 in_key = true;
             }
             _ => {
-                if in_key { key.push(ch); } else { value.push(ch); }
+                if in_key {
+                    key.push(ch);
+                } else {
+                    value.push(ch);
+                }
             }
         }
     }
 
     // Last pair
     let k = key.trim().to_string();
-    let v = value.trim().trim_matches('\'').trim_matches('"').to_string();
+    let v = value
+        .trim()
+        .trim_matches('\'')
+        .trim_matches('"')
+        .to_string();
     if !k.is_empty() {
         map.insert(k, v);
     }
@@ -764,9 +811,12 @@ fn find_alias_before(line: &str, pos: usize) -> String {
         }
         let inner: String = chars[start + 1..end].iter().collect();
         // Extract alias (before : or {)
-        inner.split(':').next()
+        inner
+            .split(':')
+            .next()
             .unwrap_or("")
-            .split('{').next()
+            .split('{')
+            .next()
             .unwrap_or("")
             .trim()
             .to_string()
@@ -779,7 +829,8 @@ fn find_alias_after(line: &str, pos: usize) -> String {
     let chars: Vec<char> = line.chars().collect();
     let mut start = pos;
     // Skip forward past whitespace/dash/arrow
-    while start < chars.len() && (chars[start] == '-' || chars[start] == '>' || chars[start] == ' ') {
+    while start < chars.len() && (chars[start] == '-' || chars[start] == '>' || chars[start] == ' ')
+    {
         start += 1;
     }
     if start < chars.len() && chars[start] == '(' {
@@ -788,9 +839,12 @@ fn find_alias_after(line: &str, pos: usize) -> String {
             end += 1;
         }
         let inner: String = chars[start + 1..end].iter().collect();
-        inner.split(':').next()
+        inner
+            .split(':')
+            .next()
             .unwrap_or("")
-            .split('{').next()
+            .split('{')
+            .next()
             .unwrap_or("")
             .trim()
             .to_string()
@@ -839,9 +893,8 @@ struct RelTypeDistance {
 
 fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
     let contracts = hardened_rel_contracts();
-    let contract_map: HashMap<&str, &RelTypeContract> = contracts.iter()
-        .map(|c| (c.name.as_str(), c))
-        .collect();
+    let contract_map: HashMap<&str, &RelTypeContract> =
+        contracts.iter().map(|c| (c.name.as_str(), c)).collect();
 
     // === 1. Encode nodes as BF16 vectors ===
     // Use the nib4 property if available, else hash-based embedding
@@ -850,7 +903,8 @@ fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
     for (alias, node) in &graph.nodes {
         let vec = if let Some(nib4_str) = node.properties.get("nib4") {
             // Parse nib4 hex string to 16 float values
-            let nibbles: Vec<f32> = nib4_str.split(':')
+            let nibbles: Vec<f32> = nib4_str
+                .split(':')
                 .filter_map(|s| u8::from_str_radix(s, 16).ok())
                 .map(|n| n as f32 / 15.0)
                 .collect();
@@ -870,10 +924,12 @@ fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
     let mut edge_triples = Vec::new();
 
     for edge in &graph.edges {
-        let src_vec = node_vectors.get(&edge.src_alias)
+        let src_vec = node_vectors
+            .get(&edge.src_alias)
             .cloned()
             .unwrap_or_else(|| hash_to_bf16(&edge.src_alias));
-        let dst_vec = node_vectors.get(&edge.dst_alias)
+        let dst_vec = node_vectors
+            .get(&edge.dst_alias)
             .cloned()
             .unwrap_or_else(|| hash_to_bf16(&edge.dst_alias));
 
@@ -886,11 +942,16 @@ fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
         let triple = SpoTriple::encode(&src_vec, &pred_vec, &dst_vec);
         let zero_triple = SpoTriple::encode(&zero_vec, &zero_vec, &zero_vec);
         let (dx, dy, dz) = triple.axis_distances(&zero_triple);
-        let dominant = if dx >= dy && dx >= dz { "S⊕P (who-does)" }
-            else if dy >= dz { "P⊕O (does-whom)" }
-            else { "S⊕O (who-whom)" };
+        let dominant = if dx >= dy && dx >= dz {
+            "S⊕P (who-does)"
+        } else if dy >= dz {
+            "P⊕O (does-whom)"
+        } else {
+            "S⊕O (who-whom)"
+        };
 
-        let causal_rung = contract_map.get(edge.rel_type.as_str())
+        let causal_rung = contract_map
+            .get(edge.rel_type.as_str())
             .map(|c| c.causal_rung)
             .unwrap_or(0);
 
@@ -914,9 +975,7 @@ fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
             let (sign_flips, exp_shifts, man_noise) = bf16_structural_diff(&a_bytes, &b_bytes);
 
             let same_rung = contracts[i].causal_rung == contracts[j].causal_rung;
-            let interp = causal_interpretation(
-                &contracts[i], &contracts[j], sign_flips, dist,
-            );
+            let interp = causal_interpretation(&contracts[i], &contracts[j], sign_flips, dist);
 
             rel_type_distances.push(RelTypeDistance {
                 type_a: contracts[i].name.clone(),
@@ -937,7 +996,8 @@ fn project_to_vsa(graph: &CypherGraph) -> VsaProjection {
     // === 4. Causal rung summary ===
     let mut rung_summary: HashMap<u8, Vec<String>> = HashMap::new();
     for contract in &contracts {
-        rung_summary.entry(contract.causal_rung)
+        rung_summary
+            .entry(contract.causal_rung)
             .or_default()
             .push(contract.name.clone());
     }
@@ -967,21 +1027,38 @@ fn hash_to_bf16(s: &str) -> Vec<u8> {
     f32_to_bf16_bytes(&vals)
 }
 
-fn causal_interpretation(a: &RelTypeContract, b: &RelTypeContract, sign_flips: usize, dist: u64) -> String {
+fn causal_interpretation(
+    a: &RelTypeContract,
+    b: &RelTypeContract,
+    sign_flips: usize,
+    dist: u64,
+) -> String {
     if a.causal_rung == b.causal_rung && a.direction == b.direction {
         if dist < 200 {
-            format!("NEAR-SYNONYM (same rung {}, same direction, d={})", a.causal_rung, dist)
+            format!(
+                "NEAR-SYNONYM (same rung {}, same direction, d={})",
+                a.causal_rung, dist
+            )
         } else {
             format!("SAME-CLASS-DIVERGENT (rung {}, d={})", a.causal_rung, dist)
         }
     } else if a.direction == "forward" && b.direction == "backward" {
         if sign_flips > 4 {
-            format!("VOICE-INVERSION ({} sign flips = causal direction reversal)", sign_flips)
+            format!(
+                "VOICE-INVERSION ({} sign flips = causal direction reversal)",
+                sign_flips
+            )
         } else {
-            format!("PARTIAL-INVERSION ({} sign flips, rung {}→{})", sign_flips, a.causal_rung, b.causal_rung)
+            format!(
+                "PARTIAL-INVERSION ({} sign flips, rung {}→{})",
+                sign_flips, a.causal_rung, b.causal_rung
+            )
         }
     } else if a.causal_rung != b.causal_rung {
-        format!("RUNG-SHIFT ({}->{}, {} sign flips)", a.causal_rung, b.causal_rung, sign_flips)
+        format!(
+            "RUNG-SHIFT ({}->{}, {} sign flips)",
+            a.causal_rung, b.causal_rung, sign_flips
+        )
     } else if sign_flips > 6 {
         format!("CAUSAL-OPPOSITION ({} sign flips)", sign_flips)
     } else {
@@ -1010,34 +1087,40 @@ fn generate_syntax_contract(graph: &CypherGraph, projection: &VsaProjection) -> 
     out.push_str("//   Rung 3 = Counterfactual (deletion, \"what if not?\")\n\n");
 
     let verbs = [
-        ("MATCH",             1, "Pattern match (read)"),
-        ("OPTIONAL MATCH",    1, "Pattern match with NULL fill"),
-        ("WHERE",             1, "Filter predicate"),
-        ("RETURN",            1, "Project columns"),
-        ("WITH",              1, "Pipeline intermediate results"),
-        ("UNWIND",            1, "Flatten list to rows"),
-        ("ORDER BY",          1, "Sort results (ASC|DESC)"),
-        ("SKIP",              1, "Skip N rows"),
-        ("LIMIT",             1, "Limit to N rows"),
-        ("DISTINCT",          1, "Deduplicate results"),
-        ("CREATE",            2, "Create nodes/edges (intervention)"),
-        ("MERGE",             2, "Upsert: create if not exists"),
-        ("SET",               2, "Set properties/labels"),
-        ("REMOVE",            2, "Remove properties/labels"),
-        ("DELETE",            3, "Delete nodes/edges"),
-        ("DETACH DELETE",     3, "Delete node + all edges"),
-        ("CREATE INDEX",      0, "Create B-tree/vector index"),
-        ("CREATE CONSTRAINT", 0, "Create uniqueness/existence constraint"),
-        ("DROP INDEX",        0, "Drop index"),
-        ("DROP CONSTRAINT",   0, "Drop constraint"),
-        ("CALL",              1, "Invoke procedure"),
-        ("YIELD",             1, "Bind procedure output columns"),
+        ("MATCH", 1, "Pattern match (read)"),
+        ("OPTIONAL MATCH", 1, "Pattern match with NULL fill"),
+        ("WHERE", 1, "Filter predicate"),
+        ("RETURN", 1, "Project columns"),
+        ("WITH", 1, "Pipeline intermediate results"),
+        ("UNWIND", 1, "Flatten list to rows"),
+        ("ORDER BY", 1, "Sort results (ASC|DESC)"),
+        ("SKIP", 1, "Skip N rows"),
+        ("LIMIT", 1, "Limit to N rows"),
+        ("DISTINCT", 1, "Deduplicate results"),
+        ("CREATE", 2, "Create nodes/edges (intervention)"),
+        ("MERGE", 2, "Upsert: create if not exists"),
+        ("SET", 2, "Set properties/labels"),
+        ("REMOVE", 2, "Remove properties/labels"),
+        ("DELETE", 3, "Delete nodes/edges"),
+        ("DETACH DELETE", 3, "Delete node + all edges"),
+        ("CREATE INDEX", 0, "Create B-tree/vector index"),
+        (
+            "CREATE CONSTRAINT",
+            0,
+            "Create uniqueness/existence constraint",
+        ),
+        ("DROP INDEX", 0, "Drop index"),
+        ("DROP CONSTRAINT", 0, "Drop constraint"),
+        ("CALL", 1, "Invoke procedure"),
+        ("YIELD", 1, "Bind procedure output columns"),
     ];
 
     for (verb, rung, desc) in &verbs {
         let count = graph.verb_counts.get(*verb).unwrap_or(&0);
         let status = if *count > 0 { "TESTED" } else { "SPEC" };
-        out.push_str(&format!("// [{status:>6}] Rung {rung} │ {verb:<20} │ {desc}"));
+        out.push_str(&format!(
+            "// [{status:>6}] Rung {rung} │ {verb:<20} │ {desc}"
+        ));
         if *count > 0 {
             out.push_str(&format!(" ({count} occurrences)"));
         }
@@ -1059,9 +1142,8 @@ fn generate_syntax_contract(graph: &CypherGraph, projection: &VsaProjection) -> 
     }
 
     // Check for unknown relationship types
-    let known_types: std::collections::HashSet<&str> = contracts.iter()
-        .map(|c| c.name.as_str())
-        .collect();
+    let known_types: std::collections::HashSet<&str> =
+        contracts.iter().map(|c| c.name.as_str()).collect();
     let mut unknown_types = Vec::new();
     for (rel_type, count) in &graph.rel_type_counts {
         if !known_types.contains(rel_type.as_str()) {
@@ -1091,8 +1173,11 @@ fn generate_syntax_contract(graph: &CypherGraph, projection: &VsaProjection) -> 
     for d in &projection.rel_type_distances {
         out.push_str(&format!(
             "// d={:>5} │ {:<20} ↔ {:<20} │ sign={} exp={} │ {}\n",
-            d.bf16_distance, d.type_a, d.type_b,
-            d.sign_flips, d.exp_shifts,
+            d.bf16_distance,
+            d.type_a,
+            d.type_b,
+            d.sign_flips,
+            d.exp_shifts,
             d.causal_interpretation,
         ));
     }
@@ -1248,14 +1333,21 @@ fn main() {
 
     // === Step 3: Predicate distance matrix ===
     println!("\n--- Step 3: Predicate VSA Distance Matrix ---\n");
-    println!("  {:>5}  {:<20} ↔ {:<20}  sign  exp  interpretation",
-        "dist", "type_a", "type_b");
+    println!(
+        "  {:>5}  {:<20} ↔ {:<20}  sign  exp  interpretation",
+        "dist", "type_a", "type_b"
+    );
 
     for d in projection.rel_type_distances.iter().take(25) {
-        println!("  {:>5}  {:<20} ↔ {:<20}  {:>3}   {:>3}  {}",
-            d.bf16_distance, d.type_a, d.type_b,
-            d.sign_flips, d.exp_shifts,
-            d.causal_interpretation);
+        println!(
+            "  {:>5}  {:<20} ↔ {:<20}  {:>3}   {:>3}  {}",
+            d.bf16_distance,
+            d.type_a,
+            d.type_b,
+            d.sign_flips,
+            d.exp_shifts,
+            d.causal_interpretation
+        );
     }
 
     // === Step 4: Edge triple analysis ===
@@ -1292,36 +1384,58 @@ fn main() {
 
     let contracts = hardened_rel_contracts();
     let causes_bytes = f32_to_bf16_bytes(
-        &contracts.iter().find(|c| c.name == "CAUSES").unwrap().predicate_dims
+        &contracts
+            .iter()
+            .find(|c| c.name == "CAUSES")
+            .unwrap()
+            .predicate_dims,
     );
     let caused_by_bytes = f32_to_bf16_bytes(
-        &contracts.iter().find(|c| c.name == "IS_CAUSED_BY").unwrap().predicate_dims
+        &contracts
+            .iter()
+            .find(|c| c.name == "IS_CAUSED_BY")
+            .unwrap()
+            .predicate_dims,
     );
     let transforms_bytes = f32_to_bf16_bytes(
-        &contracts.iter().find(|c| c.name == "TRANSFORMS").unwrap().predicate_dims
+        &contracts
+            .iter()
+            .find(|c| c.name == "TRANSFORMS")
+            .unwrap()
+            .predicate_dims,
     );
     let dissolves_bytes = f32_to_bf16_bytes(
-        &contracts.iter().find(|c| c.name == "DISSOLVES_INTO").unwrap().predicate_dims
+        &contracts
+            .iter()
+            .find(|c| c.name == "DISSOLVES_INTO")
+            .unwrap()
+            .predicate_dims,
     );
 
     // Pick sample edges and show forward vs backward SPO encoding
     println!("  Voice pairs (forward vs backward SPO encoding):\n");
-    println!("  {:>30} {:>30}  {:>5} {:>5} {:>5}  sign  exp",
-        "Forward (A→B)", "Backward (B→A)", "Dx", "Dy", "Dz");
+    println!(
+        "  {:>30} {:>30}  {:>5} {:>5} {:>5}  sign  exp",
+        "Forward (A→B)", "Backward (B→A)", "Dx", "Dy", "Dz"
+    );
 
     let sample_pairs: Vec<(&str, &str)> = vec![
-        ("n45", "n215"),  // grief → letting_go (surface synonymy pair)
-        ("n3", "n8"),     // devotion_stay_ugly → devotion_after_fight
-        ("n50", "n110"),  // anger → surrender
-        ("n70", "n81"),   // awe → innocence
-        ("n90", "n106"),  // courage → transformation
+        ("n45", "n215"), // grief → letting_go (surface synonymy pair)
+        ("n3", "n8"),    // devotion_stay_ugly → devotion_after_fight
+        ("n50", "n110"), // anger → surrender
+        ("n70", "n81"),  // awe → innocence
+        ("n90", "n106"), // courage → transformation
     ];
 
     for (src_alias, dst_alias) in &sample_pairs {
-        let src_vec = projection.node_vectors.get(*src_alias)
+        let src_vec = projection
+            .node_vectors
+            .get(*src_alias)
             .cloned()
             .unwrap_or_else(|| hash_to_bf16(src_alias));
-        let dst_vec = projection.node_vectors.get(*dst_alias)
+        let dst_vec = projection
+            .node_vectors
+            .get(*dst_alias)
             .cloned()
             .unwrap_or_else(|| hash_to_bf16(dst_alias));
 
@@ -1340,19 +1454,29 @@ fn main() {
         let zeros = vec![0u8; edge_flat.len()];
         let (sign, exp, _man) = bf16_structural_diff(&edge_flat, &zeros);
 
-        let src_label = graph.nodes.get(*src_alias)
+        let src_label = graph
+            .nodes
+            .get(*src_alias)
             .and_then(|n| n.properties.get("label"))
             .map(|s| &s[..s.len().min(14)])
             .unwrap_or(src_alias);
-        let dst_label = graph.nodes.get(*dst_alias)
+        let dst_label = graph
+            .nodes
+            .get(*dst_alias)
             .and_then(|n| n.properties.get("label"))
             .map(|s| &s[..s.len().min(14)])
             .unwrap_or(dst_alias);
 
-        println!("  {:>30} {:>30}  {:>5} {:>5} {:>5}  {:>3}   {:>3}",
+        println!(
+            "  {:>30} {:>30}  {:>5} {:>5} {:>5}  {:>3}   {:>3}",
             format!("{}→{}", src_label, dst_label),
             format!("{}→{}", dst_label, src_label),
-            dx, dy, dz, sign, exp);
+            dx,
+            dy,
+            dz,
+            sign,
+            exp
+        );
     }
 
     // === Step 6: Predicate-pair SPO experiment ===
@@ -1362,16 +1486,31 @@ fn main() {
         ("CAUSES", &causes_bytes, "IS_CAUSED_BY", &caused_by_bytes),
         ("CAUSES", &causes_bytes, "TRANSFORMS", &transforms_bytes),
         ("CAUSES", &causes_bytes, "DISSOLVES_INTO", &dissolves_bytes),
-        ("TRANSFORMS", &transforms_bytes, "DISSOLVES_INTO", &dissolves_bytes),
+        (
+            "TRANSFORMS",
+            &transforms_bytes,
+            "DISSOLVES_INTO",
+            &dissolves_bytes,
+        ),
     ];
 
     // Use a representative node pair
-    let rep_src = projection.node_vectors.get("n3").cloned().unwrap_or_else(|| hash_to_bf16("n3"));
-    let rep_dst = projection.node_vectors.get("n8").cloned().unwrap_or_else(|| hash_to_bf16("n8"));
+    let rep_src = projection
+        .node_vectors
+        .get("n3")
+        .cloned()
+        .unwrap_or_else(|| hash_to_bf16("n3"));
+    let rep_dst = projection
+        .node_vectors
+        .get("n8")
+        .cloned()
+        .unwrap_or_else(|| hash_to_bf16("n8"));
 
     println!("  Reference pair: n3 (devotion_stay_ugly) → n8 (devotion_after_fight)\n");
-    println!("  {:>18} ↔ {:<18}  SPO_dist  sign  exp",
-        "Predicate A", "Predicate B");
+    println!(
+        "  {:>18} ↔ {:<18}  SPO_dist  sign  exp",
+        "Predicate A", "Predicate B"
+    );
 
     for (name_a, bytes_a, name_b, bytes_b) in &pred_pairs {
         let triple_a = SpoTriple::encode(&rep_src, bytes_a, &rep_dst);
@@ -1382,12 +1521,15 @@ fn main() {
             xor_bind(&triple_a.x, &triple_b.x),
             xor_bind(&triple_a.y, &triple_b.y),
             xor_bind(&triple_a.z, &triple_b.z),
-        ].concat();
+        ]
+        .concat();
         let zeros = vec![0u8; edge.len()];
         let (sign, exp, _man) = bf16_structural_diff(&edge, &zeros);
 
-        println!("  {:>18} ↔ {:<18}  {:>6}    {:>3}   {:>3}",
-            name_a, name_b, total, sign, exp);
+        println!(
+            "  {:>18} ↔ {:<18}  {:>6}    {:>3}   {:>3}",
+            name_a, name_b, total, sign, exp
+        );
     }
 
     // === Step 7: Generate and save contract ===
@@ -1401,8 +1543,8 @@ fn main() {
     println!("  Saved: {} ({} bytes)", contract_path, contract.len());
 
     // Save VSA distances as JSON
-    let distances_json = serde_json::to_string_pretty(&projection.rel_type_distances)
-        .expect("json serialize");
+    let distances_json =
+        serde_json::to_string_pretty(&projection.rel_type_distances).expect("json serialize");
     let json_path = "vsa_distances.json";
     std::fs::write(json_path, &distances_json).expect("write json");
     println!("  Saved: {} ({} bytes)", json_path, distances_json.len());
@@ -1412,15 +1554,22 @@ fn main() {
     println!("║                    CYPHER VSA VERDICT                       ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║                                                            ║");
-    println!("║  Cypher corpus: {} nodes, {} edges, {} statements     ║",
+    println!(
+        "║  Cypher corpus: {} nodes, {} edges, {} statements     ║",
         format!("{:>3}", graph.nodes.len()),
         format!("{:>4}", graph.edges.len()),
-        format!("{:>4}", graph.statements.len()));
-    println!("║  VSA projection: {} node vecs, {} SPO triples        ║",
+        format!("{:>4}", graph.statements.len())
+    );
+    println!(
+        "║  VSA projection: {} node vecs, {} SPO triples        ║",
         format!("{:>3}", projection.node_vectors.len()),
-        format!("{:>4}", projection.edge_triples.len()));
-    println!("║  Relationship contract: {} types, {} causal rungs    ║",
-        format!("{:>2}", contracts.len()), "4");
+        format!("{:>4}", projection.edge_triples.len())
+    );
+    println!(
+        "║  Relationship contract: {} types, {} causal rungs    ║",
+        format!("{:>2}", contracts.len()),
+        "4"
+    );
     println!("║                                                            ║");
     println!("║  Key findings:                                             ║");
     println!("║  - CAUSES ↔ IS_CAUSED_BY: voice inversion in BF16 space  ║");

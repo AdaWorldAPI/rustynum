@@ -24,11 +24,11 @@
 //! println!("Mean value: {}", mean_value);
 //! ```
 
+use rustynum_core::simd_compat::{f32x16, f64x8, i32x16, i64x8, u8x64};
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use rustynum_core::simd_compat::{f32x16, f64x8, i32x16, i64x8, u8x64};
 
 use crate::num_array::linalg::matrix_multiply;
 use crate::simd_ops::SimdOps;

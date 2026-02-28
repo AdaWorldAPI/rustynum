@@ -21,7 +21,6 @@
 //! This archive ensures the original model is always available for reference
 //! and backward compatibility.
 
-#![feature(portable_simd)]
 #![allow(clippy::needless_range_loop)]
 
 pub mod binding_matrix;

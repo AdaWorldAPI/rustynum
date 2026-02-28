@@ -43,7 +43,11 @@ impl std::fmt::Display for NumError {
             NumError::DimensionMismatch(msg) => write!(f, "dimension mismatch: {}", msg),
             NumError::InvalidParameter(msg) => write!(f, "invalid parameter: {}", msg),
             NumError::AxisOutOfBounds { axis, ndim } => {
-                write!(f, "axis {} out of bounds for array with {} dimensions", axis, ndim)
+                write!(
+                    f,
+                    "axis {} out of bounds for array with {} dimensions",
+                    axis, ndim
+                )
             }
             NumError::BroadcastError { lhs, rhs } => {
                 write!(f, "shapes not broadcastable: {:?} vs {:?}", lhs, rhs)
@@ -64,8 +68,8 @@ pub use num_array::{binding_popcount_3d, find_discriminative_spots, find_hologra
 pub use num_array::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
 pub use num_array::{simhash_batch_project, simhash_project};
 pub use num_array::{
-    sweep_cogrecords, CogRecord, SweepMode, SweepResult, COGRECORD_BYTES, CONTAINER_BITS,
-    CONTAINER_BYTES, BTREE, CAM, EMBED, META,
+    sweep_cogrecords, CogRecord, SweepMode, SweepResult, BTREE, CAM, COGRECORD_BYTES,
+    CONTAINER_BITS, CONTAINER_BYTES, EMBED, META,
 };
 pub use num_array::{ArrayView, ArrayViewMut};
 pub use num_array::{NumArray, NumArrayF32, NumArrayF64, NumArrayI32, NumArrayI64, NumArrayU8};

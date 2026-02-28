@@ -34,10 +34,16 @@ impl Nib4Codebook {
             let mut mn = f32::INFINITY;
             let mut mx = f32::NEG_INFINITY;
             for v in vectors {
-                if v[d] < mn { mn = v[d]; }
-                if v[d] > mx { mx = v[d]; }
+                if v[d] < mn {
+                    mn = v[d];
+                }
+                if v[d] > mx {
+                    mx = v[d];
+                }
             }
-            if (mx - mn).abs() < 1e-9 { mx = mn + 1.0; }
+            if (mx - mn).abs() < 1e-9 {
+                mx = mn + 1.0;
+            }
             bounds.push((mn, mx));
         }
         Self { bounds }
@@ -46,16 +52,24 @@ impl Nib4Codebook {
     fn encode_dim(&self, dim: usize, val: f32) -> u8 {
         let (mn, mx) = self.bounds[dim];
         let t = (val - mn) / (mx - mn);
-        (t * NIB4_LEVELS as f32).round().clamp(0.0, NIB4_LEVELS as f32) as u8
+        (t * NIB4_LEVELS as f32)
+            .round()
+            .clamp(0.0, NIB4_LEVELS as f32) as u8
     }
 
     fn encode_vec(&self, vals: &[f32]) -> Vec<u8> {
-        vals.iter().enumerate().map(|(d, &v)| self.encode_dim(d, v)).collect()
+        vals.iter()
+            .enumerate()
+            .map(|(d, &v)| self.encode_dim(d, v))
+            .collect()
     }
 }
 
 fn nib4_distance(a: &[u8], b: &[u8]) -> u32 {
-    a.iter().zip(b.iter()).map(|(&x, &y)| x.abs_diff(y) as u32).sum()
+    a.iter()
+        .zip(b.iter())
+        .map(|(&x, &y)| x.abs_diff(y) as u32)
+        .sum()
 }
 
 // ============================================================================
@@ -83,23 +97,50 @@ struct QualiaItem {
 }
 
 const DIMS_16_JSON: &[&str] = &[
-    "brightness", "valence", "dominance", "arousal",
-    "warmth", "clarity", "social", "nostalgia",
-    "sacredness", "desire", "tension", "awe",
-    "grief", "hope", "edge", "resolution_hunger",
+    "brightness",
+    "valence",
+    "dominance",
+    "arousal",
+    "warmth",
+    "clarity",
+    "social",
+    "nostalgia",
+    "sacredness",
+    "desire",
+    "tension",
+    "awe",
+    "grief",
+    "hope",
+    "edge",
+    "resolution_hunger",
 ];
 
 const DIMS_16_NAMES: &[&str] = &[
-    "glow", "valence", "rooting", "agency",
-    "resonance", "clarity", "social", "gravity",
-    "reverence", "volition", "dissonance", "staunen",
-    "loss", "optimism", "friction", "equilibrium",
+    "glow",
+    "valence",
+    "rooting",
+    "agency",
+    "resonance",
+    "clarity",
+    "social",
+    "gravity",
+    "reverence",
+    "volition",
+    "dissonance",
+    "staunen",
+    "loss",
+    "optimism",
+    "friction",
+    "equilibrium",
 ];
 
 const DIM_INTENSITY: &str = "shame";
 
 fn extract_16(item: &QualiaItem) -> Vec<f32> {
-    DIMS_16_JSON.iter().map(|d| *item.vector.get(*d).unwrap_or(&0.0) as f32).collect()
+    DIMS_16_JSON
+        .iter()
+        .map(|d| *item.vector.get(*d).unwrap_or(&0.0) as f32)
+        .collect()
 }
 
 fn extract_intensity_val(item: &QualiaItem) -> f32 {
@@ -146,8 +187,10 @@ fn load_bert_model(model_dir: &str) -> Result<(BertModel, Tokenizer)> {
     let tokenizer_path = model_dir.join("tokenizer.json");
     let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(E::msg)?;
 
-    println!("  Loading model weights ({}MB)...",
-        std::fs::metadata(model_dir.join("model.safetensors"))?.len() / 1_000_000);
+    println!(
+        "  Loading model weights ({}MB)...",
+        std::fs::metadata(model_dir.join("model.safetensors"))?.len() / 1_000_000
+    );
     let weights_path = model_dir.join("model.safetensors");
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights_path], DTYPE, &device)? };
     let model = BertModel::load(vb, &config)?;
@@ -225,7 +268,11 @@ fn embed_sentences(
             print!("  Embedded {}/{}\r", chunk_end, sentences.len());
         }
     }
-    println!("  Embedded {}/{} sentences", all_embeddings.len(), sentences.len());
+    println!(
+        "  Embedded {}/{} sentences",
+        all_embeddings.len(),
+        sentences.len()
+    );
 
     Ok(all_embeddings)
 }
@@ -242,7 +289,9 @@ fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if na < 1e-9 || nb < 1e-9 { return 1.0; }
+    if na < 1e-9 || nb < 1e-9 {
+        return 1.0;
+    }
     1.0 - dot / (na * nb)
 }
 
@@ -265,18 +314,26 @@ fn kendall_tau(rank_a: &[usize], rank_b: &[usize]) -> f64 {
     }
 
     let total = concordant + discordant;
-    if total == 0 { return 0.0; }
+    if total == 0 {
+        return 0.0;
+    }
     (concordant - discordant) as f64 / total as f64
 }
 
 /// Spearman footrule: sum of |rank_a[i] - rank_b[i]|
 fn spearman_footrule(rank_a: &[usize], rank_b: &[usize]) -> f64 {
     let n = rank_a.len();
-    let sum: usize = rank_a.iter().zip(rank_b).map(|(&a, &b)| {
-        if a > b { a - b } else { b - a }
-    }).sum();
+    let sum: usize = rank_a
+        .iter()
+        .zip(rank_b)
+        .map(|(&a, &b)| if a > b { a - b } else { b - a })
+        .sum();
     // Normalize by max possible (n²/2 for even n)
-    let max_footrule = if n % 2 == 0 { n * n / 2 } else { (n * n - 1) / 2 };
+    let max_footrule = if n % 2 == 0 {
+        n * n / 2
+    } else {
+        (n * n - 1) / 2
+    };
     sum as f64 / max_footrule as f64
 }
 
@@ -320,9 +377,13 @@ fn main() -> Result<()> {
     let intensity_bits: Vec<bool> = intensity_vals.iter().map(|&v| v > 0.0).collect();
     let n_cmyk = intensity_bits.iter().filter(|&&b| b).count();
     let n_rgb = n - n_cmyk;
-    println!("  Mode split: {} RGB ({:.0}%) / {} CMYK ({:.0}%)",
-        n_rgb, 100.0 * n_rgb as f64 / n as f64,
-        n_cmyk, 100.0 * n_cmyk as f64 / n as f64);
+    println!(
+        "  Mode split: {} RGB ({:.0}%) / {} CMYK ({:.0}%)",
+        n_rgb,
+        100.0 * n_rgb as f64 / n as f64,
+        n_cmyk,
+        100.0 * n_cmyk as f64 / n as f64
+    );
 
     // Compute Nib4 pairwise distance matrix
     let mut nib4_dist: Vec<Vec<f32>> = vec![vec![0.0; n]; n];
@@ -330,7 +391,11 @@ fn main() -> Result<()> {
         for j in (i + 1)..n {
             let d = nib4_distance(&nib4_vecs[i], &nib4_vecs[j]) as f32;
             // Add intensity penalty if causality direction flips
-            let penalty = if intensity_bits[i] != intensity_bits[j] { 16.0 } else { 0.0 };
+            let penalty = if intensity_bits[i] != intensity_bits[j] {
+                16.0
+            } else {
+                0.0
+            };
             let total = d + penalty;
             nib4_dist[i][j] = total;
             nib4_dist[j][i] = total;
@@ -413,7 +478,10 @@ fn main() -> Result<()> {
     println!("\n  Tau histogram:");
     let bins = [-1.0, -0.5, -0.25, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0];
     for w in bins.windows(2) {
-        let count = tau_values.iter().filter(|&&t| t >= w[0] && t < w[1]).count();
+        let count = tau_values
+            .iter()
+            .filter(|&&t| t >= w[0] && t < w[1])
+            .count();
         let bar = "#".repeat(count);
         println!("    [{:>+5.2}, {:>+5.2}): {:>3} {}", w[0], w[1], count, bar);
     }
@@ -423,19 +491,29 @@ fn main() -> Result<()> {
     taus_sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     println!("\n  TOP 15 most stable items (highest tau = Nib4 and BERT agree):");
-    println!("    {:<45}  {:>7}  {:>12}  {:>4}", "Item", "Tau", "Family", "Mode");
+    println!(
+        "    {:<45}  {:>7}  {:>12}  {:>4}",
+        "Item", "Tau", "Family", "Mode"
+    );
     for &(idx, tau) in taus_sorted.iter().take(15) {
         let mode = if intensity_bits[idx] { "CMYK" } else { "RGB" };
-        println!("    {:<45}  {:>+7.4}  {:>12}  {:>4}",
-            items[idx].id, tau, items[idx].family, mode);
+        println!(
+            "    {:<45}  {:>+7.4}  {:>12}  {:>4}",
+            items[idx].id, tau, items[idx].family, mode
+        );
     }
 
     println!("\n  BOTTOM 15 most unstable items (lowest tau = max disagreement):");
-    println!("    {:<45}  {:>7}  {:>12}  {:>4}", "Item", "Tau", "Family", "Mode");
+    println!(
+        "    {:<45}  {:>7}  {:>12}  {:>4}",
+        "Item", "Tau", "Family", "Mode"
+    );
     for &(idx, tau) in taus_sorted.iter().rev().take(15) {
         let mode = if intensity_bits[idx] { "CMYK" } else { "RGB" };
-        println!("    {:<45}  {:>+7.4}  {:>12}  {:>4}",
-            items[idx].id, tau, items[idx].family, mode);
+        println!(
+            "    {:<45}  {:>+7.4}  {:>12}  {:>4}",
+            items[idx].id, tau, items[idx].family, mode
+        );
     }
 
     // ========================================================================
@@ -483,50 +561,67 @@ fn main() -> Result<()> {
     }
 
     println!("  k={} neighborhood comparison:", k);
-    println!("    Bucket A (agree):              {} pairs", bucket_a.len());
-    println!("    Bucket B (nib4 close, BERT far): {} pairs  ← cadence truth", bucket_b.len());
-    println!("    Bucket C (BERT close, nib4 far): {} pairs  ← surface synonymy", bucket_c.len());
+    println!(
+        "    Bucket A (agree):              {} pairs",
+        bucket_a.len()
+    );
+    println!(
+        "    Bucket B (nib4 close, BERT far): {} pairs  ← cadence truth",
+        bucket_b.len()
+    );
+    println!(
+        "    Bucket C (BERT close, nib4 far): {} pairs  ← surface synonymy",
+        bucket_c.len()
+    );
 
     let overlap_rate = bucket_a.len() as f64 / (bucket_a.len() + bucket_b.len()) as f64;
     println!("    Overlap rate: {:.1}%", overlap_rate * 100.0);
 
     // Show most interesting Bucket B pairs (nib4 close, BERT far)
     // Sort by (bert_dist - nib4_dist) to find max disagreement
-    let mut bucket_b_scored: Vec<_> = bucket_b.iter()
+    let mut bucket_b_scored: Vec<_> = bucket_b
+        .iter()
         .map(|&(i, j, nd, bd)| {
             let disagreement = bd - nd / 240.0; // normalize nib4 to ~same scale
             (i, j, nd, bd, disagreement)
         })
         .collect();
     bucket_b_scored.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap());
-    bucket_b_scored.dedup_by(|a, b| {
-        (a.0 == b.1 && a.1 == b.0) || (a.0 == b.0 && a.1 == b.1)
-    });
+    bucket_b_scored.dedup_by(|a, b| (a.0 == b.1 && a.1 == b.0) || (a.0 == b.0 && a.1 == b.1));
 
     println!("\n  BUCKET B — Top 20: Nib4 says close, BERT says far (cadence truth):");
-    println!("    {:<40}  {:<40}  {:>6}  {:>6}", "Item A", "Item B", "Nib4d", "BERTd");
+    println!(
+        "    {:<40}  {:<40}  {:>6}  {:>6}",
+        "Item A", "Item B", "Nib4d", "BERTd"
+    );
     for &(i, j, nd, bd, _) in bucket_b_scored.iter().take(20) {
-        println!("    {:<40}  {:<40}  {:>6.0}  {:>6.3}",
-            items[i].id, items[j].id, nd, bd);
+        println!(
+            "    {:<40}  {:<40}  {:>6.0}  {:>6.3}",
+            items[i].id, items[j].id, nd, bd
+        );
     }
 
     // Show most interesting Bucket C pairs (BERT close, nib4 far)
-    let mut bucket_c_scored: Vec<_> = bucket_c.iter()
+    let mut bucket_c_scored: Vec<_> = bucket_c
+        .iter()
         .map(|&(i, j, nd, bd)| {
             let disagreement = nd / 240.0 - bd; // normalize
             (i, j, nd, bd, disagreement)
         })
         .collect();
     bucket_c_scored.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap());
-    bucket_c_scored.dedup_by(|a, b| {
-        (a.0 == b.1 && a.1 == b.0) || (a.0 == b.0 && a.1 == b.1)
-    });
+    bucket_c_scored.dedup_by(|a, b| (a.0 == b.1 && a.1 == b.0) || (a.0 == b.0 && a.1 == b.1));
 
     println!("\n  BUCKET C — Top 20: BERT says close, Nib4 says far (surface synonymy):");
-    println!("    {:<40}  {:<40}  {:>6}  {:>6}", "Item A", "Item B", "Nib4d", "BERTd");
+    println!(
+        "    {:<40}  {:<40}  {:>6}  {:>6}",
+        "Item A", "Item B", "Nib4d", "BERTd"
+    );
     for &(i, j, nd, bd, _) in bucket_c_scored.iter().take(20) {
-        println!("    {:<40}  {:<40}  {:>6.0}  {:>6.3}",
-            items[i].id, items[j].id, nd, bd);
+        println!(
+            "    {:<40}  {:<40}  {:>6.0}  {:>6.3}",
+            items[i].id, items[j].id, nd, bd
+        );
     }
 
     // ========================================================================
@@ -538,25 +633,42 @@ fn main() -> Result<()> {
     families.sort();
     families.dedup();
 
-    println!("  {:<20}  {:>5}  {:>8}  {:>8}  {:>8}  {:>6}",
-        "Family", "N", "MeanTau", "MinTau", "MaxTau", "Stable?");
+    println!(
+        "  {:<20}  {:>5}  {:>8}  {:>8}  {:>8}  {:>6}",
+        "Family", "N", "MeanTau", "MinTau", "MaxTau", "Stable?"
+    );
     for fam in &families {
-        let members: Vec<usize> = items.iter().enumerate()
+        let members: Vec<usize> = items
+            .iter()
+            .enumerate()
             .filter(|(_, it)| it.family == *fam)
             .map(|(i, _)| i)
             .collect();
-        if members.is_empty() { continue; }
+        if members.is_empty() {
+            continue;
+        }
 
         let fam_taus: Vec<f64> = members.iter().map(|&i| taus[i].1).collect();
         let fam_mean = fam_taus.iter().sum::<f64>() / fam_taus.len() as f64;
         let fam_min = fam_taus.iter().cloned().fold(f64::INFINITY, f64::min);
         let fam_max = fam_taus.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let stable = if fam_mean > 0.3 { "YES" }
-                    else if fam_mean > 0.15 { "~" }
-                    else { "NO" };
+        let stable = if fam_mean > 0.3 {
+            "YES"
+        } else if fam_mean > 0.15 {
+            "~"
+        } else {
+            "NO"
+        };
 
-        println!("  {:<20}  {:>5}  {:>+8.4}  {:>+8.4}  {:>+8.4}  {:>6}",
-            fam, members.len(), fam_mean, fam_min, fam_max, stable);
+        println!(
+            "  {:<20}  {:>5}  {:>+8.4}  {:>+8.4}  {:>+8.4}  {:>6}",
+            fam,
+            members.len(),
+            fam_mean,
+            fam_min,
+            fam_max,
+            stable
+        );
     }
 
     // ========================================================================
@@ -582,16 +694,28 @@ fn main() -> Result<()> {
         }
     }
 
-    let mean_same_bert = same_mode_bert_dists.iter().sum::<f32>() / same_mode_bert_dists.len() as f32;
-    let mean_diff_bert = diff_mode_bert_dists.iter().sum::<f32>() / diff_mode_bert_dists.len() as f32;
-    let mean_same_nib4 = same_mode_nib4_dists.iter().sum::<f32>() / same_mode_nib4_dists.len() as f32;
-    let mean_diff_nib4 = diff_mode_nib4_dists.iter().sum::<f32>() / diff_mode_nib4_dists.len() as f32;
+    let mean_same_bert =
+        same_mode_bert_dists.iter().sum::<f32>() / same_mode_bert_dists.len() as f32;
+    let mean_diff_bert =
+        diff_mode_bert_dists.iter().sum::<f32>() / diff_mode_bert_dists.len() as f32;
+    let mean_same_nib4 =
+        same_mode_nib4_dists.iter().sum::<f32>() / same_mode_nib4_dists.len() as f32;
+    let mean_diff_nib4 =
+        diff_mode_nib4_dists.iter().sum::<f32>() / diff_mode_nib4_dists.len() as f32;
 
     println!("  Does BERT see the RGB/CMYK (causing/caused) split?");
-    println!("    BERT:  same-mode mean dist = {:.4}, diff-mode = {:.4}, ratio = {:.3}",
-        mean_same_bert, mean_diff_bert, mean_diff_bert / mean_same_bert);
-    println!("    Nib4:  same-mode mean dist = {:.1}, diff-mode = {:.1}, ratio = {:.3}",
-        mean_same_nib4, mean_diff_nib4, mean_diff_nib4 / mean_same_nib4);
+    println!(
+        "    BERT:  same-mode mean dist = {:.4}, diff-mode = {:.4}, ratio = {:.3}",
+        mean_same_bert,
+        mean_diff_bert,
+        mean_diff_bert / mean_same_bert
+    );
+    println!(
+        "    Nib4:  same-mode mean dist = {:.1}, diff-mode = {:.1}, ratio = {:.3}",
+        mean_same_nib4,
+        mean_diff_nib4,
+        mean_diff_nib4 / mean_same_nib4
+    );
     println!();
 
     if (mean_diff_bert / mean_same_bert) > 1.02 {
@@ -629,11 +753,16 @@ fn main() -> Result<()> {
     item_hole_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     println!("  Items whose Nib4 neighbors are BERT-distant (language holes):");
-    println!("    {:<45}  {:>12}  {:>10}  {:>4}", "Item", "Family", "AvgBERTd", "Mode");
+    println!(
+        "    {:<45}  {:>12}  {:>10}  {:>4}",
+        "Item", "Family", "AvgBERTd", "Mode"
+    );
     for &(idx, score) in item_hole_scores.iter().take(20) {
         let mode = if intensity_bits[idx] { "CMYK" } else { "RGB" };
-        println!("    {:<45}  {:>12}  {:>10.4}  {:>4}",
-            items[idx].id, items[idx].family, score, mode);
+        println!(
+            "    {:<45}  {:>12}  {:>10.4}  {:>4}",
+            items[idx].id, items[idx].family, score, mode
+        );
     }
 
     // ========================================================================
@@ -644,7 +773,8 @@ fn main() -> Result<()> {
     println!("  This IS the color space conversion profile.\n");
 
     // Normalize Nib4 to [0,1] range for regression
-    let nib4_float: Vec<Vec<f32>> = nib4_vecs.iter()
+    let nib4_float: Vec<Vec<f32>> = nib4_vecs
+        .iter()
         .map(|v| v.iter().map(|&x| x as f32 / 15.0).collect())
         .collect();
 
@@ -667,7 +797,9 @@ fn main() -> Result<()> {
     let mut xtx: Vec<Vec<f32>> = vec![vec![0.0; embed_dim]; embed_dim];
     for i in 0..embed_dim {
         for j in i..embed_dim {
-            let dot: f32 = (0..n).map(|k| bert_embeddings[k][i] * bert_embeddings[k][j]).sum();
+            let dot: f32 = (0..n)
+                .map(|k| bert_embeddings[k][i] * bert_embeddings[k][j])
+                .sum();
             xtx[i][j] = dot;
             xtx[j][i] = dot;
         }
@@ -680,7 +812,9 @@ fn main() -> Result<()> {
     let mut xty: Vec<Vec<f32>> = vec![vec![0.0; n_dims]; embed_dim];
     for i in 0..embed_dim {
         for d in 0..n_dims {
-            xty[i][d] = (0..n).map(|k| bert_embeddings[k][i] * nib4_float[k][d]).sum();
+            xty[i][d] = (0..n)
+                .map(|k| bert_embeddings[k][i] * nib4_float[k][d])
+                .sum();
         }
     }
 
@@ -696,7 +830,10 @@ fn main() -> Result<()> {
             }
             if i == j {
                 if sum <= 0.0 {
-                    println!("  WARNING: Matrix not positive definite at dim {}, using abs", i);
+                    println!(
+                        "  WARNING: Matrix not positive definite at dim {}, using abs",
+                        i
+                    );
                     sum = sum.abs() + 1e-6;
                 }
                 l_mat[i][j] = sum.sqrt();
@@ -733,19 +870,37 @@ fn main() -> Result<()> {
     println!("  Projection matrix W: {}×{}", embed_dim, n_dims);
 
     // Apply projection: predicted_nib4 = BERT @ W
-    let predicted: Vec<Vec<f32>> = (0..n).map(|i| {
-        (0..n_dims).map(|d| {
-            (0..embed_dim).map(|j| bert_embeddings[i][j] * w_mat[j][d]).sum::<f32>()
-        }).collect()
-    }).collect();
+    let predicted: Vec<Vec<f32>> = (0..n)
+        .map(|i| {
+            (0..n_dims)
+                .map(|d| {
+                    (0..embed_dim)
+                        .map(|j| bert_embeddings[i][j] * w_mat[j][d])
+                        .sum::<f32>()
+                })
+                .collect()
+        })
+        .collect();
 
     // Per-dimension R² (coefficient of determination)
     println!("\n  Per-dimension R² (how well BERT predicts each Nib4 dim):\n");
     let dim_names = [
-        "glow", "valence", "rooting", "agency",
-        "resonance", "clarity", "social", "gravity",
-        "reverence", "volition", "dissonance", "staunen",
-        "loss", "optimism", "friction", "equilibrium",
+        "glow",
+        "valence",
+        "rooting",
+        "agency",
+        "resonance",
+        "clarity",
+        "social",
+        "gravity",
+        "reverence",
+        "volition",
+        "dissonance",
+        "staunen",
+        "loss",
+        "optimism",
+        "friction",
+        "equilibrium",
     ];
 
     let mut r2_values: Vec<(usize, f64)> = Vec::new();
@@ -754,33 +909,57 @@ fn main() -> Result<()> {
         let pred: Vec<f64> = (0..n).map(|i| predicted[i][d] as f64).collect();
         let mean_actual = actual.iter().sum::<f64>() / n as f64;
 
-        let ss_res: f64 = actual.iter().zip(pred.iter()).map(|(a, p)| (a - p).powi(2)).sum();
+        let ss_res: f64 = actual
+            .iter()
+            .zip(pred.iter())
+            .map(|(a, p)| (a - p).powi(2))
+            .sum();
         let ss_tot: f64 = actual.iter().map(|a| (a - mean_actual).powi(2)).sum();
-        let r2 = if ss_tot > 1e-10 { 1.0 - ss_res / ss_tot } else { 0.0 };
+        let r2 = if ss_tot > 1e-10 {
+            1.0 - ss_res / ss_tot
+        } else {
+            0.0
+        };
         r2_values.push((d, r2));
 
         let bar_len = (r2.max(0.0) * 40.0) as usize;
         let bar = "#".repeat(bar_len);
-        let status = if r2 > 0.5 { "BERT sees this" }
-                    else if r2 > 0.3 { "partial" }
-                    else if r2 > 0.1 { "dim awareness" }
-                    else { "INTERIOR ONLY" };
-        println!("    {:>14}  R²={:>+6.3}  {:40}  {}", dim_names[d], r2, bar, status);
+        let status = if r2 > 0.5 {
+            "BERT sees this"
+        } else if r2 > 0.3 {
+            "partial"
+        } else if r2 > 0.1 {
+            "dim awareness"
+        } else {
+            "INTERIOR ONLY"
+        };
+        println!(
+            "    {:>14}  R²={:>+6.3}  {:40}  {}",
+            dim_names[d], r2, bar, status
+        );
     }
 
     let mean_r2: f64 = r2_values.iter().map(|&(_, r)| r).sum::<f64>() / n_dims as f64;
     println!("\n  Mean R²: {:.3}", mean_r2);
-    println!("  Interpretation: BERT recovers {:.0}% of Nib4 variance on average.", mean_r2 * 100.0);
+    println!(
+        "  Interpretation: BERT recovers {:.0}% of Nib4 variance on average.",
+        mean_r2 * 100.0
+    );
 
     // Sort dims by R² to show what BERT sees vs misses
     let mut r2_sorted = r2_values.clone();
     r2_sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    println!("\n  BERT sees best:     {} (R²={:.3}), {} (R²={:.3})",
-        dim_names[r2_sorted[0].0], r2_sorted[0].1,
-        dim_names[r2_sorted[1].0], r2_sorted[1].1);
-    println!("  BERT is blind to:   {} (R²={:.3}), {} (R²={:.3})",
-        dim_names[r2_sorted[n_dims-1].0], r2_sorted[n_dims-1].1,
-        dim_names[r2_sorted[n_dims-2].0], r2_sorted[n_dims-2].1);
+    println!(
+        "\n  BERT sees best:     {} (R²={:.3}), {} (R²={:.3})",
+        dim_names[r2_sorted[0].0], r2_sorted[0].1, dim_names[r2_sorted[1].0], r2_sorted[1].1
+    );
+    println!(
+        "  BERT is blind to:   {} (R²={:.3}), {} (R²={:.3})",
+        dim_names[r2_sorted[n_dims - 1].0],
+        r2_sorted[n_dims - 1].1,
+        dim_names[r2_sorted[n_dims - 2].0],
+        r2_sorted[n_dims - 2].1
+    );
 
     // 8b. Encode the projection matrix in BF16 — analyze sign structure
     println!("\n  --- 8b. Projection matrix BF16 sign analysis ---\n");
@@ -796,8 +975,10 @@ fn main() -> Result<()> {
         let max_neg = weights.iter().cloned().fold(f32::INFINITY, f32::min);
         let magnitude: f32 = weights.iter().map(|w| w.abs()).sum::<f32>();
 
-        println!("    {:>14}  +{:>3}/-{:>3}  |W|={:>6.3}  max+={:>+.4}  max-={:>+.4}  R²={:>+.3}",
-            dim_names[d], n_pos, n_neg, magnitude, max_pos, max_neg, r2_values[d].1);
+        println!(
+            "    {:>14}  +{:>3}/-{:>3}  |W|={:>6.3}  max+={:>+.4}  max-={:>+.4}  R²={:>+.3}",
+            dim_names[d], n_pos, n_neg, magnitude, max_pos, max_neg, r2_values[d].1
+        );
     }
 
     // 8c. Conversion residuals — what Nib4 captures that BERT can't
@@ -805,26 +986,34 @@ fn main() -> Result<()> {
 
     let mut residual_magnitudes: Vec<(usize, f64)> = Vec::with_capacity(n);
     for i in 0..n {
-        let resid: f64 = (0..n_dims).map(|d| {
-            (nib4_float[i][d] as f64 - predicted[i][d] as f64).powi(2)
-        }).sum::<f64>().sqrt();
+        let resid: f64 = (0..n_dims)
+            .map(|d| (nib4_float[i][d] as f64 - predicted[i][d] as f64).powi(2))
+            .sum::<f64>()
+            .sqrt();
         residual_magnitudes.push((i, resid));
     }
     residual_magnitudes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     println!("  Items with highest residuals (most interior-only information):");
-    println!("    {:<45}  {:>12}  {:>8}  {:>4}", "Item", "Family", "Residual", "Mode");
+    println!(
+        "    {:<45}  {:>12}  {:>8}  {:>4}",
+        "Item", "Family", "Residual", "Mode"
+    );
     for &(idx, resid) in residual_magnitudes.iter().take(15) {
         let mode = if intensity_bits[idx] { "CMYK" } else { "RGB" };
-        println!("    {:<45}  {:>12}  {:>8.4}  {:>4}",
-            items[idx].id, items[idx].family, resid, mode);
+        println!(
+            "    {:<45}  {:>12}  {:>8.4}  {:>4}",
+            items[idx].id, items[idx].family, resid, mode
+        );
     }
 
     println!("\n  Items with lowest residuals (language captures their physics):");
     for &(idx, resid) in residual_magnitudes.iter().rev().take(10) {
         let mode = if intensity_bits[idx] { "CMYK" } else { "RGB" };
-        println!("    {:<45}  {:>12}  {:>8.4}  {:>4}",
-            items[idx].id, items[idx].family, resid, mode);
+        println!(
+            "    {:<45}  {:>12}  {:>8.4}  {:>4}",
+            items[idx].id, items[idx].family, resid, mode
+        );
     }
 
     // 8d. Mode bit prediction — can BERT predict RGB vs CMYK?
@@ -836,22 +1025,37 @@ fn main() -> Result<()> {
     for i in 0..n {
         // Use the first principal component of the residuals as mode predictor
         // Simpler: use the mean BERT distance to known RGB vs CMYK items
-        let mean_bert_to_rgb: f32 = (0..n).filter(|&j| !intensity_bits[j] && j != i)
-            .map(|j| bert_dist[i][j]).sum::<f32>()
+        let mean_bert_to_rgb: f32 = (0..n)
+            .filter(|&j| !intensity_bits[j] && j != i)
+            .map(|j| bert_dist[i][j])
+            .sum::<f32>()
             / n_rgb.max(1) as f32;
-        let mean_bert_to_cmyk: f32 = (0..n).filter(|&j| intensity_bits[j] && j != i)
-            .map(|j| bert_dist[i][j]).sum::<f32>()
+        let mean_bert_to_cmyk: f32 = (0..n)
+            .filter(|&j| intensity_bits[j] && j != i)
+            .map(|j| bert_dist[i][j])
+            .sum::<f32>()
             / n_cmyk.max(1) as f32;
         let predicted_cmyk = mean_bert_to_cmyk < mean_bert_to_rgb;
-        if predicted_cmyk == intensity_bits[i] { correct += 1; }
+        if predicted_cmyk == intensity_bits[i] {
+            correct += 1;
+        }
     }
-    println!("  BERT mode prediction accuracy: {}/{} = {:.1}%",
-        correct, n, 100.0 * correct as f64 / n as f64);
-    println!("  Baseline (majority class): {:.1}%",
-        100.0 * n_rgb.max(n_cmyk) as f64 / n as f64);
+    println!(
+        "  BERT mode prediction accuracy: {}/{} = {:.1}%",
+        correct,
+        n,
+        100.0 * correct as f64 / n as f64
+    );
+    println!(
+        "  Baseline (majority class): {:.1}%",
+        100.0 * n_rgb.max(n_cmyk) as f64 / n as f64
+    );
     let lift = (correct as f64 / n as f64) - (n_rgb.max(n_cmyk) as f64 / n as f64);
     if lift > 0.05 {
-        println!("  → BERT has {:.1}% lift over baseline → partial mode awareness", lift * 100.0);
+        println!(
+            "  → BERT has {:.1}% lift over baseline → partial mode awareness",
+            lift * 100.0
+        );
     } else {
         println!("  → BERT has no significant lift → mode is INTERIOR ONLY");
     }
@@ -888,7 +1092,11 @@ fn main() -> Result<()> {
     for (i, item) in items.iter().enumerate() {
         let mode = if intensity_bits[i] { "CMYK" } else { "RGB" };
         let tau = taus[i].1;
-        let nib_hex: String = nib4_vecs[i].iter().map(|n| format!("{:X}", n & 0xF)).collect::<Vec<_>>().join(":");
+        let nib_hex: String = nib4_vecs[i]
+            .iter()
+            .map(|n| format!("{:X}", n & 0xF))
+            .collect::<Vec<_>>()
+            .join(":");
         cypher.push_str(&format!(
             "MERGE (n{}:QualiaItem {{id: '{}', label: '{}', family: '{}', mode: '{}', tau: {:.4}, nib4: '{}'}})\n",
             i, item.id, item.label.replace('\'', "\\'"), item.family, mode, tau, nib_hex
@@ -909,7 +1117,10 @@ fn main() -> Result<()> {
     // BELONGS_TO relationships
     cypher.push_str("// --- Family membership ---\n");
     for (i, item) in items.iter().enumerate() {
-        cypher.push_str(&format!("MERGE (n{})-[:BELONGS_TO]->(f{})\n", i, item.family));
+        cypher.push_str(&format!(
+            "MERGE (n{})-[:BELONGS_TO]->(f{})\n",
+            i, item.family
+        ));
         triple_count += 1;
     }
 
@@ -924,13 +1135,17 @@ fn main() -> Result<()> {
     // NIB4 proximity (top-k)
     cypher.push_str("\n// --- Nib4 proximity (interior physics) ---\n");
     for i in 0..n {
-        let mut neighbors: Vec<(usize, f32)> = (0..n).filter(|&j| j != i)
-            .map(|j| (j, nib4_dist[i][j])).collect();
+        let mut neighbors: Vec<(usize, f32)> = (0..n)
+            .filter(|&j| j != i)
+            .map(|j| (j, nib4_dist[i][j]))
+            .collect();
         neighbors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         for &(j, d) in neighbors.iter().take(spo_k) {
-            if j > i { // avoid duplicate edges
+            if j > i {
+                // avoid duplicate edges
                 cypher.push_str(&format!(
-                    "MERGE (n{})-[:NIB4_NEAR {{dist: {:.0}}}]->(n{})\n", i, d, j
+                    "MERGE (n{})-[:NIB4_NEAR {{dist: {:.0}}}]->(n{})\n",
+                    i, d, j
                 ));
                 triple_count += 1;
             }
@@ -940,13 +1155,16 @@ fn main() -> Result<()> {
     // BERT proximity (top-k)
     cypher.push_str("\n// --- BERT proximity (observer language) ---\n");
     for i in 0..n {
-        let mut neighbors: Vec<(usize, f32)> = (0..n).filter(|&j| j != i)
-            .map(|j| (j, bert_dist[i][j])).collect();
+        let mut neighbors: Vec<(usize, f32)> = (0..n)
+            .filter(|&j| j != i)
+            .map(|j| (j, bert_dist[i][j]))
+            .collect();
         neighbors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
         for &(j, d) in neighbors.iter().take(spo_k) {
             if j > i {
                 cypher.push_str(&format!(
-                    "MERGE (n{})-[:BERT_NEAR {{dist: {:.4}}}]->(n{})\n", i, d, j
+                    "MERGE (n{})-[:BERT_NEAR {{dist: {:.4}}}]->(n{})\n",
+                    i, d, j
                 ));
                 triple_count += 1;
             }
@@ -1025,26 +1243,54 @@ fn main() -> Result<()> {
     println!("║  Nib4  = 16 nibbles + I-bit (interior physics, CMYK)      ║");
     println!("║  BERT  = 384-dim MiniLM (observer language, RGB)           ║");
     println!("║                                                            ║");
-    println!("║  Mean Kendall tau: {:>+.4}                                  ║", mean_tau);
-    println!("║  Median tau:       {:>+.4}                                  ║", median_tau);
-    println!("║  Overlap@k={}:     {:.1}%                                   ║", k, overlap_rate * 100.0);
+    println!(
+        "║  Mean Kendall tau: {:>+.4}                                  ║",
+        mean_tau
+    );
+    println!(
+        "║  Median tau:       {:>+.4}                                  ║",
+        median_tau
+    );
+    println!(
+        "║  Overlap@k={}:     {:.1}%                                   ║",
+        k,
+        overlap_rate * 100.0
+    );
     println!("║                                                            ║");
     println!("║  RGB→CMYK conversion:                                      ║");
-    println!("║    Mean R²: {:.3} (BERT recovers {:.0}% of Nib4 variance) ║", mean_r2, mean_r2 * 100.0);
-    println!("║    Best seen:  {} (R²={:.3})                     ║",
-        dim_names[r2_sorted[0].0], r2_sorted[0].1);
-    println!("║    Most blind: {} (R²={:.3})                     ║",
-        dim_names[r2_sorted[n_dims-1].0], r2_sorted[n_dims-1].1);
-    println!("║    Mode prediction: {:.1}% (baseline {:.1}%)                ║",
+    println!(
+        "║    Mean R²: {:.3} (BERT recovers {:.0}% of Nib4 variance) ║",
+        mean_r2,
+        mean_r2 * 100.0
+    );
+    println!(
+        "║    Best seen:  {} (R²={:.3})                     ║",
+        dim_names[r2_sorted[0].0], r2_sorted[0].1
+    );
+    println!(
+        "║    Most blind: {} (R²={:.3})                     ║",
+        dim_names[r2_sorted[n_dims - 1].0],
+        r2_sorted[n_dims - 1].1
+    );
+    println!(
+        "║    Mode prediction: {:.1}% (baseline {:.1}%)                ║",
         100.0 * correct as f64 / n as f64,
-        100.0 * n_rgb.max(n_cmyk) as f64 / n as f64);
+        100.0 * n_rgb.max(n_cmyk) as f64 / n as f64
+    );
     println!("║                                                            ║");
-    println!("║  SPO triples: {} (Neo4j-ready)                          ║", triple_count);
+    println!(
+        "║  SPO triples: {} (Neo4j-ready)                          ║",
+        triple_count
+    );
     println!("║                                                            ║");
-    println!("║  BERT mode-split ratio: {:.3}                              ║",
-        mean_diff_bert / mean_same_bert);
-    println!("║  Nib4 mode-split ratio: {:.3}                              ║",
-        mean_diff_nib4 / mean_same_nib4);
+    println!(
+        "║  BERT mode-split ratio: {:.3}                              ║",
+        mean_diff_bert / mean_same_bert
+    );
+    println!(
+        "║  Nib4 mode-split ratio: {:.3}                              ║",
+        mean_diff_nib4 / mean_same_nib4
+    );
     println!("║                                                            ║");
     println!("║  Messiness + stable sign = depth, not noise.               ║");
     println!("║                                                            ║");

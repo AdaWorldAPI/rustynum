@@ -73,10 +73,22 @@ const CONTAINER_BYTES_I32: i32 = CONTAINER_BYTES as i32;
 /// Each container is a `FixedSizeBinary(2048)`.
 pub fn cogrecord_schema() -> Schema {
     Schema::new(vec![
-        Field::new("meta", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
+        Field::new(
+            "meta",
+            DataType::FixedSizeBinary(CONTAINER_BYTES_I32),
+            false,
+        ),
         Field::new("cam", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
-        Field::new("btree", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
-        Field::new("embed", DataType::FixedSizeBinary(CONTAINER_BYTES_I32), false),
+        Field::new(
+            "btree",
+            DataType::FixedSizeBinary(CONTAINER_BYTES_I32),
+            false,
+        ),
+        Field::new(
+            "embed",
+            DataType::FixedSizeBinary(CONTAINER_BYTES_I32),
+            false,
+        ),
     ])
 }
 
@@ -340,7 +352,10 @@ mod tests {
         assert_eq!(schema.field(2).name(), "btree");
         assert_eq!(schema.field(3).name(), "embed");
         for f in schema.fields() {
-            assert_eq!(*f.data_type(), DataType::FixedSizeBinary(CONTAINER_BYTES_I32));
+            assert_eq!(
+                *f.data_type(),
+                DataType::FixedSizeBinary(CONTAINER_BYTES_I32)
+            );
             assert!(!f.is_nullable());
         }
     }

@@ -507,8 +507,9 @@ mod tests {
     fn test_horizontal_sweep_no_false_negatives() {
         // Create 100 random-ish records, plant 3 close ones.
         let query = vec![0u8; CONTAINER_BYTES];
-        let mut rows: Vec<Vec<u8>> =
-            (0..100).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
+        let mut rows: Vec<Vec<u8>> = (0..100)
+            .map(|i| vec![(i % 256) as u8; CONTAINER_BYTES])
+            .collect();
 
         // Records 10, 50, 90 are close (val=1, Hamming dist=CONTAINER_BYTES)
         rows[10] = vec![1u8; CONTAINER_BYTES];
@@ -619,8 +620,9 @@ mod tests {
     #[test]
     fn test_horizontal_sweep_filtered() {
         let query = vec![0u8; CONTAINER_BYTES];
-        let mut rows: Vec<Vec<u8>> =
-            (0..50).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
+        let mut rows: Vec<Vec<u8>> = (0..50)
+            .map(|i| vec![(i % 256) as u8; CONTAINER_BYTES])
+            .collect();
         rows[25] = vec![0u8; CONTAINER_BYTES]; // exact match
 
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
@@ -644,8 +646,9 @@ mod tests {
         let hdc_query = vec![0u8; CONTAINER_BYTES];
         let dense_query = vec![0u8; 512]; // smaller dense embedding
 
-        let mut hdc_rows: Vec<Vec<u8>> =
-            (0..30).map(|i| vec![(i % 256) as u8; CONTAINER_BYTES]).collect();
+        let mut hdc_rows: Vec<Vec<u8>> = (0..30)
+            .map(|i| vec![(i % 256) as u8; CONTAINER_BYTES])
+            .collect();
         let mut dense_rows: Vec<Vec<u8>> = (0..30).map(|i| vec![(i % 256) as u8; 512]).collect();
 
         // Row 15: close in both HDC and dense

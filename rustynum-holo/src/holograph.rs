@@ -699,11 +699,7 @@ impl Overlay {
     /// for allocations >= 8 bytes. This panics in debug builds if alignment is wrong.
     pub fn as_fingerprint_words(&self) -> &[u64; 256] {
         let ptr = self.buffer.as_ptr();
-        debug_assert_eq!(
-            ptr as usize % 8,
-            0,
-            "overlay buffer not 8-byte aligned"
-        );
+        debug_assert_eq!(ptr as usize % 8, 0, "overlay buffer not 8-byte aligned");
         // SAFETY: Vec<u8> global allocator returns >= 8-byte aligned for 2048-byte alloc.
         // u64 requires 8-byte alignment. 2048 bytes = 256 × u64.
         unsafe { &*(ptr as *const [u64; 256]) }
@@ -712,11 +708,7 @@ impl Overlay {
     /// Mutable view as fingerprint words — zero-copy.
     pub fn as_fingerprint_words_mut(&mut self) -> &mut [u64; 256] {
         let ptr = self.buffer.as_mut_ptr();
-        debug_assert_eq!(
-            ptr as usize % 8,
-            0,
-            "overlay buffer not 8-byte aligned"
-        );
+        debug_assert_eq!(ptr as usize % 8, 0, "overlay buffer not 8-byte aligned");
         // SAFETY: same alignment guarantee as as_fingerprint_words.
         unsafe { &mut *(ptr as *mut [u64; 256]) }
     }
@@ -831,7 +823,11 @@ impl std::fmt::Debug for AlignedBuf2K {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let words = self.as_fingerprint_words();
         let popcount: u32 = words.iter().map(|w| w.count_ones()).sum();
-        write!(f, "AlignedBuf2K[popcount={}, {:016x} {:016x} ...]", popcount, words[0], words[1])
+        write!(
+            f,
+            "AlignedBuf2K[popcount={}, {:016x} {:016x} ...]",
+            popcount, words[0], words[1]
+        )
     }
 }
 

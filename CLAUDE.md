@@ -442,12 +442,8 @@ cd bindings/python && cargo test
 cargo clippy --workspace -- -D warnings
 
 # Miri — catches UB in split_at_mut / raw pointer patterns
-# ALWAYS use timeout — without it Miri runs 1-3 hours on full workspace
-timeout 300 cargo miri test -p rustynum-core   # 5 min cap
-timeout 300 cargo miri test -p rustynum-holo   # 5 min cap
-# NOTE: rust-toolchain.toml pins nightly because rustyblas, rustymkl,
-# rustynum-rs use #![feature(portable_simd)]. This is ergonomics — std::arch
-# produces identical machine code. See P2 TODO for the stable port plan.
+# Requires nightly toolchain (not used in CI — run locally only)
+# cargo +nightly miri test -p rustynum-core
 ```
 
 ### Test Counts (2026-02-25)
@@ -472,10 +468,7 @@ timeout 300 cargo miri test -p rustynum-holo   # 5 min cap
 - **DO NOT** hardcode AVX-512 in test assertions — use conditional
 - **DO NOT** add `jitson` to workspace members or use `exclude`
 - **DO NOT** delete archive crates
-- **DO NOT** add new nightly features — `portable_simd` is the ONLY nightly dep (P2 TODO to port to std::arch).
-  The whole stack targets stable Rust 1.93, Arrow 57, DataFusion 51. `rust-toolchain.toml` pins nightly
-  only because of portable_simd in rustyblas/rustymkl/rustynum-rs. Other repos (ladybug-rs, crewai-rust,
-  n8n-rs) build on stable. Do NOT add new `#![feature(...)]` attributes.
+- **DO NOT** use nightly Rust — the entire stack builds on stable 1.93. All SIMD uses `simd_compat` (stable `std::arch` wrappers). `portable_simd` has been fully eliminated.
 - **DO NOT** store intermediate BF16 values — accumulate in FP32
 - **DO NOT** use dynamic SKU sizing — K0/K1/K2 are fixed at 16K or 64K
 - **DO NOT** use `RefCell`, `UnsafeCell`, or runtime borrow checks — the algebra handles isolation

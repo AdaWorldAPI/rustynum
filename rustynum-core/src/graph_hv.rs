@@ -159,9 +159,7 @@ impl GraphHV {
     /// Total popcount across all channels.
     #[inline]
     pub fn popcount(&self) -> u32 {
-        self.channels[0].popcount()
-            + self.channels[1].popcount()
-            + self.channels[2].popcount()
+        self.channels[0].popcount() + self.channels[1].popcount() + self.channels[2].popcount()
     }
 
     /// Returns true if all bits in all channels are zero.
@@ -387,12 +385,7 @@ pub fn bundle_into(
 /// Standard GraphHD encoding for directed labeled edges:
 /// - Permute source to encode direction (source->dest, not dest->source)
 /// - XOR-bind with destination and role label
-pub fn encode_edge(
-    source: &GraphHV,
-    dest: &GraphHV,
-    role: &GraphHV,
-    shift: u32,
-) -> GraphHV {
+pub fn encode_edge(source: &GraphHV, dest: &GraphHV, role: &GraphHV, shift: u32) -> GraphHV {
     source.permute(shift).bind(dest).bind(role)
 }
 
@@ -400,12 +393,7 @@ pub fn encode_edge(
 ///
 /// Given an encoded edge and two of the three components (source, dest, role),
 /// recover the third via XOR unbinding (XOR is self-inverse).
-pub fn decode_edge_source(
-    edge: &GraphHV,
-    dest: &GraphHV,
-    role: &GraphHV,
-    shift: u32,
-) -> GraphHV {
+pub fn decode_edge_source(edge: &GraphHV, dest: &GraphHV, role: &GraphHV, shift: u32) -> GraphHV {
     // edge = permute(source, shift) ^ dest ^ role
     // permute(source, shift) = edge ^ dest ^ role
     // source = permute_inverse(edge ^ dest ^ role, shift)
@@ -802,7 +790,10 @@ mod tests {
             }
         }
 
-        assert_eq!(bundled, expected, "Adder tree must match scalar majority vote (odd N)");
+        assert_eq!(
+            bundled, expected,
+            "Adder tree must match scalar majority vote (odd N)"
+        );
     }
 
     #[test]
@@ -821,7 +812,8 @@ mod tests {
             assert!(
                 sim > 0.50,
                 "Bundle of 20 should be > 0.50 similar to input {}: {:.4}",
-                i, sim
+                i,
+                sim
             );
         }
     }

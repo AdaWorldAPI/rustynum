@@ -12,8 +12,8 @@
 //! Where the sign flips in BF16 space = where the causal direction matters.
 //! Where sign is stable = where the relationship is symmetric (mutual).
 
-use std::collections::HashMap;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 // ============================================================================
 // Inline BF16 utilities (standalone — no crate dependency needed)
@@ -126,21 +126,48 @@ struct QualiaItem {
 }
 
 const DIMS_16_JSON: &[&str] = &[
-    "brightness", "valence", "dominance", "arousal",
-    "warmth", "clarity", "social", "nostalgia",
-    "sacredness", "desire", "tension", "awe",
-    "grief", "hope", "edge", "resolution_hunger",
+    "brightness",
+    "valence",
+    "dominance",
+    "arousal",
+    "warmth",
+    "clarity",
+    "social",
+    "nostalgia",
+    "sacredness",
+    "desire",
+    "tension",
+    "awe",
+    "grief",
+    "hope",
+    "edge",
+    "resolution_hunger",
 ];
 
 const DIMS_16_NAMES: &[&str] = &[
-    "glow", "valence", "rooting", "agency",
-    "resonance", "clarity", "social", "gravity",
-    "reverence", "volition", "dissonance", "staunen",
-    "loss", "optimism", "friction", "equilibrium",
+    "glow",
+    "valence",
+    "rooting",
+    "agency",
+    "resonance",
+    "clarity",
+    "social",
+    "gravity",
+    "reverence",
+    "volition",
+    "dissonance",
+    "staunen",
+    "loss",
+    "optimism",
+    "friction",
+    "equilibrium",
 ];
 
 fn extract_16(item: &QualiaItem) -> Vec<f32> {
-    DIMS_16_JSON.iter().map(|d| *item.vector.get(*d).unwrap_or(&0.0) as f32).collect()
+    DIMS_16_JSON
+        .iter()
+        .map(|d| *item.vector.get(*d).unwrap_or(&0.0) as f32)
+        .collect()
 }
 
 fn main() {
@@ -157,8 +184,11 @@ fn main() {
     let vecs_f32: Vec<Vec<f32>> = items.iter().map(|it| extract_16(it)).collect();
     let vecs_bf16: Vec<Vec<u8>> = vecs_f32.iter().map(|v| f32_to_bf16_bytes(v)).collect();
 
-    println!("  BF16 encoding: {} bytes per item ({} dims × 2 bytes)\n",
-        vecs_bf16[0].len(), vecs_f32[0].len());
+    println!(
+        "  BF16 encoding: {} bytes per item ({} dims × 2 bytes)\n",
+        vecs_bf16[0].len(),
+        vecs_f32[0].len()
+    );
 
     // ========================================================================
     // STEP 2: Define predicate vectors
@@ -217,9 +247,15 @@ fn main() {
         ("desire_slow_burn", "love_unconditional"),
         ("devotion_yes_with_fear", "devotion_total_presence"),
         // Bucket B pairs: Nib4 close, BERT far (cadence truth)
-        ("courage_quiet_step_forward", "transformation_internal_rewrite"),
+        (
+            "courage_quiet_step_forward",
+            "transformation_internal_rewrite",
+        ),
         ("devotion_after_fight", "becoming_learning_voice"),
-        ("surrender_truth_without_defense", "transformation_identity_blur"),
+        (
+            "surrender_truth_without_defense",
+            "transformation_identity_blur",
+        ),
         // Same family, different modes
         ("devotion_bold_yes", "devotion_vigil"),
         ("longing_warm_regret", "longing_defiant_reach"),
@@ -229,12 +265,16 @@ fn main() {
     ];
 
     // Create index map
-    let idx_map: HashMap<&str, usize> = items.iter().enumerate()
+    let idx_map: HashMap<&str, usize> = items
+        .iter()
+        .enumerate()
         .map(|(i, it)| (it.id.as_str(), i))
         .collect();
 
-    println!("  {:>40} {:>40}  {:>5} {:>5} {:>5}  {:>4} {:>4} {:>4}",
-        "A → B (active)", "B → A (passive)", "Dx", "Dy", "Dz", "Sflip", "Eshift", "Mnoise");
+    println!(
+        "  {:>40} {:>40}  {:>5} {:>5} {:>5}  {:>4} {:>4} {:>4}",
+        "A → B (active)", "B → A (passive)", "Dx", "Dy", "Dz", "Sflip", "Eshift", "Mnoise"
+    );
 
     struct EdgeResult {
         a_name: String,
@@ -254,11 +294,17 @@ fn main() {
     for &(a_id, b_id) in &pairs {
         let a_idx = match idx_map.get(a_id) {
             Some(&i) => i,
-            None => { println!("  WARNING: {} not found", a_id); continue; }
+            None => {
+                println!("  WARNING: {} not found", a_id);
+                continue;
+            }
         };
         let b_idx = match idx_map.get(b_id) {
             Some(&i) => i,
-            None => { println!("  WARNING: {} not found", b_id); continue; }
+            None => {
+                println!("  WARNING: {} not found", b_id);
+                continue;
+            }
         };
 
         let a_bf16 = &vecs_bf16[a_idx];
@@ -286,11 +332,25 @@ fn main() {
 
         let axis_dists = active.axis_distances(&passive);
 
-        println!("  {:>40} {:>40}  {:>5} {:>5} {:>5}  {:>4} {:>4} {:>4}",
-            &format!("{}→{}", &a_id[..a_id.len().min(18)], &b_id[..b_id.len().min(18)]),
-            &format!("{}→{}", &b_id[..b_id.len().min(18)], &a_id[..a_id.len().min(18)]),
-            axis_dists.0, axis_dists.1, axis_dists.2,
-            sign_flips, exp_shifts, man_changes);
+        println!(
+            "  {:>40} {:>40}  {:>5} {:>5} {:>5}  {:>4} {:>4} {:>4}",
+            &format!(
+                "{}→{}",
+                &a_id[..a_id.len().min(18)],
+                &b_id[..b_id.len().min(18)]
+            ),
+            &format!(
+                "{}→{}",
+                &b_id[..b_id.len().min(18)],
+                &a_id[..a_id.len().min(18)]
+            ),
+            axis_dists.0,
+            axis_dists.1,
+            axis_dists.2,
+            sign_flips,
+            exp_shifts,
+            man_changes
+        );
 
         edge_results.push(EdgeResult {
             a_name: a_id.to_string(),
@@ -313,20 +373,30 @@ fn main() {
 
     for result in &edge_results {
         println!("  {} ↔ {}", result.a_name, result.b_name);
-        println!("    Sign flips: {} / {} dims × 3 axes", result.sign_flips, 16 * 3);
+        println!(
+            "    Sign flips: {} / {} dims × 3 axes",
+            result.sign_flips,
+            16 * 3
+        );
         println!("    Exp shifts: {} bits", result.exp_shifts);
         println!("    Man noise:  {} bits", result.man_changes);
 
         // Decode which ORIGINAL qualia dims have sign flips (per axis)
-        let x_flips: Vec<&str> = result.sign_flip_dims.iter()
+        let x_flips: Vec<&str> = result
+            .sign_flip_dims
+            .iter()
             .filter(|&&d| d < 16)
             .map(|&d| DIMS_16_NAMES[d])
             .collect();
-        let y_flips: Vec<&str> = result.sign_flip_dims.iter()
+        let y_flips: Vec<&str> = result
+            .sign_flip_dims
+            .iter()
             .filter(|&&d| d >= 16 && d < 32)
             .map(|&d| DIMS_16_NAMES[d - 16])
             .collect();
-        let z_flips: Vec<&str> = result.sign_flip_dims.iter()
+        let z_flips: Vec<&str> = result
+            .sign_flip_dims
+            .iter()
             .filter(|&&d| d >= 32)
             .map(|&d| DIMS_16_NAMES[d - 32])
             .collect();
@@ -345,7 +415,7 @@ fn main() {
         let (dx, dy, dz) = result.axis_dists;
         let total = (dx + dy + dz) as f64;
         if total > 0.0 {
-            let balance = 1.0 - ((dx.max(dy).max(dz) as f64 / total) - 1.0/3.0) * 1.5;
+            let balance = 1.0 - ((dx.max(dy).max(dz) as f64 / total) - 1.0 / 3.0) * 1.5;
             println!("    Balance: {:.2} (1.0=symmetric, 0.0=one-axis)", balance);
         }
         println!();
@@ -372,8 +442,10 @@ fn main() {
         ];
 
         println!("  Pair: grief_private_weight → letting_go_without_grief\n");
-        println!("  {:>18}  {:>6} {:>6} {:>6}  {:>5}  {:>5}  {:>8}",
-            "Predicate", "Dx", "Dy", "Dz", "Sflip", "Eshift", "Dominant");
+        println!(
+            "  {:>18}  {:>6} {:>6} {:>6}  {:>5}  {:>5}  {:>8}",
+            "Predicate", "Dx", "Dy", "Dz", "Sflip", "Eshift", "Dominant"
+        );
 
         for (pred_name, pred_bytes) in &predicates {
             let triple = SpoTriple::encode(a_bf16, pred_bytes, b_bf16);
@@ -386,18 +458,24 @@ fn main() {
                 xor_bind(&triple.x, &reverse.x),
                 xor_bind(&triple.y, &reverse.y),
                 xor_bind(&triple.z, &reverse.z),
-            ].concat();
+            ]
+            .concat();
 
             let zeros = vec![0u8; edge_flat.len()];
-            let (sign_flips, exp_shifts, _man, _dims) =
-                bf16_structural_diff(&edge_flat, &zeros);
+            let (sign_flips, exp_shifts, _man, _dims) = bf16_structural_diff(&edge_flat, &zeros);
 
-            let dominant = if dx >= dy && dx >= dz { "S⊕P (who?)" }
-                          else if dy >= dz { "P⊕O (what?)" }
-                          else { "S⊕O (edge)" };
+            let dominant = if dx >= dy && dx >= dz {
+                "S⊕P (who?)"
+            } else if dy >= dz {
+                "P⊕O (what?)"
+            } else {
+                "S⊕O (edge)"
+            };
 
-            println!("  {:>18}  {:>6} {:>6} {:>6}  {:>5}  {:>5}  {:>8}",
-                pred_name, dx, dy, dz, sign_flips, exp_shifts, dominant);
+            println!(
+                "  {:>18}  {:>6} {:>6} {:>6}  {:>5}  {:>5}  {:>8}",
+                pred_name, dx, dy, dz, sign_flips, exp_shifts, dominant
+            );
         }
     }
 
@@ -444,10 +522,20 @@ fn main() {
     }
 
     println!("  Bundled {} edges:", n_edges);
-    println!("    Total bits set (any edge):    {}/{}", total_bits_set, n_bytes * 8);
-    println!("    Majority-vote bits (>50%):    {}/{}", high_agreement, n_bytes * 8);
-    println!("    Agreement ratio:              {:.1}%",
-        100.0 * high_agreement as f64 / (n_bytes * 8) as f64);
+    println!(
+        "    Total bits set (any edge):    {}/{}",
+        total_bits_set,
+        n_bytes * 8
+    );
+    println!(
+        "    Majority-vote bits (>50%):    {}/{}",
+        high_agreement,
+        n_bytes * 8
+    );
+    println!(
+        "    Agreement ratio:              {:.1}%",
+        100.0 * high_agreement as f64 / (n_bytes * 8) as f64
+    );
 
     // Decode the prototype edge — which dims are consistently asymmetric?
     let zeros = vec![0u8; prototype_edge.len()];
@@ -460,22 +548,37 @@ fn main() {
     println!("    Man bits:      {}", proto_man);
 
     // Decode which dims are in the prototype
-    let x_proto: Vec<&str> = proto_dims.iter()
+    let x_proto: Vec<&str> = proto_dims
+        .iter()
         .filter(|&&d| d < 16)
         .map(|&d| DIMS_16_NAMES[d])
         .collect();
-    let y_proto: Vec<&str> = proto_dims.iter()
+    let y_proto: Vec<&str> = proto_dims
+        .iter()
         .filter(|&&d| d >= 16 && d < 32)
         .map(|&d| DIMS_16_NAMES[d - 16])
         .collect();
-    let z_proto: Vec<&str> = proto_dims.iter()
+    let z_proto: Vec<&str> = proto_dims
+        .iter()
         .filter(|&&d| d >= 32)
         .map(|&d| DIMS_16_NAMES[d - 32])
         .collect();
 
-    let x_str = if x_proto.is_empty() { "none".to_string() } else { x_proto.join(", ") };
-    let y_str = if y_proto.is_empty() { "none".to_string() } else { y_proto.join(", ") };
-    let z_str = if z_proto.is_empty() { "none".to_string() } else { z_proto.join(", ") };
+    let x_str = if x_proto.is_empty() {
+        "none".to_string()
+    } else {
+        x_proto.join(", ")
+    };
+    let y_str = if y_proto.is_empty() {
+        "none".to_string()
+    } else {
+        y_proto.join(", ")
+    };
+    let z_str = if z_proto.is_empty() {
+        "none".to_string()
+    } else {
+        z_proto.join(", ")
+    };
     println!("\n  Consistently asymmetric dims (the active/passive signature):");
     println!("    X-axis (S⊕P): {}", x_str);
     println!("    Y-axis (P⊕O): {}", y_str);
@@ -489,7 +592,11 @@ fn main() {
     // Show how many bits agree across N%, 75%, 90% of edges
     let mut hist = [0u32; 11]; // 0%, 10%, 20%, ..., 100%
     for &count in &bit_counts {
-        let pct = if n_edges > 0 { (count * 10 / n_edges as u32).min(10) } else { 0 };
+        let pct = if n_edges > 0 {
+            (count * 10 / n_edges as u32).min(10)
+        } else {
+            0
+        };
         hist[pct as usize] += 1;
     }
 

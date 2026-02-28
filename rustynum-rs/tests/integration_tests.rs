@@ -144,7 +144,10 @@ fn test_try_reshape_mismatch() {
     assert!(result.is_err());
     let err = result.err().unwrap();
     match err {
-        NumError::ShapeMismatch { data_len, shape_product } => {
+        NumError::ShapeMismatch {
+            data_len,
+            shape_product,
+        } => {
             assert_eq!(data_len, 6);
             assert_eq!(shape_product, 8);
         }

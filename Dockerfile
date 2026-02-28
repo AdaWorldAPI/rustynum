@@ -1,17 +1,17 @@
 # =============================================================================
-# rustynum-oracle — Docker build (nightly Rust + AVX-512)
+# rustynum-oracle — Docker build (stable Rust 1.93 + AVX-512)
 # =============================================================================
-# Nightly required for #![feature(portable_simd)] used by rustynum-core SIMD.
+# All SIMD uses stable std::arch via simd_compat — no nightly required.
 #
 # BUILD:   docker build -t rustynum-oracle .
 # RUN:     docker run rustynum-oracle ghost_oracle [path/to/graph.json]
-# RAILWAY: Auto-detects Dockerfile → builds with nightly + AVX-512
+# RAILWAY: Auto-detects Dockerfile → builds with stable + AVX-512
 # =============================================================================
 
 # =============================================================================
 # STAGE 1: Builder
 # =============================================================================
-FROM rustlang/rust:nightly-slim AS builder
+FROM rust:1.93-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
