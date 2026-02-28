@@ -184,7 +184,8 @@ pub fn horizontal_sweep(
         // Progressive early exit check at configured intervals.
         let should_check = word_idx + 1 == config.first_check_words
             || (words_examined > config.first_check_words
-                && (words_examined - config.first_check_words) % config.check_interval == 0)
+                && (words_examined - config.first_check_words)
+                    .is_multiple_of(config.check_interval))
             || word_idx + 1 == total_words; // always check on last word
 
         if should_check {
@@ -314,7 +315,8 @@ pub fn horizontal_sweep_filtered(
 
         let should_check = word_idx + 1 == config.first_check_words
             || (words_examined > config.first_check_words
-                && (words_examined - config.first_check_words) % config.check_interval == 0)
+                && (words_examined - config.first_check_words)
+                    .is_multiple_of(config.check_interval))
             || word_idx + 1 == total_words;
 
         if should_check {

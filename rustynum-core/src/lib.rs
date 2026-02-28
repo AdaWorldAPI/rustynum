@@ -106,10 +106,10 @@ pub use dn_tree::{DNConfig, DNTree, DNTreeStats, TraversalHit};
 // BNN inference primitives: XNOR+popcount binary neural network kernels
 // Grey matter (inference) + White matter (connections) + Plasticity (learning)
 pub mod bnn;
-pub use bnn::{
-    bnn_batch_dot, bnn_cascade_search, bnn_cascade_search_with_energy, bnn_conv1d,
-    bnn_conv1d_3ch, bnn_conv1d_cascade, bnn_dot, bnn_dot_3ch, BnnCascadeResult, BnnDotResult,
-    BnnEnergyResult, BnnLayer, BnnNetwork, BnnNeuron,
-};
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub use bnn::bnn_hdr_search;
+pub use bnn::{
+    bnn_batch_dot, bnn_cascade_search, bnn_cascade_search_with_energy, bnn_conv1d, bnn_conv1d_3ch,
+    bnn_conv1d_cascade, bnn_dot, bnn_dot_3ch, BnnCascadeResult, BnnDotResult, BnnEnergyResult,
+    BnnLayer, BnnNetwork, BnnNeuron,
+};

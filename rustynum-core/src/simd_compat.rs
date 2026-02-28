@@ -532,9 +532,9 @@ impl U8x64 {
         // Tree reduction: 512→256→128→scalar
         let arr = self.to_array();
         let mut m = arr[0];
-        for i in 1..64 {
-            if arr[i] < m {
-                m = arr[i];
+        for &val in arr.iter().skip(1) {
+            if val < m {
+                m = val;
             }
         }
         m
@@ -545,9 +545,9 @@ impl U8x64 {
     pub fn reduce_max(self) -> u8 {
         let arr = self.to_array();
         let mut m = arr[0];
-        for i in 1..64 {
-            if arr[i] > m {
-                m = arr[i];
+        for &val in arr.iter().skip(1) {
+            if val > m {
+                m = val;
             }
         }
         m

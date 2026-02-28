@@ -364,8 +364,13 @@ pub fn iamax_f32(x: &[f32]) -> (usize, f32) {
     }
 
     // Scalar tail
-    for i in (chunks * F32_LANES)..len {
-        let v = x[i].abs();
+    for (i, val) in x
+        .iter()
+        .enumerate()
+        .skip(chunks * F32_LANES)
+        .take(len - chunks * F32_LANES)
+    {
+        let v = val.abs();
         if v > global_max {
             global_max = v;
             global_idx = i;
@@ -408,8 +413,13 @@ pub fn iamax_f64(x: &[f64]) -> (usize, f64) {
     }
 
     // Scalar tail
-    for i in (chunks * F64_LANES)..len {
-        let v = x[i].abs();
+    for (i, val) in x
+        .iter()
+        .enumerate()
+        .skip(chunks * F64_LANES)
+        .take(len - chunks * F64_LANES)
+    {
+        let v = val.abs();
         if v > global_max {
             global_max = v;
             global_idx = i;
@@ -1846,10 +1856,10 @@ mod tests {
 
     #[test]
     fn test_iamax_single() {
-        let x = vec![-3.14f32];
+        let x = vec![-3.125f32];
         let (idx, val) = iamax_f32(&x);
         assert_eq!(idx, 0);
-        assert!((val - 3.14).abs() < f32::EPSILON);
+        assert!((val - 3.125).abs() < f32::EPSILON);
     }
 
     #[test]
