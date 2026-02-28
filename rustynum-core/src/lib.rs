@@ -64,10 +64,11 @@ pub use jitson::{
     from_json, BackendConfig, JitsonError, JitsonTemplate, PipelineStage, PrecompileQueue,
 };
 pub use kernels::{
-    bf16_tail_score, bytes_to_u64_words, full_sweep, k0_probe, k1_stats, k2_exact, kernel_pipeline,
-    kernel_pipeline_bytes, score_hdr, BenchmarkTranscript, EnergyConflict, HdrScore, KernelResult,
-    KernelStage, PipelineStats, SliceGate, SKU_16K_BITS, SKU_16K_BYTES, SKU_16K_WORDS,
-    SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
+    bf16_tail_score, bytes_to_u64_words, full_sweep, k0_probe, k1_stats, k2_exact,
+    k2_exact_histogram, kernel_pipeline, kernel_pipeline_bytes, score_hdr, score_sigma,
+    BenchmarkTranscript, EnergyConflict, HdrScore, K2Histogram, KernelResult, KernelStage,
+    PipelineStats, SigmaGate, SigmaScore, SignificanceLevel, SliceGate, SKU_16K_BITS,
+    SKU_16K_BYTES, SKU_16K_WORDS, SKU_64K_BITS, SKU_64K_BYTES, SKU_64K_WORDS,
 };
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
