@@ -19,6 +19,7 @@
 
 pub mod belichtungsmesser;
 pub mod bnn;
+pub mod rif_net_integration;
 
 // Re-export BNN types (owned by this crate, not core)
 pub use bnn::{
@@ -33,3 +34,8 @@ pub use bnn::bnn_hdr_search;
 // Re-export Belichtungsmesser types (only genuinely new functions)
 // All K0/K1 probes, σ-gated rejection, HDR classification already in rustynum-core.
 pub use belichtungsmesser::{bf16_refine_cold, signal_quality};
+
+// Re-export RIF-Net integration (Zhang et al. 2025 BIR-EWM + rich information flow)
+pub use rif_net_integration::{
+    BPReLU, BinaryBatchNorm, EwmWeights, RifCaBlock, RifFlowMetrics, RifNet,
+};
