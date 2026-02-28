@@ -1,0 +1,13 @@
+[package]
+name = "rustynum-bnn"
+version = "0.1.0"
+edition = "2021"
+description = "BNN inference + K0/K1 Belichtungsmesser cascade for DN-tree traversal acceleration"
+
+[features]
+default = ["avx512"]
+avx512 = ["rustynum-core/avx512"]
+avx2 = ["rustynum-core/avx2"]
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core" }

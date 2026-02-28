@@ -126,9 +126,9 @@ pub struct DNTreeStats {
 /// Summary HVs are stored in a parallel `Vec` (SoA layout) so the hot
 /// traversal path touches only the summaries it needs.
 pub struct DNTree {
-    nodes: Vec<DNNode>,
-    summaries: Vec<GraphHV>,
-    config: DNConfig,
+    pub nodes: Vec<DNNode>,
+    pub summaries: Vec<GraphHV>,
+    pub config: DNConfig,
 }
 
 impl DNTree {
@@ -354,7 +354,7 @@ impl DNTree {
     // -----------------------------------------------------------------------
 
     /// Push a new node and its summary, return its arena index.
-    fn push_node(&mut self, lo: usize, hi: usize, level: u32) -> usize {
+    pub fn push_node(&mut self, lo: usize, hi: usize, level: u32) -> usize {
         let idx = self.nodes.len();
         self.nodes.push(DNNode {
             range_lo: lo,
@@ -368,7 +368,7 @@ impl DNTree {
     }
 
     /// Split a leaf node into 4 children (quaternary split).
-    fn split_node(&mut self, node_idx: usize) {
+    pub fn split_node(&mut self, node_idx: usize) {
         let lo = self.nodes[node_idx].range_lo;
         let hi = self.nodes[node_idx].range_hi;
         let span = hi - lo;
@@ -388,7 +388,7 @@ impl DNTree {
     }
 
     /// Determine which child quadrant contains the given prototype index.
-    fn select_child(&self, node_idx: usize, proto_idx: usize) -> usize {
+    pub fn select_child(&self, node_idx: usize, proto_idx: usize) -> usize {
         let node = &self.nodes[node_idx];
         let span = node.range_hi - node.range_lo;
         let q = span / 4;

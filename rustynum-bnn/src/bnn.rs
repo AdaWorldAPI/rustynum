@@ -34,13 +34,13 @@
 //! | White matter | Connections (weights) | XOR-bind on channel 1 |
 //! | Plasticity | Learning (bundling) | `bundle_into()` on channel 2 |
 
-use crate::cam_index::CamIndex;
-use crate::fingerprint::Fingerprint;
-use crate::graph_hv::{bundle_into, GraphHV};
-use crate::kernels::{
-    kernel_pipeline, EnergyConflict, KernelStage, PipelineStats, SKU_16K_WORDS, SliceGate,
+use rustynum_core::cam_index::CamIndex;
+use rustynum_core::fingerprint::Fingerprint;
+use rustynum_core::graph_hv::{bundle_into, GraphHV};
+use rustynum_core::kernels::{
+    kernel_pipeline, EnergyConflict, KernelStage, PipelineStats, SliceGate, SKU_16K_WORDS,
 };
-use crate::rng::SplitMix64;
+use rustynum_core::rng::SplitMix64;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 use std::sync::OnceLock;
@@ -54,7 +54,7 @@ type HammingFn = fn(&[u8], &[u8]) -> u64;
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hamming_simd() -> HammingFn {
     static FN: OnceLock<HammingFn> = OnceLock::new();
-    *FN.get_or_init(crate::simd::select_hamming_fn)
+    *FN.get_or_init(rustynum_core::simd::select_hamming_fn)
 }
 
 /// Result of a binary convolution (XNOR + popcount).
@@ -527,10 +527,7 @@ impl BnnNetwork {
         }
 
         // Final layer's winner
-        self.layers
-            .last()
-            .unwrap()
-            .winner(&current_input)
+        self.layers.last().unwrap().winner(&current_input)
     }
 
     /// Predict without learning. Returns winner info for each layer.
@@ -574,7 +571,7 @@ pub fn bnn_hdr_search(
     threshold: u64,
     top_k: usize,
 ) -> Vec<(usize, BnnDotResult)> {
-    use crate::simd::{hdr_cascade_search, PreciseMode};
+    use rustynum_core::simd::{hdr_cascade_search, PreciseMode};
 
     if weights.is_empty() {
         return Vec::new();
@@ -589,8 +586,14 @@ pub fn bnn_hdr_search(
         db_bytes.extend_from_slice(w.as_bytes());
     }
 
-    let hdr_results =
-        hdr_cascade_search(query_bytes, &db_bytes, vec_bytes, weights.len(), threshold, PreciseMode::Off);
+    let hdr_results = hdr_cascade_search(
+        query_bytes,
+        &db_bytes,
+        vec_bytes,
+        weights.len(),
+        threshold,
+        PreciseMode::Off,
+    );
 
     let total_bits = Fingerprint::<256>::BITS as u32;
     let mut results: Vec<(usize, BnnDotResult)> = hdr_results
@@ -654,11 +657,7 @@ impl BnnLayer {
         // Wrap input as GraphHV for CAM query.
         // Replicate input across all 3 channels so the LSH projection
         // (which samples bits from all channels) produces meaningful hashes.
-        let query_hv = GraphHV::from_channels(
-            input.clone(),
-            input.clone(),
-            input.clone(),
-        );
+        let query_hv = GraphHV::from_channels(input.clone(), input.clone(), input.clone());
 
         let hits = cam.query(&query_hv, shortlist_size);
         if hits.is_empty() {
@@ -708,11 +707,7 @@ pub fn bnn_conv1d(
 /// 1D binary convolution over 3-channel GraphHV sequences.
 ///
 /// Full 49,152-bit correlation per output position.
-pub fn bnn_conv1d_3ch(
-    input: &[GraphHV],
-    kernel: &GraphHV,
-    stride: usize,
-) -> Vec<BnnDotResult> {
+pub fn bnn_conv1d_3ch(input: &[GraphHV], kernel: &GraphHV, stride: usize) -> Vec<BnnDotResult> {
     let stride = stride.max(1);
     (0..input.len())
         .step_by(stride)
@@ -1012,9 +1007,16 @@ mod tests {
 
         // Exact match must be found
         assert!(
-            result.matches.iter().any(|(idx, dot)| *idx == 42 && (dot.score - 1.0).abs() < f32::EPSILON),
+            result
+                .matches
+                .iter()
+                .any(|(idx, dot)| *idx == 42 && (dot.score - 1.0).abs() < f32::EPSILON),
             "Exact match at index 42 not found. Matches: {:?}",
-            result.matches.iter().map(|(i, d)| (*i, d.score)).collect::<Vec<_>>()
+            result
+                .matches
+                .iter()
+                .map(|(i, d)| (*i, d.score))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -1312,7 +1314,10 @@ mod tests {
 
         // Should find position 50 (exact match)
         assert!(
-            result.matches.iter().any(|(idx, dot)| *idx == 50 && (dot.score - 1.0).abs() < f32::EPSILON),
+            result
+                .matches
+                .iter()
+                .any(|(idx, dot)| *idx == 50 && (dot.score - 1.0).abs() < f32::EPSILON),
             "Exact match at position 50 not found"
         );
     }
