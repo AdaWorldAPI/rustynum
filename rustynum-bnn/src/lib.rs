@@ -19,6 +19,7 @@
 
 pub mod belichtungsmesser;
 pub mod bnn;
+pub mod causal_trajectory;
 pub mod cross_plane;
 pub mod rif_net_integration;
 
@@ -45,4 +46,11 @@ pub use rif_net_integration::{
 pub use cross_plane::{
     CrossPlaneVote, GrowthPath, HaloDistribution, HaloType, InferenceMode, InferenceResult,
     LatticeClimber, MutationOp, PartialBinding, SpoTriple, TypedQuery, WarmStart,
+};
+
+// Re-export Causal Trajectory (NARS x Fovea x Context resonator instrumentation)
+pub use causal_trajectory::{
+    CausalArrow, CausalChain, CausalDirection, CausalLink, CausalRelation, CausalSaliency,
+    CausalTrajectory, DominantPlane, EwmCorrection, EwmTier, HaloTransition, NarsCausalStatement,
+    NarsTruth, ResonatorSnapshot, RifDiff, SigmaEdge, SigmaNode,
 };
