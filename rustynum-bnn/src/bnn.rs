@@ -34,13 +34,13 @@
 //! | White matter | Connections (weights) | XOR-bind on channel 1 |
 //! | Plasticity | Learning (bundling) | `bundle_into()` on channel 2 |
 
-use crate::cam_index::CamIndex;
-use crate::fingerprint::Fingerprint;
-use crate::graph_hv::{bundle_into, GraphHV};
-use crate::kernels::{
+use rustynum_core::cam_index::CamIndex;
+use rustynum_core::fingerprint::Fingerprint;
+use rustynum_core::graph_hv::{bundle_into, GraphHV};
+use rustynum_core::kernels::{
     kernel_pipeline, EnergyConflict, KernelStage, PipelineStats, SliceGate, SKU_16K_WORDS,
 };
-use crate::rng::SplitMix64;
+use rustynum_core::rng::SplitMix64;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 use std::sync::OnceLock;
@@ -54,7 +54,7 @@ type HammingFn = fn(&[u8], &[u8]) -> u64;
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hamming_simd() -> HammingFn {
     static FN: OnceLock<HammingFn> = OnceLock::new();
-    *FN.get_or_init(crate::simd::select_hamming_fn)
+    *FN.get_or_init(rustynum_core::simd::select_hamming_fn)
 }
 
 /// Result of a binary convolution (XNOR + popcount).
@@ -571,7 +571,7 @@ pub fn bnn_hdr_search(
     threshold: u64,
     top_k: usize,
 ) -> Vec<(usize, BnnDotResult)> {
-    use crate::simd::{hdr_cascade_search, PreciseMode};
+    use rustynum_core::simd::{hdr_cascade_search, PreciseMode};
 
     if weights.is_empty() {
         return Vec::new();

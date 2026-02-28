@@ -1,29 +1,34 @@
 //! # RustyNum BNN
 //!
-//! K0/K1 Belichtungsmesser (Exposure Meter) cascade for DN-tree traversal
-//! acceleration. Consumes `rustynum-core` infrastructure without modification.
+//! Binary Neural Network inference + K0/K1 Belichtungsmesser (Exposure Meter)
+//! cascade for DN-tree traversal acceleration.
 //!
-//! ## Progressive Stichprobe (4 Tiers × σ Gates)
+//! BNN is the neural plasticity layer. It consumes `rustynum-core` types
+//! (Fingerprint, GraphHV, kernels) without modification.
+//!
+//! ## Progressive Stichprobe (4 Tiers x sigma Gates)
 //!
 //! ```text
-//! Tier  Bits   σ-gate  Reject%  Cost   Measurement
-//! ────  ─────  ──────  ───────  ─────  ───────────
-//! K0    64     1σ      ~84%     ~1ns   Spot meter (1 word)
-//! K1    512    2σ      ~97.5%   ~4ns   Zone meter (8 words)
-//! BF16  512    3σ      ~99.7%   ~20ns  Range awareness (cold only)
-//! Full  49152  exact   100%     ~48ns  Complete (leaves only)
+//! Tier  Bits   sigma-gate  Reject%  Cost   Measurement
+//! ----  -----  ----------  -------  -----  -----------
+//! K0    64     1 sigma     ~84%     ~1ns   Spot meter (1 word)
+//! K1    512    2 sigma     ~97.5%   ~4ns   Zone meter (8 words)
+//! BF16  512    3 sigma     ~99.7%   ~20ns  Range awareness (cold only)
+//! Full  49152  exact       100%     ~48ns  Complete (leaves only)
 //! ```
 
 pub mod belichtungsmesser;
+pub mod bnn;
 
-// Re-export BNN types from rustynum-core (no duplication)
-pub use rustynum_core::bnn::{
+// Re-export BNN types (owned by this crate, not core)
+pub use bnn::{
     bnn_batch_dot, bnn_cascade_search, bnn_cascade_search_with_energy, bnn_conv1d, bnn_conv1d_3ch,
     bnn_conv1d_cascade, bnn_dot, bnn_dot_3ch, BnnCascadeResult, BnnDotResult, BnnEnergyResult,
     BnnLayer, BnnNetwork, BnnNeuron,
 };
 
-pub use rustynum_core::bnn::bnn_hdr_search;
+#[cfg(any(feature = "avx512", feature = "avx2"))]
+pub use bnn::bnn_hdr_search;
 
 // Re-export Belichtungsmesser types
 pub use belichtungsmesser::{
