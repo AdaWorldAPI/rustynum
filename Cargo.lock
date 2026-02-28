@@ -4874,6 +4874,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustynum-bnn"
+version = "0.1.0"
+dependencies = [
+ "rustynum-core",
+]
+
+[[package]]
 name = "rustynum-carrier"
 version = "0.1.0"
 dependencies = [

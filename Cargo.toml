@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "rustynum-core",
+    "rustynum-bnn",
     "rustynum-rs",
     "rustyblas",
     "rustymkl",

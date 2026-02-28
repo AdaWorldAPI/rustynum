@@ -1,0 +1,8 @@
+[package]
+name = "rustynum-bnn"
+version = "0.1.0"
+edition = "2021"
+description = "K0/K1 Belichtungsmesser cascade for BNN inference and DN-tree traversal acceleration"
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core" }
