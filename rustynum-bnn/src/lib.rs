@@ -19,6 +19,7 @@
 
 pub mod belichtungsmesser;
 pub mod bnn;
+pub mod cross_plane;
 pub mod rif_net_integration;
 
 // Re-export BNN types (owned by this crate, not core)
@@ -38,4 +39,10 @@ pub use belichtungsmesser::{bf16_refine_cold, signal_quality};
 // Re-export RIF-Net integration (Zhang et al. 2025 BIR-EWM + rich information flow)
 pub use rif_net_integration::{
     BPReLU, BinaryBatchNorm, EwmWeights, RifCaBlock, RifFlowMetrics, RifNet,
+};
+
+// Re-export Cross-Plane Partial Binding Algebra (6 halo types + SPO inference)
+pub use cross_plane::{
+    CrossPlaneVote, GrowthPath, HaloDistribution, HaloType, InferenceMode, InferenceResult,
+    LatticeClimber, MutationOp, PartialBinding, SpoTriple, TypedQuery, WarmStart,
 };
