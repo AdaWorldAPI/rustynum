@@ -330,7 +330,66 @@ public API calls. No modifications to `kernels.rs`, `simd.rs`, `hybrid.rs`,
 
 ---
 
-## 6. Verification Strategy
+## 6. Implementation Log (Session-Resilient)
+
+> **Read this every session.** Tracks exactly what was done and what remains.
+
+### 2026-02-28: Phase 1 + Phase 2 + Phase 3 (partial) — DONE
+
+**Branch**: `claude/implement-neural-network-research-owTKn`
+
+**Files modified**:
+- `rustynum-core/src/bnn.rs` — +430 lines of implementation + +280 lines of tests
+- `rustynum-core/src/lib.rs` — +5 lines of exports
+
+**Functions added to `bnn.rs`**:
+
+| Function | Lines | Phase | What It Does |
+|----------|-------|-------|-------------|
+| `bnn_cascade_search()` | 60 | P1-1.1 | Wire BNN to K0/K1/K2 kernel pipeline |
+| `bnn_cascade_search_with_energy()` | 50 | P1-1.1 | Same + EnergyConflict decomposition |
+| `BnnNetwork::new/forward/predict/depth` | 80 | P1-1.2 | Multi-layer BNN stacking |
+| `bnn_hdr_search()` | 50 | P2-2.1 | Wire BNN to 3-stroke HDR cascade (cfg avx512/avx2) |
+| `BnnLayer::build_cam_index()` | 12 | P2-2.2 | Build LSH index over neuron weights |
+| `BnnLayer::winner_cam()` | 30 | P2-2.2 | O(log N) winner-take-all via CamIndex |
+| `bnn_conv1d()` | 8 | P3-3.2 | 1D binary convolution over Fingerprint sequence |
+| `bnn_conv1d_3ch()` | 8 | P3-3.2 | 1D binary convolution over GraphHV sequence |
+| `bnn_conv1d_cascade()` | 12 | P3-3.2 | Cascade-accelerated 1D convolution |
+
+**Types added**:
+- `BnnCascadeResult` — cascade matches + PipelineStats
+- `BnnEnergyResult` — match + EnergyConflict + KernelStage
+- `BnnNetwork` — multi-layer BNN
+
+**Tests added**: 14 new tests (25 total BNN tests, 309 total rustynum-core tests)
+
+| Test | What It Verifies |
+|------|-----------------|
+| `test_cascade_search_finds_exact_match` | K0/K1/K2 cascade finds planted exact match |
+| `test_cascade_search_zero_false_negatives` | Cascade finds all planted near-matches |
+| `test_cascade_search_with_energy` | Energy decomposition correct for exact match |
+| `test_cascade_search_empty` | Empty input returns empty result |
+| `test_network_creation` | Layer sizes correct |
+| `test_network_forward` | Forward pass produces valid output |
+| `test_network_predict` | Predict returns per-layer results |
+| `test_network_learning_changes_state` | Plasticity updates neuron state |
+| `test_build_cam_index` | CAM index has correct count |
+| `test_winner_cam_finds_match` | LSH finds planted match in shortlist |
+| `test_conv1d_basic` | Exact match at correct position |
+| `test_conv1d_stride` | Stride produces correct output count |
+| `test_conv1d_3ch` | 3-channel convolution works |
+| `test_conv1d_cascade` | Cascade-accelerated conv finds exact match |
+
+### Still TODO
+
+- [ ] **P3-3.1: Awareness-guided learning** (`forward_aware`) — per-dimension
+  learning rate modulation from BF16 awareness (crystallized/tensioned/uncertain/noise)
+- [ ] **P3-3.3: Amplitude correction** (RIF-Net BIR-EWM) — batch normalization
+  + element-wise multiply for gradient preservation
+
+---
+
+## 7. Verification Strategy
 
 ```bash
 # After each phase:
