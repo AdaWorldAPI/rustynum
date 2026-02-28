@@ -531,7 +531,6 @@ pub struct LatticeClimber {
     pub partial_pairs: Vec<PartialBinding>,
     /// Full triples (lattice level 3): Core type. Ready for DN insertion.
     pub full_triples: Vec<PartialBinding>,
-    /// Growth path tracking: which paths are active.
     /// Growth path tracking: which paths are active and at which stage.
     pub active_paths: Vec<(GrowthPath, u8)>,
 }
