@@ -30,8 +30,6 @@ pub use bnn::{
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub use bnn::bnn_hdr_search;
 
-// Re-export Belichtungsmesser types
-pub use belichtungsmesser::{
-    bf16_refine_cold, classify_hdr, filter_children, hdr_beam_width, k0_probe_conflict,
-    k1_stats_conflict, signal_quality, ChildScore, TraversalStats,
-};
+// Re-export Belichtungsmesser types (only genuinely new functions)
+// All K0/K1 probes, σ-gated rejection, HDR classification already in rustynum-core.
+pub use belichtungsmesser::{bf16_refine_cold, signal_quality};
