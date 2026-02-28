@@ -407,3 +407,124 @@ cargo clippy -p rustynum-core -- -D warnings  # Lint
 rather than building from scratch. The 2,414 lines of existing BNN/HDC code
 and the 1,890+ lines of search pipeline code are the foundation — not the
 competition.*
+
+---
+
+## 8. Architectural Constraint: BNN vs DN-Tree Recall (SESSION-CRITICAL)
+
+> **Date**: 2026-02-28
+> **Severity**: Cognitive failure — this section documents a fundamental
+> misunderstanding by Claude that must not recur.
+
+### The Problem That Was Misunderstood
+
+BNN (Binary Neural Network) provides neural **plasticity** — learning,
+weight updating, XNOR+POPCNT similarity. It does NOT provide O(1)
+**recall** of a specific tree/branch/twig/leaf path.
+
+Two Claude sessions attempted to solve O(1) recall by:
+1. Proposing CamIndex overlays on DN-tree leaves
+2. Proposing K0/K1 Belichtungsmesser cascades inside traverse()
+3. Modifying `rustynum-core/src/dn_tree.rs` and `kernels.rs` directly
+
+All three approaches were wrong because the O(1) recall **already exists**
+in the DN-tree by construction.
+
+### DN = Distinguished Name — The Key IS The Path
+
+The DN-tree is a **Distinguished Name** tree. The prototype index (proto_idx)
+encodes the full tree path via quaternary decomposition:
+
+```
+proto_idx = 1500, num_prototypes = 4096
+
+Level 0: root [0, 4096)
+Level 1: 1500 / 1024 = 1   → branch [1024, 2048)    digit: 1
+Level 2: (1500-1024) / 256 = 1  → twig [1280, 1536)  digit: 1
+Level 3: (1500-1280) / 64 = 3   → leaf [1472, 1536)   digit: 3
+
+DN path: [1, 1, 3]
+```
+
+This is pure integer division. O(1) per level, O(depth) total.
+No hash table. No CamIndex. No tree walk. The index IS the address.
+
+`select_child()` in `dn_tree.rs` already implements exactly this:
+```rust
+let offset = proto_idx - node.range_lo;
+(offset / quarter_size).min(3)
+```
+
+The "full tree in one key" — each quaternary digit selects the child
+at that level. The proto_idx is the distinguished name.
+
+### Three Distinct Operations — Never Confuse Them
+
+| Operation | Mechanism | Cost | When Used |
+|-----------|-----------|------|-----------|
+| **Recall** (known key → path) | DN quaternary decomposition | O(depth) arithmetic | `update()` — walk to leaf via proto_idx |
+| **Search** (unknown query → matching leaves) | Beam search + partial Hamming | O(depth × beam × bits) | `traverse()` — similarity-based descent |
+| **Plasticity** (learn from access) | BNN `bundle_into()` | O(depth × 49152 bits) | `update()` — bundle HV into path nodes |
+
+**Recall** is what the DN-tree gives for free. It is the integer
+decomposition of the key. No search structure needed.
+
+**Search** is what `traverse()` does — when you have a query HV and
+need to find which leaves are most similar. This is where
+Belichtungsmesser K0/K1 filtering helps (reduce cost per level).
+
+**Plasticity** is what BNN provides — stochastic bundling, learning
+rate modulation, BTSP gating.
+
+### What CamIndex Actually Solves
+
+CamIndex is for a DIFFERENT problem: approximate nearest neighbor
+search over a FLAT collection of HVs. It provides O(L × (log N + W))
+lookup via multi-probe LSH.
+
+CamIndex belongs in BNN layers (`BnnLayer::build_cam_index()`) for
+O(log N) winner-take-all over neuron weights. It does NOT belong as
+a layer on top of DN-tree — the tree's own addressing scheme is
+strictly superior for structural recall.
+
+### One Binary, One Bindspace — No Crate Privacy Walls
+
+All crates compile into ONE binary. There is no runtime isolation
+between crates. `Fingerprint<256>` = `Overlay` = 2048 bytes — they
+are the SAME memory viewed through different type lenses. Everything
+is written to bindspace.
+
+DN-tree summaries, BNN weights, CamIndex prototypes — all live on
+the same `Fingerprint<256>` surface. Zero-copy. Same pointer.
+
+The Rust module `pub`/private distinction is compile-time hygiene,
+not an architectural boundary. When code needs access to DN-tree
+internals, it imports `rustynum_core::dn_tree` and uses the types
+directly. The crate boundary does NOT mean "can't touch" — it means
+"organized separately, built together."
+
+`rustynum-bnn` exists for BNN-specific logic (Belichtungsmesser,
+TraversalStats, signal quality) that doesn't belong in core but
+runs in the same binary and reads the same bindspace surface.
+
+### What rustynum-bnn Provides
+
+The `belichtungsmesser` module in `rustynum-bnn` provides K0/K1
+probe functions and TraversalStats for use **outside** the DN-tree
+traverse loop — by callers who build their own search over DN-tree
+summaries via the public `summary(node_idx)` API.
+
+```
+rustynum-bnn::belichtungsmesser
+  ├── k0_probe_conflict(a, b) → u32       Pure XOR+POPCNT
+  ├── k1_stats_conflict(a, b) → u32       8-word XOR+POPCNT
+  ├── TraversalStats                       Welford auto-adjust
+  ├── signal_quality(summary) → f32        Noise floor detection
+  ├── classify_hdr(k1, stats) → u8         HDR class from K1
+  ├── bf16_refine_cold(q, c) → u8          BF16 range awareness
+  ├── filter_children(...)  → Vec<ChildScore>  Full K0→K1→BF16 cascade
+  └── hdr_beam_width(scores, base) → usize  HDR-aware beam width
+```
+
+These are standalone compute functions. They do not import, modify,
+or wrap DN-tree internals.
