@@ -123,6 +123,10 @@ pub fn cogrecords_to_record_batch(
 }
 
 /// Convert an Arrow RecordBatch (matching `cogrecord_schema()`) back to CogRecords.
+///
+/// **Deprecated**: This copies 4 × 2048 bytes per record. Use [`cogrecord_views()`]
+/// for zero-copy access, or [`column_flat_data()`] for raw `&[u8]` slices.
+#[deprecated(note = "Use cogrecord_views() for zero-copy access")]
 pub fn record_batch_to_cogrecords(batch: &RecordBatch) -> Vec<CogRecord> {
     let n = batch.num_rows();
     let meta_col = batch
@@ -263,6 +267,7 @@ pub fn column_flat_data(col: &FixedSizeBinaryArray) -> &[u8] {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // tests exercise both old and new paths for comparison
 mod tests {
     use super::*;
 

@@ -6,8 +6,8 @@
 //!
 //! Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement.
 //!
-//! No FFI, no C dependencies. All operations use `portable_simd` with
-//! cache-blocked microkernels for maximum throughput.
+//! No FFI, no C dependencies. All operations use `simd_compat` (stable `std::arch`)
+//! with cache-blocked microkernels for maximum throughput.
 //!
 //! ## BLAS Levels
 //!

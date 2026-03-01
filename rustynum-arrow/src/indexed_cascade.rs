@@ -77,9 +77,14 @@ pub struct CascadeIndices {
 impl CascadeIndices {
     /// Build all four channel indices from a set of CogRecords.
     ///
+    /// **Deprecated**: This copies 4 × `extend_from_slice` into flat buffers (819 MB
+    /// for 100K records). Use [`build_from_arrow()`](Self::build_from_arrow) to build
+    /// directly from Arrow columns with zero intermediate allocation.
+    ///
     /// # Arguments
     /// * `records` — the CogRecord dataset
     /// * `min_cluster_size` — minimum leaf cardinality for CLAM trees
+    #[deprecated(note = "Use build_from_arrow() for zero-copy index building")]
     pub fn build(records: &[CogRecord], min_cluster_size: usize) -> Self {
         let count = records.len();
         let vec_len = CONTAINER_BYTES;
@@ -491,6 +496,11 @@ pub fn learn(indices: &mut CascadeIndices, new_records: &[CogRecord], base_row_i
 ///
 /// This is the expensive operation — O(n log n) for CLAM tree construction.
 /// Run during off-peak hours, not during query serving.
+///
+/// **Deprecated**: Use [`CascadeIndices::build_from_arrow()`] with an Arrow
+/// RecordBatch to avoid the 4 × `extend_from_slice` copy.
+#[deprecated(note = "Use CascadeIndices::build_from_arrow() for zero-copy")]
+#[allow(deprecated)]
 pub fn rebuild(records: &[CogRecord], min_cluster_size: usize) -> CascadeIndices {
     CascadeIndices::build(records, min_cluster_size)
 }
@@ -595,6 +605,7 @@ pub fn build_single_channel_index(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // tests exercise both old and new paths for comparison
 mod tests {
     use super::*;
     use rustynum_rs::NumArrayU8;
