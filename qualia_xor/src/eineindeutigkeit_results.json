@@ -1,0 +1,15 @@
+{
+  "n_items": 231,
+  "n_pairs": 26565,
+  "nib4_3sigma": 5447,
+  "nib4_min_sigma": 0.13422654569149017,
+  "nib4_mean_sigma": 2.1917102336883545,
+  "jina_3sigma": 25616,
+  "jina_min_sigma": 0.3974033296108246,
+  "jina_mean_sigma": 5.023327350616455,
+  "eineindeutig": false,
+  "kendall_tau_mean": 0.18679222176469182,
+  "bucket_a_pct": 29.4,
+  "bucket_b_pct": 70.6,
+  "bucket_c_pct": 70.6
+}

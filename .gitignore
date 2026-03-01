@@ -10,4 +10,4 @@
 # Ignore compiled shared object files
 **/*.so
 site/
-**/.DS_Store
+**/.DS_Storequalia_xor/src/jina_embeddings_1024.npy

@@ -180,7 +180,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "forward".into(),
             predicate_dims: [
-                0.7, 0.5, 0.5, 0.9, // glow, valence, rooting, agency=HIGH
+                0.7, 0.5, 0.5, 0.9, // glow, valence, agency, affectionate=HIGH
                 0.3, 0.5, 0.3, 0.1, // resonance, clarity, social, gravity=LOW
                 0.2, 0.8, 0.3, 0.2, // reverence, volition=HIGH, dissonance, staunen
                 0.1, 0.6, 0.3, 0.5, // loss, optimism, friction, equilibrium
@@ -191,7 +191,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "backward".into(),
             predicate_dims: [
-                0.3, 0.5, 0.5, 0.1, // agency=LOW
+                0.3, 0.5, 0.5, 0.1, // affectionate=LOW
                 0.7, 0.5, 0.3, 0.9, // gravity=HIGH
                 0.6, 0.2, 0.3, 0.4, 0.3, 0.4, 0.3, 0.5,
             ],
@@ -210,7 +210,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 3,
             direction: "forward".into(),
             predicate_dims: [
-                0.8, 0.7, 0.2, 0.1, // glow=HIGH, agency=LOW
+                0.8, 0.7, 0.2, 0.1, // glow=HIGH, affectionate=LOW
                 0.9, 0.3, 0.5, 0.1, // resonance=HIGH, gravity=LOW
                 0.3, 0.1, 0.1, 0.7, // volition=LOW, staunen=HIGH
                 0.1, 0.7, 0.1, 0.1, // loss=LOW, optimism=HIGH
@@ -241,7 +241,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "symmetric".into(),
             predicate_dims: [
-                0.8, 0.8, 0.8, 0.5, // high glow, valence, rooting (both agree)
+                0.8, 0.8, 0.8, 0.5, // high glow, valence, agency (both agree)
                 0.8, 0.8, 0.5, 0.5, 0.5, 0.5, 0.1, 0.5, // low dissonance (no conflict)
                 0.1, 0.8, 0.1, 0.8, // low loss, high optimism, low friction, high equilibrium
             ],
@@ -251,7 +251,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.7, 0.5, // high rooting (deep structure)
+                0.5, 0.5, 0.7, 0.5, // high agency (deep structure)
                 0.3, 0.3, 0.5, 0.7, // low clarity, high gravity (hidden rhythm)
                 0.5, 0.5, 0.6, 0.5, // moderate dissonance
                 0.3, 0.5, 0.6, 0.5, // moderate friction
@@ -262,7 +262,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "symmetric".into(),
             predicate_dims: [
-                0.5, 0.5, 0.2, 0.5, // low rooting (shallow)
+                0.5, 0.5, 0.2, 0.5, // low agency (shallow)
                 0.5, 0.9, 0.5, 0.2, // high clarity, low gravity (surface-level)
                 0.5, 0.5, 0.7, 0.5, // moderate dissonance (looks alike but isn't)
                 0.5, 0.5, 0.2, 0.3, // low friction, low equilibrium
@@ -273,7 +273,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.8, 0.3, // high rooting, low agency (containment)
+                0.5, 0.5, 0.8, 0.3, // high agency, low affectionate (containment)
                 0.5, 0.5, 0.7, 0.8, // high social, high gravity
                 0.5, 0.3, 0.1, 0.3, 0.1, 0.5, 0.1, 0.7, // low loss, high equilibrium
             ],
@@ -294,7 +294,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 1,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.7, 0.3, // high rooting, low agency (schema binding)
+                0.5, 0.5, 0.7, 0.3, // high agency, low affectionate (schema binding)
                 0.5, 0.9, 0.5, 0.5, // high clarity
                 0.5, 0.3, 0.1, 0.3, 0.1, 0.5, 0.1, 0.9,
             ],
@@ -304,7 +304,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "backward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.2, // low agency (passive: was developed)
+                0.5, 0.5, 0.5, 0.2, // low affectionate (passive: was developed)
                 0.5, 0.5, 0.7, 0.8, // high social, high gravity
                 0.3, 0.2, 0.3, 0.3, 0.3, 0.5, 0.3, 0.5,
             ],
@@ -339,7 +339,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 2,
             direction: "forward".into(),
             predicate_dims: [
-                0.5, 0.5, 0.5, 0.7, // high agency (active investment)
+                0.5, 0.5, 0.5, 0.7, // high affectionate (active investment)
                 0.5, 0.5, 0.7, 0.5, 0.3, 0.7, 0.3, 0.3, // high volition
                 0.3, 0.7, 0.5, 0.5,
             ],
@@ -349,7 +349,7 @@ fn hardened_rel_contracts() -> Vec<RelTypeContract> {
             causal_rung: 3,
             direction: "forward".into(),
             predicate_dims: [
-                0.3, 0.2, 0.5, 0.9, // low valence, high agency
+                0.3, 0.2, 0.5, 0.9, // low valence, high affectionate
                 0.3, 0.5, 0.3, 0.3, 0.2, 0.8, 0.8, 0.2, // high volition, high dissonance
                 0.5, 0.2, 0.8, 0.2, // high friction, low equilibrium
             ],

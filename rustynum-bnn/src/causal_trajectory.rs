@@ -34,7 +34,7 @@
 //! - Czégel et al. 2021: error thresholds for staged assembly via Hold state
 
 use rustynum_core::fingerprint::Fingerprint;
-use rustynum_core::kernels::SignificanceLevel;
+use rustynum_core::kernels::{score_sigma, EnergyConflict, SigmaGate, SignificanceLevel};
 use rustynum_core::layer_stack::CollapseGate;
 
 use crate::cross_plane::{CrossPlaneVote, HaloType, InferenceMode};
@@ -223,16 +223,50 @@ pub struct EwmCorrection {
     pub p_correction: [u32; 256],
     /// Per-word L1 correction magnitude for O-plane.
     pub o_correction: [u32; 256],
+    /// Per-plane EWM tier classification from σ-significance.
+    ///
+    /// Derived from the aggregate correction magnitude via score_sigma():
+    /// lower correction = closer to convergence = higher tier.
+    pub plane_tiers: [EwmTier; 3],
 }
 
 impl EwmCorrection {
     /// Compute per-word L1 correction between two snapshots.
+    ///
+    /// Also classifies per-plane aggregate correction into EwmTier via σ-scoring.
     pub fn compute(prev: &ResonatorSnapshot, curr: &ResonatorSnapshot) -> Self {
+        Self::compute_with_gate(prev, curr, &SigmaGate::sku_16k())
+    }
+
+    /// Compute with a specific σ-gate (e.g., for SKU-64K).
+    pub fn compute_with_gate(prev: &ResonatorSnapshot, curr: &ResonatorSnapshot, gate: &SigmaGate) -> Self {
+        let s_correction = per_word_popcount(&(&curr.s_est ^ &prev.s_est));
+        let p_correction = per_word_popcount(&(&curr.p_est ^ &prev.p_est));
+        let o_correction = per_word_popcount(&(&curr.o_est ^ &prev.o_est));
+
+        // Classify per-plane aggregate correction → EwmTier.
+        // Lower aggregate correction = resonator converging = higher tier.
+        let totals = [
+            s_correction.iter().sum::<u32>(),
+            p_correction.iter().sum::<u32>(),
+            o_correction.iter().sum::<u32>(),
+        ];
+        let plane_tiers = totals.map(|total| {
+            let ec = EnergyConflict {
+                conflict: total,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            };
+            EwmTier::from(score_sigma(&ec, gate).level)
+        });
+
         Self {
             iter: curr.iter,
-            s_correction: per_word_popcount(&(&curr.s_est ^ &prev.s_est)),
-            p_correction: per_word_popcount(&(&curr.p_est ^ &prev.p_est)),
-            o_correction: per_word_popcount(&(&curr.o_est ^ &prev.o_est)),
+            s_correction,
+            p_correction,
+            o_correction,
+            plane_tiers,
         }
     }
 
@@ -828,6 +862,12 @@ pub struct NarsCausalStatement {
     pub iter: u16,
     /// The inference mode that generated this statement.
     pub inference_mode: Option<InferenceMode>,
+    /// σ-significance of the underlying evidence, if available.
+    ///
+    /// When present, this is the σ-score of the Hamming distance that
+    /// generated this statement. The p-value can replace heuristic
+    /// confidence scaling.
+    pub sigma: Option<SignificanceLevel>,
 }
 
 // ============================================================================
@@ -886,6 +926,10 @@ pub struct CausalTrajectory {
     pub nars_statements: Vec<NarsCausalStatement>,
     /// Sigma Graph edges to create.
     pub sigma_edges: Vec<SigmaEdge>,
+    /// Per-plane σ-stripe population tracker across iteration windows.
+    pub shift_detector: ShiftDetector,
+    /// σ-gate for computing significance from raw Hamming distances.
+    sigma_gate: SigmaGate,
 }
 
 impl CausalTrajectory {
@@ -899,12 +943,23 @@ impl CausalTrajectory {
             halo_transitions: Vec::new(),
             nars_statements: Vec::new(),
             sigma_edges: Vec::new(),
+            shift_detector: ShiftDetector::new(),
+            sigma_gate: SigmaGate::sku_16k(),
+        }
+    }
+
+    /// Create a trajectory with a custom σ-gate (e.g., SKU-64K).
+    pub fn with_sigma_gate(gate: SigmaGate) -> Self {
+        Self {
+            sigma_gate: gate,
+            ..Self::new()
         }
     }
 
     /// Record a new snapshot and run all instrumentation.
     ///
     /// This is the main entry point called at each resonator iteration.
+    /// Feeds the ShiftDetector with per-plane σ-significance from convergence deltas.
     pub fn record_iteration(&mut self, snapshot: ResonatorSnapshot) {
         let n = self.snapshots.len();
 
@@ -938,6 +993,26 @@ impl CausalTrajectory {
             self.halo_transitions.extend(transitions);
         }
 
+        // Feed per-plane convergence deltas into ShiftDetector as σ-scores.
+        // The delta IS a Hamming distance between consecutive estimates — feed
+        // it through score_sigma to get per-plane σ-significance.
+        let deltas = [snapshot.delta_s, snapshot.delta_p, snapshot.delta_o];
+        for (plane, &delta) in deltas.iter().enumerate() {
+            let ec = EnergyConflict {
+                conflict: delta,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            };
+            let sigma = score_sigma(&ec, &self.sigma_gate);
+            self.shift_detector.record(plane, sigma.sigma);
+        }
+
+        // Advance shift window every 4 iterations for smoothing.
+        if (snapshot.iter + 1).is_multiple_of(4) {
+            self.shift_detector.advance_window();
+        }
+
         self.snapshots.push(snapshot);
     }
 
@@ -954,6 +1029,7 @@ impl CausalTrajectory {
                     truth: NarsTruth::new(0.8, confidence.min(0.9)),
                     iter,
                     inference_mode: transition.to.inference_mode(),
+                    sigma: None,
                 });
             }
             std::cmp::Ordering::Less => {
@@ -966,6 +1042,7 @@ impl CausalTrajectory {
                     truth: NarsTruth::new(0.2, confidence.min(0.9)),
                     iter,
                     inference_mode: transition.from.inference_mode(),
+                    sigma: None,
                 });
             }
             std::cmp::Ordering::Equal => {} // Same level: lateral movement, no causal signal
@@ -1048,6 +1125,7 @@ impl CausalTrajectory {
                         ),
                         iter: self.snapshots.last().map_or(0, |s| s.iter),
                         inference_mode: None,
+                        sigma: None,
                     });
                 }
             }
@@ -1057,6 +1135,8 @@ impl CausalTrajectory {
     /// Evaluate the overall gate decision from the trajectory.
     ///
     /// Uses the final snapshot's convergence state + accumulated NARS evidence.
+    /// ShiftDetector provides distributional bias: if the population is migrating
+    /// toward noise → Hold (don't commit while ground moves), toward foveal → Flow.
     pub fn gate_decision(&self) -> CollapseGate {
         let Some(last) = self.snapshots.last() else {
             return CollapseGate::Block;
@@ -1079,12 +1159,28 @@ impl CausalTrajectory {
             .filter(|s| s.relation == CausalRelation::Contradicts)
             .count();
 
-        if last.converged(100) && supports > undermines + contradicts {
+        // Base decision from NARS evidence
+        let nars_decision = if last.converged(100) && supports > undermines + contradicts {
             CollapseGate::Flow
         } else if contradicts > supports {
             CollapseGate::Block
         } else {
             CollapseGate::Hold
+        };
+
+        // ShiftDetector bias: distributional migration can override Hold↔Flow.
+        // Block is never overridden — if NARS says Block, that's final.
+        match (nars_decision, self.shift_detector.gate_bias()) {
+            // Block from NARS is always final
+            (CollapseGate::Block, _) => CollapseGate::Block,
+            // ShiftDetector says Hold but NARS says Flow → Hold wins
+            // (world is drifting, don't commit yet)
+            (CollapseGate::Flow, Some(CollapseGate::Hold)) => CollapseGate::Hold,
+            // ShiftDetector says Flow but NARS says Hold → Flow wins
+            // (world is clarifying, accelerate commit)
+            (CollapseGate::Hold, Some(CollapseGate::Flow)) => CollapseGate::Flow,
+            // Otherwise: NARS decision stands
+            (decision, _) => decision,
         }
     }
 
@@ -1659,6 +1755,7 @@ mod tests {
             truth: NarsTruth::new(0.9, 0.8),
             iter: 4,
             inference_mode: Some(InferenceMode::Forward),
+            sigma: Some(SignificanceLevel::Strong),
         });
 
         assert_eq!(traj.gate_decision(), CollapseGate::Flow);
@@ -1681,6 +1778,7 @@ mod tests {
                 truth: NarsTruth::new(0.5, 0.7),
                 iter: 0,
                 inference_mode: None,
+                sigma: None,
             });
         }
 

@@ -118,8 +118,8 @@ const DIMS_16_JSON: &[&str] = &[
 const DIMS_16_NAMES: &[&str] = &[
     "glow",
     "valence",
-    "rooting",
     "agency",
+    "affectionate",
     "resonance",
     "clarity",
     "social",
@@ -887,8 +887,8 @@ fn main() -> Result<()> {
     let dim_names = [
         "glow",
         "valence",
-        "rooting",
         "agency",
+        "affectionate",
         "resonance",
         "clarity",
         "social",

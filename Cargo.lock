@@ -4307,6 +4307,7 @@ name = "qualia-xor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rustynum-core",
  "serde",
  "serde_json",
 ]
