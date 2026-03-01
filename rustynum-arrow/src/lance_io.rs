@@ -6,6 +6,7 @@
 //!
 //! All functions are async (Lance uses tokio internally).
 
+#[allow(deprecated)] // read_cogrecords still uses copying path (P1 debt)
 use crate::arrow_bridge::{
     cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords,
 };

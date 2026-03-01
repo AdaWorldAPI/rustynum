@@ -3,6 +3,13 @@ name = "qualia-xor"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+# Enable BERT embedding comparison (requires candle ML framework + tokenizers).
+# Without this feature, only the Nib4/SPO binaries (edge-vectors, cypher-vsa,
+# hydrate-agents) are available.
+bert = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers"]
+
 [dependencies]
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -13,6 +20,17 @@ anyhow = "1"
 
 # Core compute — SIMD kernels, σ-significance, SPO encoding
 rustynum-core = { path = "../rustynum-core" }
+
+# BERT embedding (optional — heavy ML deps, only needed for qualia-xor main binary)
+candle-core = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+tokenizers = { version = "0.20", optional = true }
+
+[[bin]]
+name = "qualia-xor"
+path = "src/main.rs"
+required-features = ["bert"]
 
 [[bin]]
 name = "edge-vectors"

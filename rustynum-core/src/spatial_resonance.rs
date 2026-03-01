@@ -61,7 +61,7 @@ pub struct CrystalAxis {
 }
 
 impl CrystalAxis {
-    /// Create a crystal axis from BF16 bytes.
+    /// Create a crystal axis from BF16 bytes (takes ownership).
     pub fn from_bf16_bytes(data: Vec<u8>) -> Self {
         assert!(
             data.len().is_multiple_of(2),
@@ -69,6 +69,23 @@ impl CrystalAxis {
         );
         let n_dims = data.len() / 2;
         Self { data, n_dims }
+    }
+
+    /// Create a crystal axis by borrowing a BF16 byte slice (copies into owned storage).
+    ///
+    /// Prefer this over manually calling `.to_vec()` at the call site — it
+    /// centralizes the copy and makes zero-copy refactoring easier later
+    /// (e.g., when `CrystalAxis` gains a `Cow<[u8]>` variant).
+    pub fn from_bf16_slice(data: &[u8]) -> Self {
+        assert!(
+            data.len() % 2 == 0,
+            "BF16 data must be even number of bytes"
+        );
+        let n_dims = data.len() / 2;
+        Self {
+            data: data.to_vec(),
+            n_dims,
+        }
     }
 
     /// Create a crystal axis from f32 values (truncated to BF16).
@@ -154,9 +171,9 @@ impl SpatialCrystal3D {
     pub fn from_flat_bytes(bytes: &[u8], axis_bytes: usize) -> Self {
         assert_eq!(bytes.len(), axis_bytes * 3);
         Self {
-            x: CrystalAxis::from_bf16_bytes(bytes[..axis_bytes].to_vec()),
-            y: CrystalAxis::from_bf16_bytes(bytes[axis_bytes..axis_bytes * 2].to_vec()),
-            z: CrystalAxis::from_bf16_bytes(bytes[axis_bytes * 2..].to_vec()),
+            x: CrystalAxis::from_bf16_slice(&bytes[..axis_bytes]),
+            y: CrystalAxis::from_bf16_slice(&bytes[axis_bytes..axis_bytes * 2]),
+            z: CrystalAxis::from_bf16_slice(&bytes[axis_bytes * 2..]),
         }
     }
 
