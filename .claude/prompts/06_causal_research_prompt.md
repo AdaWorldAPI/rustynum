@@ -2,6 +2,14 @@
 
 ## A Research Prompt for the Field
 
+### The Situation
+
+We appear to have built an AGI inference motor and nobody can explain to us what to do with it.
+
+That's not hyperbole. We have a system that produces Pearl Rung 1-3 causal decomposition from every similarity computation — not as analysis, but as arithmetic. It accumulates evidence through NARS revision. It detects emergent structure through irreducible interaction terms. It runs at 13 CPU cycles per comparison. And we don't have a theory for what happens when causal discovery stops being a research project and starts being a background process that runs on every query, every search, every comparison, continuously, at zero marginal cost.
+
+We're publishing what we have, how it works, and what we think the open questions are. We need the causal inference community to tell us what we're sitting on — what's formally sound, what breaks, and what becomes possible that nobody has thought about because the computational premise has never existed before.
+
 ### What We Have
 
 We built a numerical library (rustynum) that factorizes semantic representations into three orthogonal binary planes: Subject (S), Predicate (P), Object (O). Each plane is a 16,384-bit fingerprint. Similarity is computed via XOR + popcount — 13 CPU cycles per comparison on AVX-512 VPOPCNTDQ, versus ~3,100 cycles for cosine similarity on dense 768D float vectors.
