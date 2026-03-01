@@ -105,5 +105,11 @@ pub use cam_index::{CamConfig, CamHit, CamIndex};
 pub mod dn_tree;
 pub use dn_tree::{DNConfig, DNNode, DNTree, DNTreeStats, TraversalHit};
 
+// Qualia gate: homunculus-shaped gating types for the ResonanzZirkel
+// TuningFork = individual qualia coordinate, ResonanzZirkel = circular topology
+// Gate enforcement lives upstream (Sieves of Socrates in crewai-rust)
+pub mod qualia_gate;
+pub use qualia_gate::{GatedQualia, QualiaGateLevel, ResonanzZirkel, TuningFork};
+
 // BNN inference primitives live in rustynum-bnn crate (not core).
 // BNN is purely additive neural plasticity — consumes core types without modifying them.

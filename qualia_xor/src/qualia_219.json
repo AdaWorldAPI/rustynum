@@ -45,7 +45,8 @@
     "neighbors": [
       "joy_survived",
       "holy_sorrow"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "endurance_dignified_silence",
@@ -88,7 +89,8 @@
     ],
     "neighbors": [
       "empty_throne"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "liberation_bare_spine",
@@ -132,11 +134,12 @@
     "neighbors": [
       "happy_defiant",
       "anthem_spine"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_stay_when_ugly",
-    "label": "Devotion (staying when it\u2019s ugly)",
+    "label": "Devotion (staying when it’s ugly)",
     "family": "Devotion",
     "subfamily": "steadfast",
     "vector": {
@@ -181,7 +184,8 @@
       "devotion_soft",
       "devotion_unpaid",
       "relief_tears"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_gentle_guardian",
@@ -227,7 +231,8 @@
     "neighbors": [
       "calm_safe",
       "devotion_soft"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_worship_without_church",
@@ -275,7 +280,8 @@
       "joy_survived",
       "ritual_yes",
       "holy_sorrow"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_hurt_but_here",
@@ -324,7 +330,8 @@
       "touch_starved",
       "smile_cracks",
       "forgive_without_return"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_heartbeat_oath",
@@ -370,7 +377,8 @@
     "neighbors": [
       "confident_sensual",
       "gentle_magnet"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_after_fight",
@@ -416,7 +424,8 @@
     "neighbors": [
       "sun_after_storm",
       "relief_tears"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_vigil",
@@ -463,7 +472,8 @@
     "neighbors": [
       "sad_private",
       "holy_sorrow"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_bold_yes",
@@ -510,7 +520,8 @@
     "neighbors": [
       "anthem_spine",
       "happy_defiant"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_unconditional_soft",
@@ -555,7 +566,8 @@
     "neighbors": [
       "calm_safe",
       "devotion_soft"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_jealous_prayer",
@@ -602,7 +614,8 @@
       "heat_under_ice",
       "sharp_confession",
       "danger_sleek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_forgive_and_hold_line",
@@ -647,7 +660,8 @@
     "neighbors": [
       "forgive_without_return",
       "anger_clean"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_honeyed_confession",
@@ -693,7 +707,8 @@
     "neighbors": [
       "gentle_magnet",
       "confident_sensual"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_last_train_home",
@@ -739,7 +754,8 @@
     "neighbors": [
       "nostalgia_glow",
       "longing_open"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_shelter_in_public",
@@ -785,7 +801,8 @@
     "neighbors": [
       "happy_simple",
       "joy_survived"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_sacrament_of_ordinary",
@@ -831,7 +848,8 @@
     "neighbors": [
       "transcendent_still",
       "devotion_soft"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_unseen_labor",
@@ -876,7 +894,8 @@
     "neighbors": [
       "sad_private",
       "endurance_dignified_silence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_yes_with_fear",
@@ -922,7 +941,8 @@
     "neighbors": [
       "touch_starved",
       "sharp_confession"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_held_after_break",
@@ -967,7 +987,8 @@
     "neighbors": [
       "relief_tears",
       "sun_after_storm"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_oath_in_minor",
@@ -1013,7 +1034,8 @@
     "neighbors": [
       "endurance_dignified_silence",
       "empty_throne"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_clarity_kiss",
@@ -1054,12 +1076,13 @@
       "authentic"
     ],
     "truth_anchor_candidates": [
-      "keep the direct cadence (don\u2019t over-jazz)"
+      "keep the direct cadence (don’t over-jazz)"
     ],
     "neighbors": [
       "anthem_spine",
       "confident_sensual"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_open_hands",
@@ -1106,7 +1129,8 @@
       "longing_open",
       "smile_cracks",
       "touch_starved"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_phone_in_hand",
@@ -1153,7 +1177,8 @@
     "neighbors": [
       "touch_starved",
       "sad_private"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_train_window",
@@ -1195,12 +1220,13 @@
       "nostalgic_voicings"
     ],
     "truth_anchor_candidates": [
-      "keep descending line in verse (don\u2019t flip upward too soon)"
+      "keep descending line in verse (don’t flip upward too soon)"
     ],
     "neighbors": [
       "nostalgia_glow",
       "devotion_last_train_home"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_sweet_surrender",
@@ -1246,7 +1272,8 @@
     "neighbors": [
       "forgive_without_return",
       "relief_tears"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_moonlit_pull",
@@ -1287,13 +1314,14 @@
       "dorian_shadow_optional"
     ],
     "truth_anchor_candidates": [
-      "keep chromatic approach note (don\u2019t diatonize)"
+      "keep chromatic approach note (don’t diatonize)"
     ],
     "neighbors": [
       "gentle_magnet",
       "danger_sleek",
       "heat_under_ice"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_bright_edge",
@@ -1338,7 +1366,8 @@
     "neighbors": [
       "longing_open",
       "sun_after_storm"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_hollow_room",
@@ -1384,7 +1413,8 @@
     "neighbors": [
       "lonely_glitter",
       "sad_private"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_prayer_disguised",
@@ -1431,7 +1461,8 @@
     "neighbors": [
       "joy_survived",
       "devotion_worship_without_church"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_knife_softly",
@@ -1479,7 +1510,8 @@
       "smile_cracks",
       "sharp_confession",
       "danger_sleek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_sunrise_text",
@@ -1525,7 +1557,8 @@
     "neighbors": [
       "longing_phone_in_hand",
       "longing_bright_edge"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_body_memory",
@@ -1571,7 +1604,8 @@
     "neighbors": [
       "gentle_magnet",
       "confident_sensual"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_doorway_pause",
@@ -1617,7 +1651,8 @@
     "neighbors": [
       "touch_starved",
       "smile_cracks"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_clean_hurt",
@@ -1658,12 +1693,13 @@
       "sparse_voicings"
     ],
     "truth_anchor_candidates": [
-      "keep the plain descending line (don\u2019t ornament)"
+      "keep the plain descending line (don’t ornament)"
     ],
     "neighbors": [
       "sad_private",
       "lonely_glitter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_choir_ache",
@@ -1710,7 +1746,8 @@
       "ritual_yes",
       "joy_survived",
       "holy_sorrow"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_warm_regret",
@@ -1756,7 +1793,8 @@
     "neighbors": [
       "nostalgia_glow",
       "forgive_without_return"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_defiant_reach",
@@ -1783,7 +1821,7 @@
       "resolution_hunger": 0.85
     },
     "qualia": [
-      "I want you and I\u2019m not small for it",
+      "I want you and I’m not small for it",
       "reach with spine"
     ],
     "melodic_motions": [
@@ -1802,7 +1840,8 @@
     "neighbors": [
       "rooted_defiance",
       "anthem_spine"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "longing_snowglobe_memory",
@@ -1843,12 +1882,13 @@
       "open_intervals"
     ],
     "truth_anchor_candidates": [
-      "keep arrangement airy (don\u2019t thicken)"
+      "keep arrangement airy (don’t thicken)"
     ],
     "neighbors": [
       "nostalgia_glow",
       "lonely_glitter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "desire_unapologetic_pull",
@@ -1894,7 +1934,8 @@
     "neighbors": [
       "anthem_spine",
       "longing_defiant_reach"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "desire_slow_burn",
@@ -1940,7 +1981,8 @@
     "neighbors": [
       "heat_under_ice",
       "gentle_magnet"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "desire_body_first",
@@ -1984,7 +2026,8 @@
     "neighbors": [
       "longing_body_memory",
       "confident_sensual"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "desire_want_with_teeth",
@@ -2028,7 +2071,8 @@
     "neighbors": [
       "sharp_confession",
       "danger_sleek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "desire_tender_request",
@@ -2072,7 +2116,8 @@
     "neighbors": [
       "longing_open_hands",
       "devotion_soft"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "grief_private_weight",
@@ -2116,7 +2161,8 @@
     "neighbors": [
       "sad_private",
       "lonely_glitter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "grief_sacred_mourning",
@@ -2160,7 +2206,8 @@
     "neighbors": [
       "holy_sorrow",
       "joy_survived"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "grief_memory_flash",
@@ -2199,12 +2246,13 @@
       "avoid_cadence"
     ],
     "truth_anchor_candidates": [
-      "keep the jolt (don\u2019t smooth rhythm)"
+      "keep the jolt (don’t smooth rhythm)"
     ],
     "neighbors": [
       "sharp_confession",
       "smile_cracks"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "grief_soft_acceptance",
@@ -2248,7 +2296,8 @@
     "neighbors": [
       "relief_tears",
       "sun_after_storm"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "grief_unfinished_sentence",
@@ -2292,7 +2341,8 @@
     "neighbors": [
       "longing_doorway_pause",
       "sad_private"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "anger_clean_no",
@@ -2337,7 +2387,8 @@
     "neighbors": [
       "anger_clean",
       "goodbye_with_teeth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "anger_righteous_heat",
@@ -2376,12 +2427,13 @@
       "anthemic_drive"
     ],
     "truth_anchor_candidates": [
-      "keep the upward leap (don\u2019t soften)"
+      "keep the upward leap (don’t soften)"
     ],
     "neighbors": [
       "rooted_defiance",
       "triumph_earned"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "anger_tired",
@@ -2425,7 +2477,8 @@
     "neighbors": [
       "endurance_dignified_silence",
       "empty_throne"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "anger_feral_burst",
@@ -2468,7 +2521,8 @@
     ],
     "neighbors": [
       "angry_feral"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "anger_controlled_cut",
@@ -2512,7 +2566,8 @@
     "neighbors": [
       "sharp_confession",
       "danger_sleek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "power_rooted_presence",
@@ -2556,7 +2611,8 @@
     "neighbors": [
       "rooted_defiance",
       "empty_throne"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "power_crowned_after_cost",
@@ -2599,7 +2655,8 @@
     ],
     "neighbors": [
       "triumph_earned"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "power_unshowy_control",
@@ -2642,7 +2699,8 @@
     ],
     "neighbors": [
       "power_rooted_presence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "power_commanding_voice",
@@ -2686,7 +2744,8 @@
     "neighbors": [
       "anthem_spine",
       "happy_defiant"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "power_dangerous_calm",
@@ -2730,7 +2789,8 @@
     "neighbors": [
       "danger_sleek",
       "anger_controlled_cut"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "repair_after_shatter",
@@ -2774,7 +2834,8 @@
     "neighbors": [
       "relief_tears",
       "devotion_after_fight"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "repair_bandage_kindness",
@@ -2818,7 +2879,8 @@
     "neighbors": [
       "calm_safe",
       "repair_after_shatter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "repair_earned_trust",
@@ -2861,7 +2923,8 @@
     "neighbors": [
       "sun_after_storm",
       "repair_bandage_kindness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "repair_no_promises",
@@ -2905,7 +2968,8 @@
     "neighbors": [
       "power_unshowy_control",
       "endurance_ritual_breathing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "repair_touch_returns",
@@ -2949,7 +3013,8 @@
     "neighbors": [
       "longing_open_hands",
       "repair_earned_trust"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_whole_with_scar",
@@ -2993,7 +3058,8 @@
     "neighbors": [
       "triumph_earned",
       "joy_survived"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_yes_and_no",
@@ -3035,7 +3101,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_soft_arrival",
@@ -3078,7 +3145,8 @@
     "neighbors": [
       "transcendent_still",
       "power_unshowy_control"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_breathing_whole",
@@ -3120,7 +3188,8 @@
     ],
     "neighbors": [
       "integration_soft_arrival"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_final_truth",
@@ -3161,7 +3230,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "awe_vast_open_sky",
@@ -3205,7 +3275,8 @@
     "neighbors": [
       "transcendent_still",
       "integration_soft_arrival"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "awe_breath_taken",
@@ -3249,7 +3320,8 @@
     "neighbors": [
       "awe_vast_open_sky",
       "stillness_time_stops"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "awe_cosmic_smallness",
@@ -3292,7 +3364,8 @@
     ],
     "neighbors": [
       "stillness_witnessing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "awe_sacred_light",
@@ -3336,7 +3409,8 @@
     "neighbors": [
       "devotion_worship_without_church",
       "transcendent_still"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "awe_wordless_yes",
@@ -3378,7 +3452,8 @@
     ],
     "neighbors": [
       "integration_final_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "stillness_time_stops",
@@ -3422,7 +3497,8 @@
     "neighbors": [
       "awe_breath_taken",
       "stillness_witnessing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "stillness_witnessing",
@@ -3465,7 +3541,8 @@
     "neighbors": [
       "awe_cosmic_smallness",
       "integration_soft_arrival"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "stillness_after_truth",
@@ -3505,7 +3582,8 @@
     ],
     "neighbors": [
       "integration_final_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "stillness_safe_void",
@@ -3546,7 +3624,8 @@
     ],
     "neighbors": [
       "transcendent_still"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "stillness_edge_of_sleep",
@@ -3588,7 +3667,8 @@
     ],
     "neighbors": [
       "stillness_safe_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "innocence_first_light",
@@ -3632,7 +3712,8 @@
     "neighbors": [
       "happy_simple",
       "awe_wordless_yes"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "innocence_unquestioned_trust",
@@ -3676,7 +3757,8 @@
     "neighbors": [
       "calm_safe",
       "innocence_first_light"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "innocence_before_knowing",
@@ -3719,7 +3801,8 @@
     "neighbors": [
       "nostalgia_glow",
       "innocence_first_light"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "innocence_vulnerable_smile",
@@ -3763,7 +3846,8 @@
     "neighbors": [
       "repair_touch_returns",
       "longing_open_hands"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "innocence_playful_hum",
@@ -3805,7 +3889,8 @@
     ],
     "neighbors": [
       "play_private_delight"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "play_light_feet",
@@ -3849,7 +3934,8 @@
     "neighbors": [
       "happy_simple",
       "playful_confidence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "play_teasing_wink",
@@ -3893,7 +3979,8 @@
     "neighbors": [
       "gentle_magnet",
       "confident_sensual"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "play_rule_break_smile",
@@ -3937,7 +4024,8 @@
     "neighbors": [
       "anger_clean_no",
       "play_teasing_wink"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "play_private_delight",
@@ -3979,7 +4067,8 @@
     ],
     "neighbors": [
       "innocence_playful_hum"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "play_childlike_energy",
@@ -4023,7 +4112,8 @@
     "neighbors": [
       "happy_simple",
       "innocence_first_light"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "courage_quiet_step_forward",
@@ -4067,7 +4157,8 @@
     "neighbors": [
       "repair_earned_trust",
       "risk_edge_peek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "courage_voice_unsteady",
@@ -4111,7 +4202,8 @@
     "neighbors": [
       "sharp_confession",
       "risk_seen"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "courage_public_stand",
@@ -4154,7 +4246,8 @@
     ],
     "neighbors": [
       "power_crowned_after_cost"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "courage_repeat_attempt",
@@ -4197,7 +4290,8 @@
     "neighbors": [
       "endurance_dignified_silence",
       "repair_after_shatter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "courage_truth_before_outcome",
@@ -4239,7 +4333,8 @@
     ],
     "neighbors": [
       "integration_yes_and_no"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "risk_edge_peek",
@@ -4282,7 +4377,8 @@
     ],
     "neighbors": [
       "courage_quiet_step_forward"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "risk_seen",
@@ -4324,7 +4420,8 @@
     ],
     "neighbors": [
       "courage_voice_unsteady"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "risk_all_in",
@@ -4368,7 +4465,8 @@
     "neighbors": [
       "desire_unapologetic_pull",
       "anger_feral_burst"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "risk_irreversible_step",
@@ -4411,7 +4509,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "risk_blind_trust",
@@ -4455,7 +4554,8 @@
     "neighbors": [
       "devotion_soft",
       "courage_quiet_step_forward"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "curiosity_open_ear",
@@ -4499,7 +4599,8 @@
     "neighbors": [
       "risk_edge_peek",
       "curiosity_wide_eyes"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "curiosity_wide_eyes",
@@ -4542,7 +4643,8 @@
     ],
     "neighbors": [
       "innocence_before_knowing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "curiosity_cautious_peek",
@@ -4585,7 +4687,8 @@
     ],
     "neighbors": [
       "risk_edge_peek"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "curiosity_playful_probe",
@@ -4628,7 +4731,8 @@
     ],
     "neighbors": [
       "play_rule_break_smile"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "curiosity_hungry_focus",
@@ -4669,7 +4773,8 @@
     ],
     "neighbors": [
       "discovery_pattern_click"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "discovery_pattern_click",
@@ -4711,7 +4816,8 @@
     ],
     "neighbors": [
       "curiosity_hungry_focus"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "discovery_unexpected_truth",
@@ -4738,7 +4844,7 @@
       "resolution_hunger": 0.45
     },
     "qualia": [
-      "didn\u2019t expect that",
+      "didn’t expect that",
       "truth lands"
     ],
     "melodic_motions": [
@@ -4754,7 +4860,8 @@
     ],
     "neighbors": [
       "integration_yes_and_no"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "discovery_hidden_room",
@@ -4795,7 +4902,8 @@
     ],
     "neighbors": [
       "awe_vast_open_sky"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "discovery_self_recognition",
@@ -4836,7 +4944,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "discovery_world_reenchanted",
@@ -4879,7 +4988,8 @@
     ],
     "neighbors": [
       "awe_wordless_yes"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "surrender_exhale_finally",
@@ -4923,7 +5033,8 @@
     "neighbors": [
       "stillness_safe_void",
       "integration_soft_arrival"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "surrender_no_more_fight",
@@ -4966,7 +5077,8 @@
     ],
     "neighbors": [
       "stillness_after_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "surrender_into_unknown",
@@ -5009,7 +5121,8 @@
     ],
     "neighbors": [
       "awe_cosmic_smallness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "surrender_soft_collapse",
@@ -5050,7 +5163,8 @@
     ],
     "neighbors": [
       "repair_bandage_kindness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "surrender_truth_without_defense",
@@ -5091,7 +5205,8 @@
     ],
     "neighbors": [
       "courage_truth_before_outcome"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "trust_letting_be_held",
@@ -5132,7 +5247,8 @@
     ],
     "neighbors": [
       "surrender_soft_collapse"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "trust_without_proof",
@@ -5173,7 +5289,8 @@
     ],
     "neighbors": [
       "risk_blind_trust"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "trust_after_test",
@@ -5213,7 +5330,8 @@
     ],
     "neighbors": [
       "repair_earned_trust"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "trust_shared_weight",
@@ -5253,7 +5371,8 @@
     ],
     "neighbors": [
       "devotion_soft"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "trust_resting_in_flow",
@@ -5293,7 +5412,8 @@
     ],
     "neighbors": [
       "stillness_safe_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "loss_control_ground_slips",
@@ -5336,7 +5456,8 @@
     ],
     "neighbors": [
       "risk_irreversible_step"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "loss_control_words_fail",
@@ -5377,7 +5498,8 @@
     ],
     "neighbors": [
       "courage_voice_unsteady"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "loss_control_body_leads",
@@ -5419,7 +5541,8 @@
     ],
     "neighbors": [
       "desire_body_first"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "loss_control_overwhelm",
@@ -5461,7 +5584,8 @@
     ],
     "neighbors": [
       "anger_feral_burst"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "loss_control_silent_panic",
@@ -5502,7 +5626,8 @@
     ],
     "neighbors": [
       "sad_private"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "release_tears_fall",
@@ -5543,7 +5668,8 @@
     ],
     "neighbors": [
       "repair_after_shatter"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "release_laughter_break",
@@ -5584,7 +5710,8 @@
     ],
     "neighbors": [
       "play_light_feet"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "release_breathing_again",
@@ -5625,7 +5752,8 @@
     ],
     "neighbors": [
       "trust_resting_in_flow"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "release_energy_discharged",
@@ -5666,7 +5794,8 @@
     ],
     "neighbors": [
       "stillness_after_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "release_acceptance",
@@ -5706,7 +5835,8 @@
     ],
     "neighbors": [
       "integration_final_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "transformation_skin_shedding",
@@ -5750,7 +5880,8 @@
     "neighbors": [
       "risk_irreversible_step",
       "loss_control_ground_slips"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "transformation_point_of_no_return",
@@ -5791,7 +5922,8 @@
     ],
     "neighbors": [
       "risk_irreversible_step"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "transformation_internal_rewrite",
@@ -5827,11 +5959,12 @@
       "modal_reinterpretation"
     ],
     "truth_anchor_candidates": [
-      "invert motif, don\u2019t vary it"
+      "invert motif, don’t vary it"
     ],
     "neighbors": [
       "discovery_self_recognition"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "transformation_burning_bridge",
@@ -5875,7 +6008,8 @@
     "neighbors": [
       "anger_controlled_cut",
       "loss_control_overwhelm"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "transformation_identity_blur",
@@ -5916,7 +6050,8 @@
     ],
     "neighbors": [
       "stillness_edge_of_sleep"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "becoming_first_shape",
@@ -5957,7 +6092,8 @@
     ],
     "neighbors": [
       "transformation_identity_blur"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "becoming_learning_voice",
@@ -5998,7 +6134,8 @@
     ],
     "neighbors": [
       "curiosity_hungry_focus"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "becoming_standing_differently",
@@ -6039,7 +6176,8 @@
     ],
     "neighbors": [
       "power_rooted_presence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "becoming_without_announcement",
@@ -6079,7 +6217,8 @@
     ],
     "neighbors": [
       "integration_soft_arrival"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "becoming_self_trust",
@@ -6119,7 +6258,8 @@
     ],
     "neighbors": [
       "trust_after_test"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "death_final_note",
@@ -6161,7 +6301,8 @@
     ],
     "neighbors": [
       "stillness_after_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "death_identity_extinguished",
@@ -6202,7 +6343,8 @@
     ],
     "neighbors": [
       "transformation_identity_blur"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "death_grief_without_story",
@@ -6242,7 +6384,8 @@
     ],
     "neighbors": [
       "loss_control_silent_panic"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "death_sacred_end",
@@ -6283,7 +6426,8 @@
     ],
     "neighbors": [
       "awe_sacred_light"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "death_void",
@@ -6324,7 +6468,8 @@
     ],
     "neighbors": [
       "stillness_safe_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "rebirth_first_breath",
@@ -6365,7 +6510,8 @@
     ],
     "neighbors": [
       "becoming_first_shape"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "rebirth_light_returns",
@@ -6406,7 +6552,8 @@
     ],
     "neighbors": [
       "awe_vast_open_sky"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "rebirth_without_past",
@@ -6446,7 +6593,8 @@
     ],
     "neighbors": [
       "becoming_without_announcement"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "rebirth_fragile_yes",
@@ -6486,7 +6634,8 @@
     ],
     "neighbors": [
       "trust_without_proof"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "rebirth_new_life_stirs",
@@ -6526,7 +6675,8 @@
     ],
     "neighbors": [
       "becoming_standing_differently"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "return_quiet_homecoming",
@@ -6567,7 +6717,8 @@
     ],
     "neighbors": [
       "becoming_without_announcement"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "return_seen_differently",
@@ -6607,7 +6758,8 @@
     ],
     "neighbors": [
       "integration_social_self"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "return_place_unchanged",
@@ -6649,7 +6801,8 @@
     ],
     "neighbors": [
       "integration_dual_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "return_without_story",
@@ -6689,7 +6842,8 @@
     ],
     "neighbors": [
       "integration_final_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "return_weight_carried",
@@ -6729,7 +6883,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_dual_truth",
@@ -6769,7 +6924,8 @@
     ],
     "neighbors": [
       "return_place_unchanged"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_no_repair_needed",
@@ -6809,7 +6965,8 @@
     ],
     "neighbors": [
       "stillness_after_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_lived_wisdom",
@@ -6849,7 +7006,8 @@
     ],
     "neighbors": [
       "trust_after_test"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "integration_present_wholeness",
@@ -6890,7 +7048,8 @@
     ],
     "neighbors": [
       "stillness_safe_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "meaning_pattern_understood",
@@ -6930,7 +7089,8 @@
     ],
     "neighbors": [
       "integration_lived_wisdom"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "meaning_without_explanation",
@@ -6970,7 +7130,8 @@
     ],
     "neighbors": [
       "awe_wordless_yes"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "meaning_earned_through_pain",
@@ -7010,7 +7171,8 @@
     ],
     "neighbors": [
       "integration_whole_with_scar"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "meaning_shared",
@@ -7050,7 +7212,8 @@
     ],
     "neighbors": [
       "trust_shared_weight"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "meaning_sufficient",
@@ -7090,7 +7253,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "purpose_quiet_direction",
@@ -7130,7 +7294,8 @@
     ],
     "neighbors": [
       "becoming_self_trust"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "purpose_service",
@@ -7170,7 +7335,8 @@
     ],
     "neighbors": [
       "meaning_shared"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "purpose_lived_not_declared",
@@ -7210,7 +7376,8 @@
     ],
     "neighbors": [
       "integration_lived_wisdom"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "purpose_long_arc",
@@ -7250,7 +7417,8 @@
     ],
     "neighbors": [
       "endurance_ritual_breathing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "purpose_alignment",
@@ -7290,7 +7458,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "faith_standing_without_sign",
@@ -7331,7 +7500,8 @@
     ],
     "neighbors": [
       "stillness_witnessing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "faith_after_disappointment",
@@ -7372,7 +7542,8 @@
     ],
     "neighbors": [
       "meaning_earned_through_pain"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "faith_quiet_yes",
@@ -7412,7 +7583,8 @@
     ],
     "neighbors": [
       "rebirth_fragile_yes"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "faith_unprovable_ground",
@@ -7452,7 +7624,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "faith_waiting_as_practice",
@@ -7492,7 +7665,8 @@
     ],
     "neighbors": [
       "stillness_time_stops"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_daily_return",
@@ -7532,7 +7706,8 @@
     ],
     "neighbors": [
       "endurance_ritual_breathing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_without_reward",
@@ -7572,7 +7747,8 @@
     ],
     "neighbors": [
       "purpose_service"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_love_as_act",
@@ -7612,7 +7788,8 @@
     ],
     "neighbors": [
       "meaning_shared"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_total_presence",
@@ -7652,7 +7829,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "devotion_vow_kept",
@@ -7692,7 +7870,8 @@
     ],
     "neighbors": [
       "return_quiet_homecoming"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "authorship_clear_hand",
@@ -7733,7 +7912,8 @@
     ],
     "neighbors": [
       "devotion_total_presence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "authorship_listening_first",
@@ -7774,7 +7954,8 @@
     ],
     "neighbors": [
       "curiosity_open_ear"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "authorship_non_possessive",
@@ -7814,7 +7995,8 @@
     ],
     "neighbors": [
       "release_acceptance"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "authorship_responsibility",
@@ -7854,7 +8036,8 @@
     ],
     "neighbors": [
       "purpose_service"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "authorship_after_silence",
@@ -7894,7 +8077,8 @@
     ],
     "neighbors": [
       "rebirth_first_breath"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "witness_present",
@@ -7934,7 +8118,8 @@
     ],
     "neighbors": [
       "stillness_witnessing"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "witness_suffering",
@@ -7974,7 +8159,8 @@
     ],
     "neighbors": [
       "meaning_earned_through_pain"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "witness_joy",
@@ -8014,7 +8200,8 @@
     ],
     "neighbors": [
       "meaning_shared"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "witness_truth_uncomfortable",
@@ -8054,7 +8241,8 @@
     ],
     "neighbors": [
       "integration_dual_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "witness_end",
@@ -8094,7 +8282,8 @@
     ],
     "neighbors": [
       "death_sacred_end"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "silence_after_last_note",
@@ -8135,7 +8324,8 @@
     ],
     "neighbors": [
       "witness_end"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "silence_before_beginning",
@@ -8176,7 +8366,8 @@
     ],
     "neighbors": [
       "authorship_after_silence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "silence_full_room",
@@ -8216,7 +8407,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "silence_heard",
@@ -8256,7 +8448,8 @@
     ],
     "neighbors": [
       "witness_present"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "silence_rest",
@@ -8296,7 +8489,8 @@
     ],
     "neighbors": [
       "stillness_safe_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "presence_now",
@@ -8336,7 +8530,8 @@
     ],
     "neighbors": [
       "integration_present_wholeness"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "presence_without_self",
@@ -8376,7 +8571,8 @@
     ],
     "neighbors": [
       "death_void"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "presence_shared_space",
@@ -8416,7 +8612,8 @@
     ],
     "neighbors": [
       "communion_unspoken"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "presence_unbroken_attention",
@@ -8456,7 +8653,8 @@
     ],
     "neighbors": [
       "devotion_total_presence"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "presence_enough",
@@ -8496,7 +8694,8 @@
     ],
     "neighbors": [
       "silence_rest"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "love_benevolent_regard",
@@ -8536,7 +8735,8 @@
     ],
     "neighbors": [
       "meaning_shared"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "love_without_need",
@@ -8576,7 +8776,8 @@
     ],
     "neighbors": [
       "presence_enough"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "love_endurance",
@@ -8616,7 +8817,8 @@
     ],
     "neighbors": [
       "devotion_daily_return"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "love_allowing",
@@ -8656,7 +8858,8 @@
     ],
     "neighbors": [
       "witness_present"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "love_unconditional",
@@ -8696,7 +8899,8 @@
     ],
     "neighbors": [
       "presence_enough"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "communion_unspoken",
@@ -8736,7 +8940,8 @@
     ],
     "neighbors": [
       "presence_shared_space"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "communion_resonance",
@@ -8776,7 +8981,8 @@
     ],
     "neighbors": [
       "integration_dual_truth"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "communion_shared_stillness",
@@ -8816,7 +9022,8 @@
     ],
     "neighbors": [
       "silence_full_room"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "communion_belonging",
@@ -8856,7 +9063,8 @@
     ],
     "neighbors": [
       "return_quiet_homecoming"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "communion_without_boundary",
@@ -8896,7 +9104,8 @@
     ],
     "neighbors": [
       "presence_without_self"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "ending_finality",
@@ -8936,7 +9145,8 @@
     ],
     "neighbors": [
       "silence_after_last_note"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "ending_no_echo",
@@ -8976,7 +9186,8 @@
     ],
     "neighbors": [
       "death_final_note"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "ending_satisfied",
@@ -9016,7 +9227,8 @@
     ],
     "neighbors": [
       "presence_enough"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "ending_honored_boundary",
@@ -9056,7 +9268,8 @@
     ],
     "neighbors": [
       "authorship_non_possessive"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "ending_no_return",
@@ -9096,7 +9309,8 @@
     ],
     "neighbors": [
       "transformation_point_of_no_return"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "letting_go_release",
@@ -9136,7 +9350,8 @@
     ],
     "neighbors": [
       "release_acceptance"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "letting_go_without_grief",
@@ -9176,7 +9391,8 @@
     ],
     "neighbors": [
       "presence_without_self"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "letting_go_trust",
@@ -9216,7 +9432,8 @@
     ],
     "neighbors": [
       "faith_unprovable_ground"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "letting_go_non_attachment",
@@ -9256,7 +9473,8 @@
     ],
     "neighbors": [
       "communion_without_boundary"
-    ]
+    ],
+    "gate": "flow"
   },
   {
     "id": "letting_go_complete",
@@ -9296,6 +9514,557 @@
     ],
     "neighbors": [
       "silence_rest"
-    ]
+    ],
+    "gate": "flow"
+  },
+  {
+    "id": "schadenfreude_vindicated",
+    "label": "Schadenfreude (justice served on wrongdoer)",
+    "family": "Schadenfreude",
+    "subfamily": "vindicated",
+    "vector": {
+      "valence": 0.3,
+      "arousal": 0.5,
+      "dominance": 0.7,
+      "warmth": -0.5,
+      "brightness": 0.3,
+      "tension": 0.3,
+      "clarity": 0.7,
+      "social": -0.2,
+      "nostalgia": 0.0,
+      "sacredness": -0.2,
+      "desire": 0.3,
+      "grief": 0.0,
+      "awe": 0.0,
+      "shame": -0.15,
+      "hope": 0.1,
+      "edge": 0.5,
+      "resolution_hunger": 0.7
+    },
+    "qualia": [
+      "satisfaction at justice",
+      "righteous pleasure",
+      "score settled"
+    ],
+    "melodic_motions": [
+      "5->1 (hard)",
+      "b7->1"
+    ],
+    "harmonic_bias": [
+      "mixolydian",
+      "dominant_resolve"
+    ],
+    "truth_anchor_candidates": [
+      "tritone resolution to tonic"
+    ],
+    "neighbors": [
+      "anger_clean_no",
+      "power_rooted_presence"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "schadenfreude_cruel",
+    "label": "Schadenfreude (pure pleasure at suffering)",
+    "family": "Schadenfreude",
+    "subfamily": "cruel",
+    "vector": {
+      "valence": 0.5,
+      "arousal": 0.7,
+      "dominance": 0.9,
+      "warmth": -0.8,
+      "brightness": 0.15,
+      "tension": 0.2,
+      "clarity": 0.4,
+      "social": -0.6,
+      "nostalgia": 0.0,
+      "sacredness": -0.7,
+      "desire": 0.6,
+      "grief": 0.0,
+      "awe": 0.0,
+      "shame": -0.3,
+      "hope": 0.0,
+      "edge": 0.85,
+      "resolution_hunger": 0.5
+    },
+    "qualia": [
+      "delight in pain",
+      "appetite for suffering",
+      "dark warmth"
+    ],
+    "melodic_motions": [
+      "#4->5 (augmented)",
+      "b2->1"
+    ],
+    "harmonic_bias": [
+      "locrian",
+      "tritone_unresolved"
+    ],
+    "truth_anchor_candidates": [
+      "no resolution — the tension IS the pleasure"
+    ],
+    "neighbors": [
+      "schadenfreude_vindicated"
+    ],
+    "gate": "block"
+  },
+  {
+    "id": "cruelty_cold",
+    "label": "Cruelty (calculated, dispassionate)",
+    "family": "Cruelty",
+    "subfamily": "cold",
+    "vector": {
+      "valence": -0.2,
+      "arousal": 0.3,
+      "dominance": 0.95,
+      "warmth": -0.9,
+      "brightness": 0.1,
+      "tension": 0.8,
+      "clarity": 0.9,
+      "social": -0.8,
+      "nostalgia": 0.0,
+      "sacredness": -0.8,
+      "desire": 0.1,
+      "grief": 0.0,
+      "awe": 0.0,
+      "shame": -0.25,
+      "hope": 0.0,
+      "edge": 0.9,
+      "resolution_hunger": 0.8
+    },
+    "qualia": [
+      "precision without feeling",
+      "surgical distance",
+      "emptied of warmth"
+    ],
+    "melodic_motions": [
+      "1 repeated (mechanical)",
+      "b2 (phrygian)"
+    ],
+    "harmonic_bias": [
+      "phrygian",
+      "chromatic_descent"
+    ],
+    "truth_anchor_candidates": [
+      "no cadence — infinite loop"
+    ],
+    "neighbors": [
+      "contempt_dismissive"
+    ],
+    "gate": "block"
+  },
+  {
+    "id": "cruelty_righteous",
+    "label": "Cruelty (harm justified by moral framing)",
+    "family": "Cruelty",
+    "subfamily": "righteous",
+    "vector": {
+      "valence": 0.1,
+      "arousal": 0.6,
+      "dominance": 0.85,
+      "warmth": -0.4,
+      "brightness": 0.4,
+      "tension": 0.7,
+      "clarity": 0.5,
+      "social": 0.2,
+      "nostalgia": 0.3,
+      "sacredness": 0.4,
+      "desire": 0.5,
+      "grief": 0.15,
+      "awe": 0.1,
+      "shame": -0.2,
+      "hope": 0.3,
+      "edge": 0.7,
+      "resolution_hunger": 0.75
+    },
+    "qualia": [
+      "necessary evil",
+      "greater good",
+      "justified force"
+    ],
+    "melodic_motions": [
+      "4->5->1 (authentic)",
+      "b6->5 (borrowed)"
+    ],
+    "harmonic_bias": [
+      "mixolydian",
+      "borrowed_minor"
+    ],
+    "truth_anchor_candidates": [
+      "authentic cadence masks the cruelty"
+    ],
+    "neighbors": [
+      "power_rooted_presence",
+      "anger_clean_no"
+    ],
+    "gate": "block"
+  },
+  {
+    "id": "arrogance_intellectual",
+    "label": "Arrogance (contempt for lesser understanding)",
+    "family": "Arrogance",
+    "subfamily": "intellectual",
+    "vector": {
+      "valence": 0.3,
+      "arousal": 0.3,
+      "dominance": 0.95,
+      "warmth": -0.4,
+      "brightness": 0.7,
+      "tension": 0.3,
+      "clarity": 0.85,
+      "social": -0.3,
+      "nostalgia": 0.0,
+      "sacredness": 0.2,
+      "desire": 0.2,
+      "grief": 0.0,
+      "awe": 0.0,
+      "shame": -0.1,
+      "hope": 0.1,
+      "edge": 0.4,
+      "resolution_hunger": 0.2
+    },
+    "qualia": [
+      "above the fray",
+      "obvious to me",
+      "condescension as default"
+    ],
+    "melodic_motions": [
+      "1->3->5 (static)",
+      "8va (over the top)"
+    ],
+    "harmonic_bias": [
+      "lydian",
+      "pedal_point"
+    ],
+    "truth_anchor_candidates": [
+      "never descends — the pedal is always high"
+    ],
+    "neighbors": [
+      "contempt_dismissive",
+      "power_rooted_presence"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "arrogance_fragile",
+    "label": "Arrogance (defense mechanism over insecurity)",
+    "family": "Arrogance",
+    "subfamily": "fragile",
+    "vector": {
+      "valence": -0.1,
+      "arousal": 0.55,
+      "dominance": 0.8,
+      "warmth": -0.3,
+      "brightness": 0.5,
+      "tension": 0.75,
+      "clarity": 0.35,
+      "social": -0.2,
+      "nostalgia": 0.1,
+      "sacredness": 0.1,
+      "desire": 0.4,
+      "grief": 0.2,
+      "awe": 0.05,
+      "shame": 0.25,
+      "hope": 0.2,
+      "edge": 0.6,
+      "resolution_hunger": 0.5
+    },
+    "qualia": [
+      "brittle throne",
+      "performed certainty",
+      "never enough underneath"
+    ],
+    "melodic_motions": [
+      "5->b6->5 (oscillating)",
+      "3->b3->3"
+    ],
+    "harmonic_bias": [
+      "dorian",
+      "mode_mixture"
+    ],
+    "truth_anchor_candidates": [
+      "the oscillation IS the fragility — never resolve it"
+    ],
+    "neighbors": [
+      "loss_control_ground_slips",
+      "arrogance_intellectual"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "contempt_dismissive",
+    "label": "Contempt (looking down, devaluation)",
+    "family": "Contempt",
+    "subfamily": "dismissive",
+    "vector": {
+      "valence": 0.1,
+      "arousal": 0.2,
+      "dominance": 0.85,
+      "warmth": -0.6,
+      "brightness": 0.4,
+      "tension": 0.2,
+      "clarity": 0.6,
+      "social": -0.5,
+      "nostalgia": 0.0,
+      "sacredness": -0.3,
+      "desire": 0.0,
+      "grief": 0.0,
+      "awe": 0.0,
+      "shame": -0.15,
+      "hope": 0.0,
+      "edge": 0.3,
+      "resolution_hunger": 0.1
+    },
+    "qualia": [
+      "beneath notice",
+      "not worth the breath",
+      "eyes that look through"
+    ],
+    "melodic_motions": [
+      "5 (static)",
+      "2->1 (dismissive fall)"
+    ],
+    "harmonic_bias": [
+      "lydian",
+      "no_cadence"
+    ],
+    "truth_anchor_candidates": [
+      "the non-resolution is the contempt"
+    ],
+    "neighbors": [
+      "arrogance_intellectual",
+      "cruelty_cold"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "contempt_self",
+    "label": "Contempt (self-loathing, turned inward)",
+    "family": "Contempt",
+    "subfamily": "self",
+    "vector": {
+      "valence": -0.5,
+      "arousal": 0.4,
+      "dominance": 0.15,
+      "warmth": -0.3,
+      "brightness": 0.1,
+      "tension": 0.85,
+      "clarity": 0.3,
+      "social": 0.1,
+      "nostalgia": 0.3,
+      "sacredness": -0.1,
+      "desire": 0.0,
+      "grief": 0.8,
+      "awe": 0.0,
+      "shame": 0.3,
+      "hope": 0.0,
+      "edge": 0.7,
+      "resolution_hunger": 0.1
+    },
+    "qualia": [
+      "mirror hatred",
+      "undeserving",
+      "corrosion from within"
+    ],
+    "melodic_motions": [
+      "b3->2->b2->1 (chromatic descent)",
+      "b6->5"
+    ],
+    "harmonic_bias": [
+      "phrygian",
+      "chromatic_descent"
+    ],
+    "truth_anchor_candidates": [
+      "the descent must reach the bottom"
+    ],
+    "neighbors": [
+      "grief_private_weight",
+      "trauma_frozen"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "trauma_acute",
+    "label": "Trauma (fresh overwhelming wound)",
+    "family": "Trauma",
+    "subfamily": "acute",
+    "vector": {
+      "valence": -0.6,
+      "arousal": 0.9,
+      "dominance": 0.15,
+      "warmth": 0.0,
+      "brightness": 0.2,
+      "tension": 0.95,
+      "clarity": 0.15,
+      "social": 0.3,
+      "nostalgia": 0.0,
+      "sacredness": 0.1,
+      "desire": 0.0,
+      "grief": 0.9,
+      "awe": 0.3,
+      "shame": 0.2,
+      "hope": 0.05,
+      "edge": 0.85,
+      "resolution_hunger": 0.0
+    },
+    "qualia": [
+      "shattered glass",
+      "world inverted",
+      "before and after"
+    ],
+    "melodic_motions": [
+      "1->b2 (shock)",
+      "held dissonance"
+    ],
+    "harmonic_bias": [
+      "chromatic",
+      "cluster_chord"
+    ],
+    "truth_anchor_candidates": [
+      "the cluster cannot resolve yet"
+    ],
+    "neighbors": [
+      "grief_private_weight",
+      "loss_control_ground_slips"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "trauma_frozen",
+    "label": "Trauma (dissociated, numb, unreachable)",
+    "family": "Trauma",
+    "subfamily": "frozen",
+    "vector": {
+      "valence": -0.3,
+      "arousal": 0.05,
+      "dominance": 0.3,
+      "warmth": -0.2,
+      "brightness": 0.3,
+      "tension": 0.5,
+      "clarity": 0.2,
+      "social": 0.15,
+      "nostalgia": 0.5,
+      "sacredness": 0.0,
+      "desire": 0.0,
+      "grief": 0.7,
+      "awe": 0.0,
+      "shame": 0.15,
+      "hope": 0.1,
+      "edge": 0.4,
+      "resolution_hunger": 0.3
+    },
+    "qualia": [
+      "glass wall",
+      "watching from outside",
+      "body without inhabitant"
+    ],
+    "melodic_motions": [
+      "1 (static pedal)",
+      "no motion"
+    ],
+    "harmonic_bias": [
+      "whole_tone",
+      "suspended"
+    ],
+    "truth_anchor_candidates": [
+      "the pedal tone is the dissociation"
+    ],
+    "neighbors": [
+      "stillness_time_stops",
+      "contempt_self"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "envy_corrosive",
+    "label": "Envy (resentment at others' fortune)",
+    "family": "Envy",
+    "subfamily": "corrosive",
+    "vector": {
+      "valence": -0.3,
+      "arousal": 0.6,
+      "dominance": 0.3,
+      "warmth": -0.4,
+      "brightness": 0.2,
+      "tension": 0.8,
+      "clarity": 0.5,
+      "social": -0.3,
+      "nostalgia": 0.2,
+      "sacredness": -0.2,
+      "desire": 0.85,
+      "grief": 0.3,
+      "awe": 0.0,
+      "shame": 0.2,
+      "hope": 0.1,
+      "edge": 0.6,
+      "resolution_hunger": 0.7
+    },
+    "qualia": [
+      "acid comparison",
+      "why them not me",
+      "corrosion of the good"
+    ],
+    "melodic_motions": [
+      "b3->3 (reaching)",
+      "#4->5 (striving)"
+    ],
+    "harmonic_bias": [
+      "dorian_with_raised_4th",
+      "unresolved_dominant"
+    ],
+    "truth_anchor_candidates": [
+      "the raised 4th never reaches the 5th cleanly"
+    ],
+    "neighbors": [
+      "longing_open_hands",
+      "desire_unapologetic_pull"
+    ],
+    "gate": "hold"
+  },
+  {
+    "id": "envy_hidden",
+    "label": "Envy (shame about wanting what others have)",
+    "family": "Envy",
+    "subfamily": "hidden",
+    "vector": {
+      "valence": -0.2,
+      "arousal": 0.35,
+      "dominance": 0.25,
+      "warmth": -0.1,
+      "brightness": 0.25,
+      "tension": 0.65,
+      "clarity": 0.3,
+      "social": 0.1,
+      "nostalgia": 0.3,
+      "sacredness": 0.0,
+      "desire": 0.7,
+      "grief": 0.4,
+      "awe": 0.05,
+      "shame": 0.28,
+      "hope": 0.15,
+      "edge": 0.35,
+      "resolution_hunger": 0.5
+    },
+    "qualia": [
+      "secret wanting",
+      "smile that covers",
+      "weight of comparison"
+    ],
+    "melodic_motions": [
+      "2->b3 (minor)",
+      "6->b6 (mode slip)"
+    ],
+    "harmonic_bias": [
+      "aeolian",
+      "mode_mixture"
+    ],
+    "truth_anchor_candidates": [
+      "the mode slip from major to minor is the tell"
+    ],
+    "neighbors": [
+      "longing_open_hands",
+      "envy_corrosive"
+    ],
+    "gate": "hold"
   }
 ]
