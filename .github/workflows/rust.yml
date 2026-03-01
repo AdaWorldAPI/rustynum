@@ -8,8 +8,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # qualia_xor excluded: missing candle/tokenizers deps (not wired yet).
-  EXCLUDED: "--exclude qualia_xor"
+  # qualia-xor excluded: missing candle/tokenizers deps (not wired yet).
+  # NOTE: Cargo package name uses hyphen, not underscore.
+  EXCLUDED: "--exclude qualia-xor"
 
 jobs:
   lint:
