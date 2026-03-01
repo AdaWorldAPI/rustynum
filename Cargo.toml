@@ -1,22 +1,48 @@
 [workspace]
 resolver = "2"
+
+# ─── All crates remain workspace members for path dep resolution ───
 members = [
+    # Tier 1: Default compute stack (what `cargo build` / `cargo test` operates on)
     "rustynum-core",
     "rustynum-bnn",
     "rustynum-rs",
     "rustyblas",
     "rustymkl",
     "rustynum-arrow",
-    "rustynum-holo",
-    "rustynum-archive",
-    "rustynum-archive-v3",
-    "rustynum-carrier",
-    "rustynum-focus",
-    "rustynum-oracle",
     "rustynum-clam",
     "bindings/python",
+
+    # Tier 2: Qualia — felt/semantic layer (opt-in via `-p qualia-xor`)
     "qualia_xor",
+
+    # Tier 3: Holo — experimental wave substrate (opt-in via `-p rustynum-holo` etc.)
+    "rustynum-holo",
+    "rustynum-oracle",
+    "rustynum-carrier",       # frozen archive
+    "rustynum-focus",         # frozen archive
+
+    # Frozen archives — scientific reproducibility snapshots
+    "rustynum-archive",
+    "rustynum-archive-v3",
 ]
+
+# ─── Default build scope: Tier 1 only ───
+# `cargo build` / `cargo test` operates on these crates.
+# Use `cargo test --workspace` for all tiers + archives.
+# Use `cargo test -p qualia-xor` to add qualia tier.
+# Use `cargo test -p rustynum-holo -p rustynum-oracle` to add holo tier.
+default-members = [
+    "rustynum-core",
+    "rustynum-bnn",
+    "rustynum-rs",
+    "rustyblas",
+    "rustymkl",
+    "rustynum-arrow",
+    "rustynum-clam",
+    "bindings/python",
+]
+
 # NOTE: jitson/ is NOT a workspace member — it depends on AdaWorldAPI/wasmtime
 # Cranelift fork (AVX-512 JIT) which pulls in the full wasmtime workspace.
 # Build locally: cargo build --manifest-path jitson/Cargo.toml
