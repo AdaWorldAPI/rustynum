@@ -72,6 +72,13 @@ macro_rules! impl_assign_op {
 #[repr(transparent)]
 pub struct F32x16(pub __m512);
 
+impl Default for F32x16 {
+    #[inline(always)]
+    fn default() -> Self {
+        Self(unsafe { _mm512_setzero_ps() })
+    }
+}
+
 impl F32x16 {
     pub const LANES: usize = 16;
 
@@ -289,6 +296,13 @@ impl F32Mask16 {
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct F64x8(pub __m512d);
+
+impl Default for F64x8 {
+    #[inline(always)]
+    fn default() -> Self {
+        Self(unsafe { _mm512_setzero_pd() })
+    }
+}
 
 impl F64x8 {
     pub const LANES: usize = 8;
