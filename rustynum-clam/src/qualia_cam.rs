@@ -675,6 +675,9 @@ impl ClamPath {
         if self.depth >= 16 {
             return (self.bits, self.bits);
         }
+        if self.depth == 0 {
+            return (0, u16::MAX);
+        }
         let shift = 16 - self.depth as u32;
         let lo = self.bits & (!0u16 << shift);
         let hi = lo | ((1u16 << shift) - 1);
@@ -730,6 +733,163 @@ impl ClamPath {
             bits: u16::from_be_bytes([bytes[0], bytes[1]]),
             depth: bytes[2],
         }
+    }
+
+    /// Parse a colon-delimited semantic address like `"ada:clam:1010:1100:1011:a7f3"`.
+    ///
+    /// The first two segments (`ada:clam`) are the domain prefix (ignored here).
+    /// Each subsequent segment is a nibble (4 bits) of the tree path.
+    /// If the total nibble depth exceeds the expected tree depth, the final
+    /// nibble is treated as a leaf ID suffix (explicit address).
+    ///
+    /// Returns `None` if the address is malformed.
+    pub fn parse(addr: &str) -> Option<Self> {
+        let parts: Vec<&str> = addr.split(':').collect();
+        // Minimum: "ada:clam" prefix + at least 1 nibble
+        if parts.len() < 3 {
+            return None;
+        }
+        // Skip domain prefix segments (e.g. "ada", "clam")
+        let nibble_parts = &parts[2..];
+        if nibble_parts.is_empty() {
+            return Some(Self::new(0, 0));
+        }
+
+        let mut bits: u16 = 0;
+        let mut total_bits: u8 = 0;
+
+        for part in nibble_parts {
+            let nibble = u16::from_str_radix(part, 16).ok()?;
+            let nibble_bits = (part.len() * 4) as u8;
+            if total_bits + nibble_bits > 16 {
+                // Overflow: pack what fits
+                let remaining = 16 - total_bits;
+                bits |= (nibble >> (nibble_bits - remaining)) << (16 - total_bits - remaining);
+                total_bits = 16;
+                break;
+            }
+            bits |= nibble << (16 - total_bits - nibble_bits);
+            total_bits += nibble_bits;
+        }
+
+        Some(Self {
+            bits,
+            depth: total_bits,
+        })
+    }
+
+    /// Format as colon-delimited semantic address: `"ada:clam:XXXX:XXXX:..."`.
+    ///
+    /// Each nibble (4 bits) becomes one hex segment.
+    pub fn to_address(&self) -> String {
+        let mut parts = vec!["ada".to_string(), "clam".to_string()];
+        let nibble_count = self.depth.div_ceil(4);
+        for i in 0..nibble_count {
+            let shift = 12 - (i as u32 * 4);
+            let nibble = (self.bits >> shift) & 0xF;
+            parts.push(format!("{:x}", nibble));
+        }
+        parts.join(":")
+    }
+
+    /// Whether this path reaches full leaf depth (all 16 bits used).
+    ///
+    /// A full-leaf path was SET at some point — it references a stored item.
+    /// A partial path (depth < 16) is an implicit address that can be resolved
+    /// from the CLAM tree topology alone.
+    #[inline]
+    pub fn is_full_leaf(&self) -> bool {
+        self.depth >= 16
+    }
+
+    /// Truncate the path to a specific depth.
+    ///
+    /// Returns the ancestor path at the given depth, masking off
+    /// all bits beyond that level.
+    pub fn truncate_to(&self, depth: u8) -> Self {
+        let depth = depth.min(self.depth);
+        if depth == 0 {
+            return Self::new(0, 0);
+        }
+        let shift = 16 - depth as u32;
+        let mask = !0u16 << shift;
+        Self {
+            bits: self.bits & mask,
+            depth,
+        }
+    }
+
+    /// Parent path: truncate by one level.
+    pub fn parent(&self) -> Self {
+        if self.depth == 0 {
+            return *self;
+        }
+        self.truncate_to(self.depth - 1)
+    }
+
+    /// Flip the split decision at a specific depth level.
+    ///
+    /// Returns the counterfactual path — what would have happened if
+    /// the tree had gone the other direction at that split.
+    pub fn flip_at(&self, depth: u8) -> Self {
+        if depth == 0 || depth > self.depth {
+            return *self;
+        }
+        let bit_pos = 16 - depth as u32;
+        Self {
+            bits: self.bits ^ (1 << bit_pos),
+            depth: self.depth,
+        }
+    }
+
+    /// Extract the suffix bits beyond a given depth.
+    ///
+    /// These bits describe a virtual position within a cluster when
+    /// the path extends beyond the deepest real cluster. Used for
+    /// ET resolution interpolation.
+    pub fn suffix_bits(&self, from_depth: u8) -> u16 {
+        if from_depth >= self.depth {
+            return 0;
+        }
+        let valid_bits = self.depth - from_depth;
+        let shift = 16 - self.depth as u32;
+        let mask = (1u16 << valid_bits) - 1;
+        (self.bits >> shift) & mask
+    }
+
+    /// Get the u16 key value (alias for `self.bits`).
+    #[inline]
+    pub fn to_u16(&self) -> u16 {
+        self.bits
+    }
+
+    /// Nibble at a specific position (0-indexed from root).
+    ///
+    /// Returns the 4-bit value at position `pos` (each position = 4 bits depth).
+    pub fn nibble_at(&self, pos: u8) -> u8 {
+        if pos * 4 >= self.depth {
+            return 0;
+        }
+        let shift = 12 - (pos as u32 * 4);
+        ((self.bits >> shift) & 0xF) as u8
+    }
+
+    /// Number of nibbles (4-bit groups) in this path.
+    #[inline]
+    pub fn nibble_count(&self) -> u8 {
+        self.depth.div_ceil(4)
+    }
+
+    /// The full counterfactual chain: at each depth, flip that bit.
+    ///
+    /// Returns mirrors at every decision point from depth 1 to self.depth.
+    pub fn counterfactual_chain(&self) -> Vec<ClamPath> {
+        (1..=self.depth).map(|d| self.flip_at(d)).collect()
+    }
+
+    /// The full ancestry chain: truncate to every depth from 0 to self.depth.
+    pub fn ancestry_chain(&self) -> Vec<ClamPath> {
+        (0..=self.depth).map(|d| self.truncate_to(d)).collect()
     }
 }
 

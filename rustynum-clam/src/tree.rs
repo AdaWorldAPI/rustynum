@@ -684,6 +684,100 @@ impl ClamTree {
         result
     }
 
+    /// Walk the tree following a ClamPath, stopping at the deepest real cluster.
+    ///
+    /// Returns `(real_depth, node_index)`:
+    /// - `real_depth`: how many bits of the path correspond to real tree splits
+    /// - `node_index`: the index of the deepest cluster reached
+    ///
+    /// If the path extends beyond the tree, the returned depth is less than
+    /// the path's full depth — the remaining bits are "virtual" positions.
+    pub fn deepest_real_cluster(&self, path_bits: u16, path_depth: u8) -> (u8, usize) {
+        if self.nodes.is_empty() {
+            return (0, 0);
+        }
+
+        let mut node_idx = 0usize;
+        let mut real_depth: u8 = 0;
+
+        for bit_pos in 0..path_depth {
+            let cluster = &self.nodes[node_idx];
+            if cluster.is_leaf() {
+                break;
+            }
+
+            let went_right = (path_bits >> (15 - bit_pos as u32)) & 1 == 1;
+
+            let next = if went_right {
+                cluster.right
+            } else {
+                cluster.left
+            };
+
+            match next {
+                Some(child_idx) => {
+                    node_idx = child_idx;
+                    real_depth = bit_pos + 1;
+                }
+                None => break,
+            }
+        }
+
+        (real_depth, node_idx)
+    }
+
+    /// Get all members of a cluster as original dataset indices.
+    pub fn cluster_member_indices(&self, cluster: &Cluster) -> Vec<usize> {
+        let start = cluster.offset;
+        let end = start + cluster.cardinality;
+        self.reordered[start..end].to_vec()
+    }
+
+    /// Compute the CRP (Centroid-Radius-Percentile) distribution for a cluster.
+    ///
+    /// Returns `(mean, std_dev, p25, p50, p75)` of distances from center to members.
+    pub fn cluster_crp(
+        &self,
+        cluster: &Cluster,
+        data: &[u8],
+        vec_len: usize,
+    ) -> ClusterDistribution {
+        let center = self.center_data(cluster, data, vec_len);
+        let mut distances: Vec<u64> = self
+            .cluster_points(cluster, data, vec_len)
+            .map(|(_, point)| (self.distance_fn)(center, point))
+            .collect();
+
+        if distances.is_empty() {
+            return ClusterDistribution::default();
+        }
+
+        distances.sort_unstable();
+        let n = distances.len();
+        let sum: u64 = distances.iter().sum();
+        let mean = sum as f64 / n as f64;
+        let variance = distances
+            .iter()
+            .map(|&d| {
+                let diff = d as f64 - mean;
+                diff * diff
+            })
+            .sum::<f64>()
+            / n as f64;
+        let std_dev = variance.sqrt();
+
+        ClusterDistribution {
+            mean,
+            std_dev,
+            p25: distances[n * 25 / 100],
+            p50: distances[n / 2],
+            p75: distances[n * 75 / 100],
+            min: distances[0],
+            max: *distances.last().unwrap(),
+            count: n,
+        }
+    }
+
     /// Get LFD values by depth (for plotting like Figure 2 in CAKES).
     pub fn lfd_by_depth(&self) -> Vec<(usize, Vec<f64>)> {
         let max_depth = self.nodes.iter().map(|c| c.depth).max().unwrap_or(0);
@@ -702,6 +796,21 @@ impl ClamTree {
             .filter(|(_, v)| !v.is_empty())
             .collect()
     }
+}
+
+/// CRP (Centroid-Radius-Percentile) distribution of a cluster.
+///
+/// Describes the statistical profile of distances from center to members.
+#[derive(Debug, Clone, Default)]
+pub struct ClusterDistribution {
+    pub mean: f64,
+    pub std_dev: f64,
+    pub p25: u64,
+    pub p50: u64,
+    pub p75: u64,
+    pub min: u64,
+    pub max: u64,
+    pub count: usize,
 }
 
 /// Summary statistics of LFD across the tree.
