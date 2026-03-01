@@ -543,23 +543,21 @@ These rustynum crates are battle-tested but NOT yet connected to the Lance data 
 
 ### P0 — Zero-Copy Breaks (must fix before any new features)
 
-- [ ] **CogRecordView<'a>** — Create borrowing variant of CogRecord in `rustynum-arrow/src/arrow_bridge.rs`
-  - Currently: `record_batch_to_cogrecords()` (line ~114) calls `.to_vec()` 4× per row = 819MB/100K records
-  - Fix: Add `CogRecordView<'a> { meta: &'a [u8], cam: &'a [u8], btree: &'a [u8], embed: &'a [u8] }`
-  - Then: `record_batch_to_cogrecord_views()` returns `Vec<CogRecordView<'a>>` borrowing from Arrow
-  - File: `rustynum-arrow/src/arrow_bridge.rs:114-147`
+- [ ] **Migrate callers to `CogRecordView<'a>`** — borrowing variant EXISTS in `rustynum-arrow/src/arrow_bridge.rs:205-235`
+  - `cogrecord_views()` already returns `Vec<CogRecordView<'a>>` — zero-copy from Arrow
+  - `column_flat_data()` (line 250-259) provides raw `&[u8]` via pointer reinterpret
+  - **Remaining work**: change callers of `record_batch_to_cogrecords()` → `cogrecord_views()`
+  - The copying function `record_batch_to_cogrecords()` (line 126-159) still has 4× `.to_vec()`
 
-- [ ] **CascadeIndices::build_from_arrow()** — Eliminate second copy in `rustynum-arrow/src/indexed_cascade.rs`
-  - Currently: `build()` (line ~80) calls `extend_from_slice()` 4× into new Vecs = another 819MB
-  - Fix: Add `build_from_arrow(meta: &[u8], cam: &[u8], btree: &[u8], embed: &[u8])` that takes raw column bytes
-  - Use `arrow_to_flat_bytes()` from `datafusion_bridge.rs` to get `&[u8]` from Arrow columns
-  - File: `rustynum-arrow/src/indexed_cascade.rs:80-108`
+- [ ] **Migrate callers to `CascadeIndices::build_from_arrow()`** — zero-copy variant EXISTS in `rustynum-arrow/src/indexed_cascade.rs:119-161`
+  - `build_from_arrow()` already uses `column_flat_data()` — zero allocation
+  - **Remaining work**: change callers of `build()` (line 83-111) → `build_from_arrow()`
+  - The copying function `build()` still has 4× `extend_from_slice()` = 819MB
 
 - [ ] **Delete ladybug-rs/src/core/simd.rs** — 348 lines duplicating rustynum's SIMD dispatch
   - Currently: ladybug-rs has its own `hamming_distance()`, `hamming_avx512()`, `hamming_avx2()`, `HammingEngine`
   - Fix: Delete file, replace all call sites with `rustynum_core::simd::select_hamming_fn()`
-  - Blocker: rustynum's simd.rs uses `portable_simd` (nightly). ladybug-rs builds on stable.
-  - Workaround: Use `rustynum_core::simd::hamming_distance()` which has scalar fallback
+  - No blocker: rustynum is on stable, `simd_compat.rs` provides stable `std::arch` wrappers
   - Also fix: `ladybug-rs/src/storage/bind_space.rs:1848-1855` — scalar hamming loop, replace with rustynum call
   - Also fix: `ladybug-rs/src/core/rustynum_accel.rs:148` — `.to_vec()` in container_bundle
 
@@ -588,49 +586,25 @@ These rustynum crates are battle-tested but NOT yet connected to the Lance data 
   - These call rustynum's runtime-dispatched SIMD — but only used in `python/mod.rs:39`
   - Wire into: `ladybug-rs/src/storage/bind_space.rs` search functions
 
-### P2 — Toolchain: Ship on Stable 1.93
+### P2 — Remaining Cleanup
 
-**Stable 1.93.1 has EVERYTHING.** Compile-tested 2026-02-27 — ZERO gaps:
-
-| Category | Intrinsic | Stable 1.93.1 | Feature Gate |
-|----------|-----------|---------------|--------------|
-| **Core** | `_mm512_xor_si512` | Yes | avx512f |
-| **Core** | `_mm512_popcnt_epi64` | Yes | avx512vpopcntdq |
-| **Core** | `_mm512_add_epi64` | Yes | avx512f |
-| **Core** | `_mm512_loadu_si512` | Yes | avx512f |
-| **Core** | `_mm512_ternarylogic_epi64` | Yes | avx512f |
-| **BF16** | `_mm512_cvtne2ps_pbh` | Yes | avx512bf16 |
-| **BF16** | `_mm512_dpbf16_ps` | Yes | avx512bf16 |
-| **BF16** | `_mm512_cvtpbh_ps` | Yes | avx512bf16 |
-| **Reduce** | `_mm512_reduce_add_epi64` | Yes | avx512f |
-| **Reduce** | `_mm512_reduce_or_epi64` | Yes | avx512f |
-| **Mask** | `_kand_mask16` | Yes | avx512f |
-| **Mask** | `_knot_mask16` | Yes | avx512f |
-| **Mask** | `_kor_mask16` | Yes | avx512f |
-| **Mask** | `_kxor_mask16` | Yes | avx512f |
-| **Mask** | `_kand_mask8` | Yes | avx512dq |
-| **Mask** | `_knot_mask8` | Yes | avx512dq |
-| **Mask** | `_mm512_movepi8_mask` | Yes | avx512bw |
-| **Mask** | `_mm512_movm_epi8` | Yes | avx512bw |
-| **Blend** | `_mm512_mask_blend_epi64` | Yes | avx512f |
-| **Compare** | `_mm512_cmpeq_epi64_mask` | Yes | avx512f |
-
-The 16K Hamming hot path, BF16 pipeline, mask arithmetic, horizontal reduces —
-ALL available on stable 1.93.1. ZERO intrinsics missing. The portable_simd
-dependency is purely syntactic sugar.
-
-- [ ] **Port portable_simd to std::arch** — Enables stable 1.93 across entire stack
-  - ~879 call sites across: rustyblas (158), rustymkl (198), rustynum-rs (523)
-  - Mechanical: `Simd::<f32,16>::from_slice(a)` → `_mm512_loadu_ps(a.as_ptr())`
-  - Mechanical: `.reduce_sum()` → `_mm512_reduce_add_epi64()` (AVAILABLE on stable, not missing!)
-  - Mechanical: `Simd::splat(x)` → `_mm512_set1_ps(x)`
-  - After port: change `rust-toolchain.toml` from `nightly` to `channel = "1.93"`
-  - Result: ALL 4 repos build on same stable toolchain, no nightly dep management
+**Toolchain is stable 1.93.** `portable_simd` → `std::arch` port complete.
+See `docs/STABLE_INTEGRATION_PLAN.md` for the 4-repo integration plan.
 
 - [ ] **Fix qualia_xor crate** — Missing candle_core, candle_nn, tokenizers dependencies
   - 7 compilation errors: unresolved imports
   - Either add deps to Cargo.toml or gate behind feature flag
-  - Currently excluded from CI (`--exclude qualia_xor`)
+  - Currently excluded from CI (`--exclude qualia-xor`)
+
+- [ ] **Corpus expansion 231 → 1024** — 793 new qualia items for full coverage
+  - Currently 231 items across 44 families in qualia_219.json
+  - Goal: 1024 calibrated qualia > 1024 random dimensions
+
+- [ ] **Nib4 hydration with BF16 F:FF** — ResonanzZirkel distance rules with Versatz calibration
+  - Currently Nib4 uses absolute i8 values, needs relative coordinate system
+
+- [ ] **Gate enforcement wire** — QualiaGateLevel exists but enforcement lives in crewai-rust
+  - Wire: QualiaCAM → CollapseGate → crewai-rust "Sieves of Socrates"
 
 ### DONE
 
@@ -643,61 +617,53 @@ dependency is purely syntactic sugar.
 - [x] 2026-02-27: cascade_scan_4ch() zero-copy via arrow_to_flat_bytes()
 - [x] 2026-02-27: CI workflows with lint + miri (5 min timeout per crate)
 - [x] 2026-02-27: Compile-tested ALL AVX-512 intrinsics on stable 1.93.1 — ZERO gaps
+- [x] 2026-03-01: portable_simd → std::arch port COMPLETE (simd_compat.rs). Zero `#![feature(...)]` in any crate. `rust-toolchain.toml` = stable.
+- [x] 2026-03-01: CLAM → QualiaCAM integration: ClamTree generic DistanceFn, l1_i8_distance, CAKES DFS Sieve, CHAODA anomaly, ClamPath B-tree keys (49 tests)
+- [x] 2026-03-01: σ-significance scoring + per-word histogram: SignificanceLevel, SigmaScore, score_sigma(), K2Histogram, k2_exact_histogram()
+- [x] 2026-03-01: CI exclude typo fixed (qualia_xor → qualia-xor), rustynum-rs Default impls for F32x16/F64x8
 
 ---
 
-## 14. Nightly ↔ Stable Change Audit Trail (2026-02-27)
+## 14. Nightly ↔ Stable Audit Trail (2026-03-01)
 
 > **Why this exists:** Session resets lose context. This tracks every nightly/stable
 > decision so future sessions can trace back WHY the toolchain is what it is.
 
-### Current State
+### Current State (2026-03-01) — STABLE
 
-- `rust-toolchain.toml` pins **nightly** (because of `portable_simd`)
-- 4 crates use `#![feature(portable_simd)]`: rustyblas, rustymkl, rustynum-rs, rustynum-archive
-- rustynum-core: conditional (`cfg_attr(any(feature = "avx512", feature = "avx2"))`)
-- ladybug-rs, crewai-rust, n8n-rs: all build on **stable 1.93**
-- All AVX-512 intrinsics (core, BF16, mask, reduce) confirmed available on stable 1.93.1
-- `portable_simd` is ONLY syntactic sugar — port to `std::arch` has zero blockers
+- `rust-toolchain.toml` pins **stable**
+- Zero crates use `#![feature(portable_simd)]` — ALL ported to `simd_compat.rs`
+- `simd_compat.rs` wraps `std::arch::x86_64` intrinsics — stable since Rust 1.89
+- CI uses `dtolnay/rust-toolchain@stable` for build and test
+- Miri requires `cargo +nightly miri test` (standard — Miri always needs nightly)
+- ALL AVX-512 intrinsics (VPOPCNTDQ, BF16, VNNI, BITALG, mask, reduce) stable on 1.93
 
-### Changes Made This Session (all in branch `claude/check-ladybug-rs-access-yVeJG`)
+### SIMD Dispatch Model (FINAL)
 
-| Commit | Repo | File | What Changed |
-|--------|------|------|-------------|
-| `3291c86` | rustynum | `CLAUDE.md` | Version Discipline table: `Nightly: ONLY for testing AMX` → `Nightly: NEVER — nightly changes deps across the whole stack` |
-| `3291c86` | rustynum | `CLAUDE.md` | Anti-patterns: `DO NOT use nightly features in non-test code` → `DO NOT use nightly Rust — the whole stack is optimized for stable` |
-| `3291c86` | rustynum | `CLAUDE.md` | Python bindings test: removed `(requires nightly for PyO3)` |
-| `37ba508` | ladybug-rs | `CLAUDE.md` | Section rename: `Nightly Blocker` → `portable_simd → std::arch Port (TODO)` |
-| `37ba508` | ladybug-rs | `CLAUDE.md` | Rewrote section: from "blocker" framing to "one-time mechanical port, not a blocker" |
-| `5fa2769` | rustynum | `CLAUDE.md` | Added Miri commands with `cargo +nightly` and note: "this is the ONLY acceptable use of nightly" |
-| `c868cdc` | rustynum | `CLAUDE.md` | Corrected Miri: removed `+nightly` (rust-toolchain.toml already pins nightly) |
-| `c868cdc` | rustynum | `CLAUDE.md` | Corrected anti-pattern: `DO NOT use nightly` → `DO NOT add new nightly features — portable_simd is the ONLY nightly dep` |
-| `c868cdc` | rustynum | `CLAUDE.md` | Added note: `rust-toolchain.toml pins nightly because rustyblas/rustymkl/rustynum-rs use portable_simd` |
-| `c868cdc` | rustynum | `.github/workflows/rust.yml` | CI: uses `dtolnay/rust-toolchain@nightly` (required by portable_simd) |
-| `c868cdc` | rustynum | `.github/workflows/rust.yml` | CI: added `EXCLUDED: "--exclude qualia_xor"` (broken deps) |
-| `9aeefdd` | ladybug-rs | `.github/workflows/ci-master.yml` | CI: added Miri job with `dtolnay/rust-toolchain@nightly` + 5min timeout |
-| `0c298e4` | crewai-rust | `.github/workflows/rust.yml` | CI: build/test use `dtolnay/rust-toolchain@stable`, Miri uses `@nightly` |
-| `d694cd32` | n8n-rs | `.github/workflows/ci-rust-master.yml` | CI: added Miri job with `dtolnay/rust-toolchain@nightly` + 5min timeout |
-| `4ba0a7f` | rustynum | `CLAUDE.md` | P2 TODO: added full intrinsic coverage table, noted `_mm512_reduce_add_epi64` as "Missing" |
-| `028574d` | ladybug-rs | `CLAUDE.md` | P2 TODO: updated with stable AVX-512 coverage, "unblocks deleting simd.rs" |
-| *this commit* | rustynum | `CLAUDE.md` | Corrected: ALL intrinsics including reduce/mask/bf16-unpack confirmed stable 1.93.1. ZERO gaps. |
+```
+AVX-512 default → AVX2 silent fallback → scalar POPCNT
+```
 
-### Key Decisions
+- **One binary, all CPUs.** Runtime CPUID detection, function pointer dispatch.
+- `select_hamming_fn()` checks once, returns fn pointer. Hot path = zero branching.
+- Python `.so` works on any x86-64 — no recompile needed for AVX2-only machines.
+- No `#[cfg(target_feature)]` compile-time gates in library code.
 
-1. **`rust-toolchain.toml` stays nightly FOR NOW** — because 4 crates use `portable_simd`
-2. **Goal is stable 1.93** — the port is mechanical (~879 call sites), zero blockers
-3. **CI uses nightly for build** (rustynum only) — other repos use stable
-4. **CI uses nightly for Miri** (all repos) — Miri always requires nightly, this is standard
-5. **No new `#![feature(...)]` allowed** — portable_simd is the only exception, being ported out
+### Port History
 
-### Files NOT Changed (important to track)
+| Date | What Changed |
+|------|-------------|
+| 2026-02-27 | Audited ALL AVX-512 intrinsics — confirmed stable 1.93.1, ZERO gaps |
+| 2026-02-28 | Created `simd_compat.rs` — stable `std::arch` wrappers replacing `portable_simd` |
+| 2026-03-01 | Port complete. Zero `#![feature(...)]`. Toolchain = stable. CI = stable. |
 
-- `rust-toolchain.toml` — still says `channel = "nightly"` (NOT changed this session)
-- `rustyblas/src/lib.rs` line 51 — still has `#![feature(portable_simd)]` (NOT changed)
-- `rustymkl/src/lib.rs` line 36 — still has `#![feature(portable_simd)]` (NOT changed)
-- `rustynum-rs/src/lib.rs` line 10 — still has `#![feature(portable_simd)]` (NOT changed)
-- `rustynum-archive/src/lib.rs` line 24 — still has `#![feature(portable_simd)]` (NOT changed)
-- `rustynum-core/src/lib.rs` line 13 — conditional `cfg_attr` (NOT changed)
+### Key Decisions (FINAL)
+
+1. **`rust-toolchain.toml` = stable** — port complete, no nightly deps remain
+2. **`simd_compat.rs` is the abstraction** — same API as `portable_simd`, backed by `std::arch`
+3. **CI uses stable for build/test** — Miri uses `+nightly` (standard practice)
+4. **No `#![feature(...)]` allowed** — the port is done, not in progress
+5. **Python bindings inherit dispatch** — same binary, AVX2 fallback = works everywhere
 
 ---
 
