@@ -33,15 +33,20 @@ ClamPath encoding (u16 bipolar split path)
 
 ### Tier 2: `qualia` (opt-in)
 
-The felt/semantic layer. Researchers doing clean numerical benchmarks may not want this.
+The felt/interpretive layer. Things that assign subjective meaning to numerical results. Researchers doing clean numerical benchmarks or pure encoding/search pipelines don't need this.
 
 ```
-Compression (panCAKES XOR-diff from cluster centers)
-CAM hydration (semantic content → fingerprint population)
-qualia_xor (qualia-space XOR operations)
+qualia_xor (qualia-space XOR operations — subjective distance)
+Qualia family classification (what a fingerprint "feels like")
+Any module that interprets a numerical result as phenomenological experience
 ```
 
-**Rationale**: These modules interpret numerical results as subjective experience. Not everyone wants their distance metric to have an opinion about what things feel like. Clean research needs clean numbers.
+**Rationale**: The line is encoding vs interpretation. `sentence_crystal` encoding (sentence → axes → fingerprint) is a forward pass — that's PyTorch, that's default. `qualia_xor` computing "felt distance" between experiences is interpretation — that's `qualia`. Compression (panCAKES) is compute. CAM hydration (populate fingerprint from input) is encoding. These are default.
+
+**NOT qualia** (these are compute, stay in default):
+- panCAKES compression (XOR-diff from cluster center — numerical operation)
+- CAM hydration (input → fingerprint — encoding, like torch.nn.Embedding)
+- sentence_crystal encoding (sentence → crystal axes — forward pass)
 
 ### Tier 3: `holo` (opt-in, experimental)
 
@@ -106,18 +111,24 @@ rustynum = { path = "../rustynum" }
 
 ## The Boundary Rule
 
-**If it's compute, it's default. If it's meaning, it's `qualia`. If it's unfinished, it's `holo`.**
+**If it's compute, it's default. If it's interpretation, it's `qualia`. If it's unfinished, it's `holo`.**
+
+Encoding = compute. Forward pass = compute. Distance metric = compute.
+"What does this feel like" = interpretation.
 
 - `spo_distance()` → compute (three popcounts) → default
 - `harvest_to_nars()` → compute (popcount ratios) → default  
 - `AccumulatedHarvest` → compute (EMA + revision) → default
 - CLAM tree → compute (metric partitioning) → default
 - CAM locate → compute (Hamming NN) → default
+- CAM hydration → compute (input → fingerprint, like torch.nn.Embedding) → default
 - ClamPath → compute (u16 encoding) → default
 - Stripe shift → compute (5 CMPs) → default
-- panCAKES compression → meaning (semantic-aware diff) → `qualia`
-- CAM hydration → meaning (content → felt fingerprint) → `qualia`
-- qualia_xor → meaning (qualia-space operations) → `qualia`
+- panCAKES compression → compute (XOR-diff from cluster center) → default
+- sentence_crystal encoding → compute (sentence → crystal axes — forward pass) → default
+  **NOTE**: currently in ladybug-rs src/spo/sentence_crystal.rs — promotion candidate to rustynum
+- qualia_xor → interpretation (felt distance between experiences) → `qualia`
+- Qualia family classification → interpretation (what a fingerprint "means") → `qualia`
 - Holographic phase ops → unfinished → `holo`
 - Wave substrate → unfinished → `holo`
 - Oracle → unfinished → `holo`
@@ -136,8 +147,8 @@ STAYS DEFAULT (no gate):
   jitson               — JIT (own workspace, unaffected)
 
 FEATURE-GATED "qualia":
-  qualia_xor           — qualia XOR operations
-  Parts of rustynum-clam involving semantic compression/hydration
+  qualia_xor           — qualia-space XOR (felt distance, not numerical distance)
+  Qualia family classification logic (interpretation of fingerprint meaning)
 
 FEATURE-GATED "holo":
   rustynum-holo        — holographic phase-space
