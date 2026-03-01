@@ -491,6 +491,33 @@ impl SigmaGate {
     pub fn sku_64k() -> Self {
         Self::new(SKU_64K_BITS)
     }
+
+    /// Custom σ-gate for non-Hamming distance metrics (e.g., BF16 weighted distance).
+    ///
+    /// When the distance is a weighted sum (sign×256 + exp×16 + mantissa×1),
+    /// the noise floor μ and spread σ differ from raw Hamming. Caller provides
+    /// the pre-computed μ and σ for their metric.
+    pub fn custom(mu: u32, sigma_unit: u32) -> Self {
+        Self {
+            discovery: mu.saturating_sub(3 * sigma_unit),
+            strong: mu.saturating_sub(5 * sigma_unit / 2),
+            evidence: mu.saturating_sub(2 * sigma_unit),
+            hint: mu.saturating_sub(3 * sigma_unit / 2),
+            mu,
+            sigma_unit,
+            total_bits: 0, // not meaningful for custom metrics
+        }
+    }
+
+    /// σ-gate for BF16 weighted distance (sign×256 + exp×16 + mantissa×1).
+    ///
+    /// Per BF16 dimension: μ_dim = 195.5, σ²_dim = 16897.75.
+    /// For n_dims dimensions: μ = n × 195.5, σ = √(n × 16897.75).
+    pub fn bf16_weighted(n_dims: usize) -> Self {
+        let mu = (n_dims as f64 * 195.5) as u32;
+        let sigma = (n_dims as f64 * 16897.75).sqrt() as u32;
+        Self::custom(mu, sigma)
+    }
 }
 
 /// Compute σ-significance from an EnergyConflict and SigmaGate.

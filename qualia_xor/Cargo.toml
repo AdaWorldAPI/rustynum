@@ -11,6 +11,9 @@ serde_json = "1"
 # Error handling
 anyhow = "1"
 
+# Core compute — SIMD kernels, σ-significance, SPO encoding
+rustynum-core = { path = "../rustynum-core" }
+
 [[bin]]
 name = "edge-vectors"
 path = "src/bin/edge_vectors.rs"
