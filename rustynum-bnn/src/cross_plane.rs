@@ -565,6 +565,30 @@ impl LatticeClimber {
         }
     }
 
+    /// Ingest candidates from raw per-plane Hamming distances with σ-classification.
+    ///
+    /// This is the σ-grounded alternative to `ingest()`: instead of receiving
+    /// pre-built PartialBindings, it builds them from raw distances using
+    /// `classify_with_sigma()`. Each plane's distance is scored against the
+    /// noise floor, and the resulting per-plane significance levels determine
+    /// the B_3 halo type.
+    pub fn ingest_with_sigma(
+        &mut self,
+        candidates: &[(usize, [u32; 3])],
+        sigma_gate: &SigmaGate,
+        min_level: SignificanceLevel,
+    ) {
+        for &(entry_index, plane_distances) in candidates {
+            let binding = classify_with_sigma(entry_index, plane_distances, sigma_gate, min_level);
+            match binding.halo_type.lattice_level() {
+                1 => self.free_vars.push(binding),
+                2 => self.partial_pairs.push(binding),
+                3 => self.full_triples.push(binding),
+                _ => {} // noise (0) discarded
+            }
+        }
+    }
+
     /// Attempt to compose partial bindings at adjacent lattice levels.
     ///
     /// Looks for free variables that can pair with existing free variables
