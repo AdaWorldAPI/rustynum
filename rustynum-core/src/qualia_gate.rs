@@ -81,7 +81,7 @@ pub enum QualiaGateLevel {
 
 impl QualiaGateLevel {
     /// Parse from string (for JSON deserialization).
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "flow" => Some(Self::Flow),
             "hold" => Some(Self::Hold),
@@ -226,10 +226,10 @@ mod tests {
 
     #[test]
     fn test_gate_level_from_str() {
-        assert_eq!(QualiaGateLevel::from_str("flow"), Some(QualiaGateLevel::Flow));
-        assert_eq!(QualiaGateLevel::from_str("hold"), Some(QualiaGateLevel::Hold));
-        assert_eq!(QualiaGateLevel::from_str("block"), Some(QualiaGateLevel::Block));
-        assert_eq!(QualiaGateLevel::from_str("invalid"), None);
+        assert_eq!(QualiaGateLevel::parse("flow"), Some(QualiaGateLevel::Flow));
+        assert_eq!(QualiaGateLevel::parse("hold"), Some(QualiaGateLevel::Hold));
+        assert_eq!(QualiaGateLevel::parse("block"), Some(QualiaGateLevel::Block));
+        assert_eq!(QualiaGateLevel::parse("invalid"), None);
     }
 
     #[test]

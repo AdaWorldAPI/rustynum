@@ -35,7 +35,9 @@
 //! The NARS truth value on the Y-axis tells you confidence in the causality direction.
 //! High Tensioned% on Y = "uncertain whether causing or experiencing" = low frequency.
 
-use crate::bf16_hamming::{AwarenessState, PackedQualia, SuperpositionState};
+use crate::bf16_hamming::{PackedQualia, SuperpositionState};
+#[cfg(test)]
+use crate::bf16_hamming::AwarenessState;
 use crate::spatial_resonance::{CrystalAxis, SpatialCrystal3D};
 
 // ============================================================================
