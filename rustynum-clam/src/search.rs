@@ -25,7 +25,7 @@
 //! - **Adaptive** — pruning power depends on actual cluster radius, not σ
 //! - **Proven complexity** — O(k · 2^LFD · log 𝒩) for DFS Sieve
 
-use crate::tree::{hamming_inline, ClamTree};
+use crate::tree::ClamTree;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -99,7 +99,7 @@ pub fn rho_nn(tree: &ClamTree, data: &[u8], vec_len: usize, query: &[u8], rho: u
     while let Some(node_idx) = stack.pop() {
         let cluster = &tree.nodes[node_idx];
         let center = tree.center_data(cluster, data, vec_len);
-        let delta = hamming_inline(query, center);
+        let delta = tree.dist(query, center);
         distance_calls += 1;
 
         let d_minus = cluster.delta_minus(delta);
@@ -137,14 +137,14 @@ pub fn rho_nn(tree: &ClamTree, data: &[u8], vec_len: usize, query: &[u8], rho: u
         if *all_inside {
             // δ⁺ ≤ ρ: every point in this cluster is a hit
             for (orig_idx, point_data) in tree.cluster_points(cluster, data, vec_len) {
-                let d = hamming_inline(query, point_data);
+                let d = tree.dist(query, point_data);
                 distance_calls += 1;
                 hits.push((orig_idx, d));
             }
         } else {
             // Need to check each point
             for (orig_idx, point_data) in tree.cluster_points(cluster, data, vec_len) {
-                let d = hamming_inline(query, point_data);
+                let d = tree.dist(query, point_data);
                 distance_calls += 1;
                 if d <= rho {
                     hits.push((orig_idx, d));
@@ -258,7 +258,7 @@ fn estimate_local_lfd(tree: &ClamTree, data: &[u8], vec_len: usize, query: &[u8]
     while let Some(node_idx) = stack.pop() {
         let cluster = &tree.nodes[node_idx];
         let center = tree.center_data(cluster, data, vec_len);
-        let delta = hamming_inline(query, center);
+        let delta = tree.dist(query, center);
 
         if cluster.delta_minus(delta) > rho {
             continue;
@@ -323,7 +323,7 @@ pub fn knn_dfs_sieve(
     // Initialize with root
     let root = tree.root();
     let root_center = tree.center_data(root, data, vec_len);
-    let root_delta = hamming_inline(query, root_center);
+    let root_delta = tree.dist(query, root_center);
     distance_calls += 1;
     let root_d_minus = root.delta_minus(root_delta);
     queue.push(Reverse((root_d_minus, 0)));
@@ -346,7 +346,7 @@ pub fn knn_dfs_sieve(
         if cluster.is_leaf() {
             // Leaf: scan all points
             for (orig_idx, point_data) in tree.cluster_points(cluster, data, vec_len) {
-                let d = hamming_inline(query, point_data);
+                let d = tree.dist(query, point_data);
                 distance_calls += 1;
 
                 if hits.len() < k {
@@ -363,7 +363,7 @@ pub fn knn_dfs_sieve(
             for child_idx in [cluster.left, cluster.right].iter().flatten() {
                 let child = &tree.nodes[*child_idx];
                 let child_center = tree.center_data(child, data, vec_len);
-                let child_delta = hamming_inline(query, child_center);
+                let child_delta = tree.dist(query, child_center);
                 distance_calls += 1;
 
                 let child_d_minus = child.delta_minus(child_delta);
@@ -424,7 +424,7 @@ mod tests {
         let mut dists: Vec<(usize, u64)> = (0..count)
             .map(|i| {
                 let point = &data[i * vec_len..(i + 1) * vec_len];
-                (i, hamming_inline(query, point))
+                (i, crate::tree::hamming_inline(query, point))
             })
             .collect();
         dists.sort_by_key(|&(_, d)| d);
@@ -483,7 +483,7 @@ mod tests {
         let ground_truth: Vec<(usize, u64)> = (0..count)
             .map(|i| {
                 let point = &data[i * vec_len..(i + 1) * vec_len];
-                (i, hamming_inline(query, point))
+                (i, tree.dist(query, point))
             })
             .filter(|&(_, d)| d <= rho)
             .collect();

@@ -45,7 +45,7 @@
 //! ```
 //! This only touches the diff positions, not the full 2048 bytes.
 
-use crate::tree::{hamming_inline, ClamTree};
+use crate::tree::ClamTree;
 
 // ─────────────────────────────────────────────────────────────────────
 // Encoding types
@@ -390,13 +390,14 @@ impl CompressedTree {
         data: &[u8],
         vec_len: usize,
         dist_cache: &mut DistanceCache,
+        dist_fn: crate::tree::DistanceFn,
     ) -> u64 {
         let center_idx = self.encoding_centers[point_idx];
 
         // Cache d(query, center) — same center is shared by many points
         let dist_q_center = dist_cache.get_or_compute(center_idx, || {
             let center = &data[center_idx * vec_len..(center_idx + 1) * vec_len];
-            hamming_inline(query, center)
+            dist_fn(query, center)
         });
 
         let center = &data[center_idx * vec_len..(center_idx + 1) * vec_len];
@@ -549,8 +550,8 @@ mod tests {
         let enc = XorDiffEncoding::encode(&center, &point);
 
         let query = vec![0xFF; 64];
-        let dist_q_center = hamming_inline(&query, &center);
-        let dist_q_point_exact = hamming_inline(&query, &point);
+        let dist_q_center = crate::tree::hamming_inline(&query, &center);
+        let dist_q_point_exact = crate::tree::hamming_inline(&query, &point);
 
         let dist_q_point_compressed = enc.hamming_from_query(&query, &center, dist_q_center);
 
@@ -660,8 +661,8 @@ mod tests {
 
         // Compare compressive search distances to exact distances
         for i in 0..count {
-            let exact = hamming_inline(query, &data[i * vec_len..(i + 1) * vec_len]);
-            let comp = compressed.hamming_to_compressed(query, i, &data, vec_len, &mut cache);
+            let exact = crate::tree::hamming_inline(query, &data[i * vec_len..(i + 1) * vec_len]);
+            let comp = compressed.hamming_to_compressed(query, i, &data, vec_len, &mut cache, crate::tree::hamming_inline);
             assert_eq!(
                 comp, exact,
                 "Compressive Hamming for point {} should match exact ({} vs {})",

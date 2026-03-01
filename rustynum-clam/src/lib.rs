@@ -35,10 +35,15 @@
 //! - CHAODA:   Ishaq, Howard, Daniels. IEEE Big Data 2021. arXiv:2103.11774
 
 pub mod compress;
+pub mod qualia_cam;
 pub mod search;
 pub mod tree;
 
 pub use compress::{CompressedTree, CompressionStats};
+pub use qualia_cam::{
+    l1_i8_distance, AnomalyResult, CalibrationType, ClamPath, ClamQualiaCAM, ClamQualiaHit,
+    ClusterVerdict, CollapseGateBias, PruningReport,
+};
 pub use search::{KnnResult, RhoNnResult, SearchConfig};
 pub use tree::{hamming_batch_simd, hamming_top_k_simd};
-pub use tree::{ClamTree, Cluster, Distance, HammingDistance, HammingSIMD, Lfd};
+pub use tree::{ClamTree, Cluster, Distance, DistanceFn, HammingDistance, HammingSIMD, Lfd};

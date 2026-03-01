@@ -281,6 +281,9 @@ impl Default for BuildConfig {
 /// After construction, the dataset indices are reordered depth-first so
 /// each cluster is a contiguous range. The original data is NOT moved —
 /// only an index permutation is stored.
+/// Distance function type: takes two byte slices of equal length, returns u64 distance.
+pub type DistanceFn = fn(&[u8], &[u8]) -> u64;
+
 pub struct ClamTree {
     /// All cluster nodes, stored flat. nodes[0] is the root.
     pub nodes: Vec<Cluster>,
@@ -295,6 +298,10 @@ pub struct ClamTree {
 
     /// Mean radius of leaf clusters.
     pub mean_leaf_radius: f64,
+
+    /// Distance function used for tree construction and search.
+    /// Stored so search functions can use the same metric as build.
+    distance_fn: DistanceFn,
 }
 
 impl ClamTree {
@@ -318,7 +325,40 @@ impl ClamTree {
     /// 7. recurse
     /// ```
     pub fn build(data: &[u8], vec_len: usize, count: usize, config: &BuildConfig) -> Self {
+        Self::build_with_fn(data, vec_len, count, config, hamming_inline)
+    }
+
+    /// Build a CLAM tree with a custom distance function.
+    ///
+    /// The distance function must be a metric (satisfy the triangle inequality)
+    /// for CAKES search to guarantee exact results. Non-metric distances will
+    /// still produce a valid tree but search may have false negatives.
+    ///
+    /// # Arguments
+    /// * `data`     — flat byte buffer: `data[i*vec_len..(i+1)*vec_len]` is point i
+    /// * `vec_len`  — length of each vector in bytes
+    /// * `count`    — number of vectors in the database
+    /// * `config`   — stopping criteria
+    /// * `dist_fn`  — distance function: `fn(&[u8], &[u8]) -> u64`
+    pub fn build_with_fn(
+        data: &[u8],
+        vec_len: usize,
+        count: usize,
+        config: &BuildConfig,
+        dist_fn: DistanceFn,
+    ) -> Self {
         assert_eq!(data.len(), vec_len * count);
+
+        // Empty dataset: return tree with no nodes
+        if count == 0 {
+            return ClamTree {
+                nodes: Vec::new(),
+                reordered: Vec::new(),
+                num_leaves: 0,
+                mean_leaf_radius: 0.0,
+                distance_fn: dist_fn,
+            };
+        }
 
         let mut indices: Vec<usize> = (0..count).collect();
         let mut nodes = Vec::with_capacity(2 * count); // upper bound
@@ -334,6 +374,7 @@ impl ClamTree {
             config,
             &mut nodes,
             &mut rng,
+            dist_fn,
         );
 
         // Compute summary statistics
@@ -356,6 +397,7 @@ impl ClamTree {
             reordered: indices,
             num_leaves,
             mean_leaf_radius,
+            distance_fn: dist_fn,
         }
     }
 
@@ -375,6 +417,7 @@ impl ClamTree {
         config: &BuildConfig,
         nodes: &mut Vec<Cluster>,
         rng: &mut rustynum_core::SplitMix64,
+        dist_fn: DistanceFn,
     ) -> usize {
         let n = end - start;
         let node_idx = nodes.len();
@@ -404,7 +447,7 @@ impl ClamTree {
                     if s != t {
                         let ti = working[t];
                         let ti_data = &data[ti * vec_len..(ti + 1) * vec_len];
-                        sum += hamming_inline(si_data, ti_data);
+                        sum += dist_fn(si_data, ti_data);
                     }
                 }
                 if sum < best_sum {
@@ -430,7 +473,7 @@ impl ClamTree {
         for i in 0..n {
             let pi = working[i];
             let pi_data = &data[pi * vec_len..(pi + 1) * vec_len];
-            let d = hamming_inline(center_data, pi_data);
+            let d = dist_fn(center_data, pi_data);
             distances.push(d);
             if d > radius {
                 radius = d;
@@ -456,7 +499,7 @@ impl ClamTree {
         for i in 0..n {
             let pi = working[i];
             let pi_data = &data[pi * vec_len..(pi + 1) * vec_len];
-            let d = hamming_inline(left_pole_data, pi_data);
+            let d = dist_fn(left_pole_data, pi_data);
             if d > right_pole_dist {
                 right_pole_dist = d;
                 right_pole_local = i;
@@ -472,8 +515,8 @@ impl ClamTree {
         for i in 0..n {
             let pi = working[i];
             let pi_data = &data[pi * vec_len..(pi + 1) * vec_len];
-            let dl = hamming_inline(left_pole_data, pi_data);
-            let dr = hamming_inline(right_pole_data, pi_data);
+            let dl = dist_fn(left_pole_data, pi_data);
+            let dr = dist_fn(right_pole_data, pi_data);
             side.push(dl <= dr); // ties go left (as per CAKES Algorithm 1)
         }
 
@@ -519,6 +562,7 @@ impl ClamTree {
                 config,
                 nodes,
                 rng,
+                dist_fn,
             );
             nodes[node_idx].left = Some(left_idx);
 
@@ -533,11 +577,24 @@ impl ClamTree {
                 config,
                 nodes,
                 rng,
+                dist_fn,
             );
             nodes[node_idx].right = Some(right_idx);
         }
 
         node_idx
+    }
+
+    /// Compute distance between two byte slices using this tree's metric.
+    #[inline]
+    pub fn dist(&self, a: &[u8], b: &[u8]) -> u64 {
+        (self.distance_fn)(a, b)
+    }
+
+    /// Get the distance function used by this tree.
+    #[inline]
+    pub fn distance_fn(&self) -> DistanceFn {
+        self.distance_fn
     }
 
     /// Get the root cluster.
@@ -588,6 +645,43 @@ impl ClamTree {
             max: lfds[n - 1],
             mean: lfds.iter().sum::<f64>() / n as f64,
         }
+    }
+
+    /// Extract the root-to-leaf path for every data point in the tree.
+    ///
+    /// Returns a vec of `(original_index, path)` where `path` is a `Vec<bool>`
+    /// of bipolar split decisions: `false` = went left, `true` = went right.
+    ///
+    /// Used by `ClamPath` to encode B-tree keys for CogRecord.
+    pub fn leaf_paths(&self) -> Vec<(usize, Vec<bool>)> {
+        let mut result = Vec::new();
+        let mut stack: Vec<(usize, Vec<bool>)> = vec![(0, Vec::new())];
+
+        while let Some((node_idx, path)) = stack.pop() {
+            let cluster = &self.nodes[node_idx];
+
+            if cluster.is_leaf() {
+                // Emit path for every point in this leaf
+                let start = cluster.offset;
+                let end = start + cluster.cardinality;
+                for &orig_idx in &self.reordered[start..end] {
+                    result.push((orig_idx, path.clone()));
+                }
+            } else {
+                if let Some(right) = cluster.right {
+                    let mut right_path = path.clone();
+                    right_path.push(true);
+                    stack.push((right, right_path));
+                }
+                if let Some(left) = cluster.left {
+                    let mut left_path = path.clone();
+                    left_path.push(false);
+                    stack.push((left, left_path));
+                }
+            }
+        }
+
+        result
     }
 
     /// Get LFD values by depth (for plotting like Figure 2 in CAKES).
