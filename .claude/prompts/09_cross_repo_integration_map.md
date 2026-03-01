@@ -27,6 +27,7 @@
   05  NARS causal trajectory
   06  3D wave awareness (REFERENCE)
   07  34 LLM tactics as Rust cognitive primitives
+  08  Lance-graph lessons (9 engineering patterns to adopt)
 ```
 
 ## How They Connect
@@ -63,8 +64,25 @@ rustynum-06 (research prompt)
 | ladybug Phase 1 | Calibrated noise floors, σ-bands, benchmarks | ChatGPT: false discovery, calibration |
 | ladybug Phase 2 | Reverse causal trace, counterfactuals, temporal | Gemini: temporal precedence; All: Rung 3 theorem |
 | ladybug Phase 3 | Independent debate, adversarial stress-tests | ChatGPT: correlated NARS evidence |
+| ladybug-08 | Lance-graph engineering patterns | Production quality: unified errors, query compiler, builders, tests |
 | rustynum-07 | DataFusion UDFs, lance-graph compiler pipeline | Grok: LanceDB substrate, Cypher integration |
 | rustynum-05 | Crystal encoder, codebook distillation | All: σ₃ codebook as encoding quality |
+
+## Lance-Graph Engineering Debt (from ladybug-08)
+
+### Rustynum Top 5
+1. Replace `assert!()`/`panic!()` with `Result<T, NumError>` in public APIs
+2. Add `ComputeBackend` trait abstraction (learn from `GraphSourceCatalog`)
+3. Validated builder patterns for `NumArray` construction
+4. Shared test fixtures + error-path tests
+5. `ComputePlan` intermediate repr for dispatch (like `LogicalOperator`)
+
+### Ladybug-rs Top 5
+1. Unify error types → single `LadybugError` with `snafu::Location` (eliminate 211 `.unwrap()`)
+2. Logical plan IR for query pipeline (Parse → Semantic → Logical → Physical)
+3. `StorageBackend` trait to unify BindSpace/Lance/ZeroCopy paths
+4. `default-features = false` on DataFusion and Tokio
+5. Criterion benchmark suite (parameterized sizes, throughput metrics)
 
 ## The Claim Hierarchy (from 08_four_ai_validation_synthesis.md)
 
