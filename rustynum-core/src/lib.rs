@@ -113,6 +113,11 @@ pub use causality::{
     CausalityDecomposition, CausalityDirection, NarsTruthValue,
 };
 
+// Qualia CAM: canonized content-addressable memory using calibrated coordinates
+// Replaces random LSH with phenomenological tuning forks as the index itself
+pub mod qualia_cam;
+pub use qualia_cam::{QualiaCAM, QualiaHit};
+
 // Qualia gate: homunculus-shaped gating types for the ResonanzZirkel
 // TuningFork = individual qualia coordinate, ResonanzZirkel = circular topology
 // Gate enforcement lives upstream (Sieves of Socrates in crewai-rust)
