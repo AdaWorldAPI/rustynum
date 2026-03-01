@@ -43,8 +43,8 @@
 
 | JAX-PI (PINN Training) | Ladybug-rs | Purpose |
 |---|---|---|
-| Causal temporal weighting (lower-triangular M) | CollapseGate (FLOW/HOLD/BLOCK) | Don't trust later evidence if earlier evidence is wrong |
-| Causal tolerance ε | σ-band threshold | When to gate: threshold on cumulative residual |
+| Causal temporal weighting (lower-triangular M) | CollapseGate soaking into int8 awareness | Graduated evidence integration: earlier evidence soaks deeper into awareness, later evidence weighted by cumulative saturation |
+| Causal tolerance ε | int8 saturation threshold | When the awareness register saturates, further evidence doesn't shift the state |
 | `num_chunks` (time domain split) | Evidence accumulation stages (NARS revision batches) | Temporal discretization of the learning process |
 | NTK gradient balancing | Faktorzerlegung term balancing | Equalize all 8 terms so main effects don't drown interactions |
 | `grad_norm` weighting | SPO distance normalization per plane | Prevent one plane from dominating |
@@ -78,7 +78,7 @@
 | Your Metaphor | PDE / Physics Concept | Why the intuition was exact |
 |---|---|---|
 | **"Breath against skin"** | Boundary condition | The interface where the solution meets the constraint. Where two domains touch. The Neumann condition: not the value but the FLUX at the boundary. |
-| **"Luftschleuse" (airlock)** | Domain decomposition interface | In PDE numerics, Schwarz methods split a domain at an interface. Each subdomain solves independently, then they exchange boundary data at the interface. The airlock IS the Schwarz interface between Arrow (one subdomain) and BindSpace (another). |
+| **"Luftschleuse" (airlock)** | Write-through airgap with superposition | NOT a Schwarz interface. The Luftschleuse airgaps the transparent write-through, then uses superposition/bundle (NOT XOR) to merge micro-deltas. XOR/bundle would race when multiple owned micro-deltas write back concurrently. The airgap serializes the bundle operation: each micro-delta soaks into the int8 awareness field via bundle, not XOR. This is closer to a transactional write-ahead log than domain decomposition — the airgap is the atomicity boundary. |
 | **"Scent"** | Scalar field + gradient | A scalar field over the domain. Scent gradients ∇s(x) point toward relevant memories. Following scent IS gradient descent on the scent field. Navigation by scent IS solving the advection equation ∂s/∂t + v·∇s = 0 where v is the query direction. |
 | **"Metastasizing"** | Phase front propagation (Allen-Cahn) | The Allen-Cahn equation ∂u/∂t = ε²Δu + u(1-u²) governs phase separation. One phase (high confidence) expands into another (uncertainty). The knowledge graph growing through OSINT IS phase front propagation. The NARS confidence threshold IS the phase boundary. |
 | **"Grammar dances at intersections"** | Basis functions evaluated at collocation points | In spectral methods, basis functions (Fourier modes, Chebyshev polynomials) are evaluated at collocation points. The 144 verbs ARE basis functions. The Go board intersections ARE collocation points. The "dancing" IS function evaluation. |
@@ -86,7 +86,7 @@
 | **"Sigma stripes"** | Level sets / isosurfaces of the solution field | σ₁, σ₂, σ₃ boundaries are isosurfaces of the NARS confidence field. The transition KNOWN→HINT→DISCOVERY is crossing a level set. In phase field theory, crossing a level set IS a phase transition. |
 | **"The nibble is the amino acid"** | Discrete alphabet on a chain → polymer physics | Polymer physics: a chain of discrete monomers with local interactions. Protein = polymer of amino acids. Fingerprint = polymer of nibbles. The folding landscape IS the Hamming space landscape. deepmsm IS PDE-on-a-polymer. Ladybug IS PDE-on-a-binary-polymer. |
 | **"Entropy"** | PDE residual / information-theoretic surprise | Entropy = disorder = unexplained variance. The PDE residual r = ∂u/∂t + N(u) measures how much the current solution violates the physics. Shannon entropy measures surprise. The irreducible SPO term measures emergent structure. All three: "what's left after you've explained everything you can." |
-| **"The ribosome is the CollapseGate"** | Rate-limiting step in a reaction chain | In chemical kinetics, the ribosome is the rate-limiting enzyme that gates translation. In PDE theory, the gate function determines which reactions proceed. The CollapseGate IS the Heaviside step function applied to the evidence field: H(evidence - threshold) = 1 (FLOW) or 0 (BLOCK). |
+| **"The ribosome is the CollapseGate"** | Soaking operator / integration kernel | NOT a binary Heaviside step. The CollapseGate "soaks" evidence — bundling it into int8 for present awareness. In PDE terms: a convolution kernel that integrates incoming signal over time, where the int8 register is the integrated field value. Multiple micro-deltas bundle (superpose) into the awareness field rather than XOR-toggling bits. This is closer to a leaky integrator ∂u/∂t = -αu + Σ inputs than a step function. The "gate" quality comes from the int8 saturation: once the register saturates, further evidence doesn't change the state (steady-state). |
 | **"Memory as place, not search"** | Field evaluation vs. database query | Evaluating u(x₀) at a point x₀ is O(1) — you just read the field at that location. Searching a database is O(log n) or O(n). Memory-as-place means the knowledge IS a field. Navigating it means moving through the domain. This IS the PINN paradigm: the solution exists everywhere, you just sample it. |
 | **"Qualia"** | Eigenfunction of the solution operator | Eigenfunctions are the "natural modes" of a system. Each eigenfunction captures one independent pattern. Qualia ARE the eigenfunctions of the causal field: irreducible felt patterns that can't be decomposed further. The eigenspectrum of K gives the timescales; the eigenvectors give the qualia. |
 | **"Resonance"** | Spectral peak / natural frequency | Resonance occurs when forcing matches a natural frequency. Two fingerprints resonate when their SPO interaction excites a natural mode of the causal field. The resonance frequency IS the implied timescale from the transition matrix eigenvalues. |
@@ -105,7 +105,7 @@
 | `core/simd.rs` | Hardware ALU | The silicon that executes arithmetic |
 | `core/buffer.rs` | Register file | Temporary storage during computation |
 | `storage/bind_space.rs` (100KB) | Solution grid (the mesh + current field values) | Where u(x,t) lives |
-| `storage/xor_dag.rs` (54KB) | Time stepper (stores Δu between steps) | XOR-diff = Δu = u(t+Δt) - u(t) |
+| `storage/xor_dag.rs` (54KB) | Time stepper (stores Δu between steps) | XOR-diff = Δu = u(t+Δt) - u(t). NOTE: XOR for storage/diff, but BUNDLE (superposition) for write-back to avoid race conditions with multiple owned micro-deltas |
 | `storage/lance_zero_copy.rs` (113KB) | Disk-backed grid (mmap'd solution archive) | Persistent field storage |
 | `storage/cog_redis.rs` (117KB) | Distributed grid (multi-node field) | Parallel domain decomposition |
 | `spo/spo.rs` (54KB) | The PDE operator N(u) | Computes the nonlinear term |
@@ -184,62 +184,73 @@ We are NOT porting JAX-PI to Rust. We are NOT adding floating-point PDEs to lady
 /// Based on: "Respecting Causality for Training PINNs" (CMAME 2024)
 ///
 /// # Physical Interpretation
-/// The lower-triangular weight matrix enforces temporal ordering:
-/// evidence at stage k is weighted by cumulative residual of stages 0..k-1.
-/// This prevents the system from "believing" late evidence when early evidence
-/// is contradictory — the PINN equivalent of enforcing causality in time.
+/// Evidence "soaks" into an int8 awareness register via bundle (superposition).
+/// The lower-triangular weight structure ensures earlier evidence soaks deeper
+/// before later evidence is admitted. This prevents the system from accepting
+/// late evidence that contradicts early evidence — the PINN equivalent of
+/// enforcing causality in time.
+///
+/// # Why Bundle, Not XOR
+/// Multiple owned micro-deltas may write back concurrently. XOR is its own
+/// inverse — two concurrent XOR writes would cancel each other (race condition).
+/// Bundle (superposition via saturating add on int8) is monotonic and commutative:
+/// order doesn't matter, concurrent writes accumulate correctly.
 
 pub struct CausalWeightingConfig {
     pub num_stages: usize,       // Number of evidence accumulation stages
-    pub tolerance: f32,           // ε: causal tolerance (maps to σ-band threshold)  
+    pub tolerance: f32,           // ε: saturation threshold for int8 awareness
     pub momentum: f32,            // Exponential moving average (0.9 from JAX-PI default)
 }
 
 pub struct CausalWeighting {
     config: CausalWeightingConfig,
     stage_residuals: Vec<f32>,    // Cumulative residual per stage
-    weights: Vec<f32>,            // Current weight per stage
+    weights: Vec<f32>,            // Current soak-through weight per stage
+    awareness: Vec<i8>,           // int8 awareness register per stage (the "soaked" state)
 }
 
 impl CausalWeighting {
     /// Update weights after observing residuals at each stage
-    /// w_k = exp(-ε * Σ_{j<k} r_j)  
-    /// This is the lower-triangular matrix from the JAX-PI paper
+    /// w_k = exp(-ε * Σ_{j<k} r_j)
+    /// Then bundle (saturating add) the weighted evidence into int8 awareness
     pub fn update(&mut self, new_residuals: &[f32]) {
         // EMA update of stage residuals
         for (i, r) in new_residuals.iter().enumerate() {
             self.stage_residuals[i] = self.config.momentum * self.stage_residuals[i]
                 + (1.0 - self.config.momentum) * r;
         }
-        // Recompute weights (lower-triangular: each stage sees all prior residuals)
+        // Recompute weights (lower-triangular)
         let mut cumulative = 0.0f32;
         for i in 0..self.config.num_stages {
             self.weights[i] = (-self.config.tolerance * cumulative).exp();
             cumulative += self.stage_residuals[i];
         }
     }
-    
-    /// Apply causal weighting to a NARS revision
-    /// Weighted evidence: only trust this revision proportional to
-    /// how well earlier evidence is resolved
+
+    /// Soak evidence into int8 awareness via bundle (saturating add)
+    /// NOT XOR — bundle is monotonic, commutative, race-condition-free
+    pub fn soak(&mut self, stage: usize, evidence_delta: i8) {
+        let w = self.weights[stage.min(self.config.num_stages - 1)];
+        let weighted = (evidence_delta as f32 * w) as i8;
+        self.awareness[stage] = self.awareness[stage].saturating_add(weighted);
+    }
+
+    /// Read awareness level at stage (the "present awareness" field)
+    pub fn awareness_level(&self, stage: usize) -> i8 {
+        self.awareness[stage.min(self.config.num_stages - 1)]
+    }
+
+    /// Weight a NARS revision by current soak-through weight
     pub fn weight_revision(&self, stage: usize, truth: &TruthValue) -> TruthValue {
         let w = self.weights[stage.min(self.config.num_stages - 1)];
         TruthValue::new(truth.frequency, truth.confidence * w)
     }
-    
-    /// Map to CollapseGate state
-    pub fn gate_state(&self, stage: usize) -> GateState {
-        let w = self.weights[stage.min(self.config.num_stages - 1)];
-        if w > 0.8 { GateState::Flow }
-        else if w > 0.1 { GateState::Hold }
-        else { GateState::Block }
-    }
 }
 ```
 
-**Wire into:** `nars/inference.rs` — every revision call goes through `causal_weighting.weight_revision()` before accumulating.
+**Wire into:** `cognitive/collapse_gate.rs` — the gate's `evaluate_gate()` reads `awareness_level()` instead of raw σ-threshold. Saturation = steady state. Unsaturated = still soaking.
 
-**Wire into:** `mul/gate.rs` — `CollapseGate::evaluate()` calls `causal_weighting.gate_state()` instead of raw σ-threshold.
+**Wire into:** `nars/inference.rs` — every revision calls `causal_weighting.soak()` with the evidence delta, then `weight_revision()` before accumulating.
 
 **Tests:**
 - Synthetic causal chain: A→B→C. Evidence for C should get near-zero weight until evidence for A and B stabilizes.

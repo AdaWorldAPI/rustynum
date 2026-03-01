@@ -183,7 +183,9 @@ Ladybug-rs assumes:
 
 ### What is Luftschleuse?
 
-The airlock between lance-graph's immutable Arrow world and ladybug's mutable BindSpace world. Every write goes through:
+The airgap between lance-graph's immutable Arrow world and ladybug's mutable BindSpace world. The airgap prevents race conditions when multiple owned micro-deltas write back concurrently. Key insight: XOR/bundle would race because XOR is its own inverse — two concurrent XOR writes cancel. Instead, the Luftschleuse serializes write-back through superposition/bundle (saturating int8 add), which is monotonic and commutative.
+
+Every write goes through:
 
 ```
 External query (Cypher/SQL)
@@ -192,23 +194,24 @@ External query (Cypher/SQL)
 Lance-graph Cypher parser → AST → Semantic → LogicalPlan
     │
     ▼
-[LUFTSCHLEUSE — the airlock]
+[LUFTSCHLEUSE — the airgap]
     │
     ├── READ path: LogicalPlan → DataFusion physical plan → Arrow RecordBatch
     │   (pure lance-graph, no mutation, zero-copy Arrow scan)
     │
-    └── WRITE path: LogicalPlan → CollapseGate evaluation
+    └── WRITE path: LogicalPlan → CollapseGate soaking evaluation
         │
-        ├── FLOW → XOR micro-copy into BindSpace
-        │   (fingerprint written to prefix:addr, XOR-DAG edge created)
-        │   (NARS truth value computed from 8-term factorization)
+        ├── SOAK → Bundle micro-delta into int8 awareness field
+        │   (fingerprint written to prefix:addr via superposition/bundle)
+        │   (NARS truth value soaked via saturating add, NOT XOR)
         │   (lance-graph metadata column updated via Lance append)
+        │   (multiple concurrent micro-deltas safe: bundle commutes)
         │
-        ├── HOLD → Buffer in staging area, don't commit
-        │   (evidence insufficient, wait for more comparisons)
+        ├── HOLD → Buffer in staging area, awareness not yet saturated
+        │   (evidence insufficient, keep soaking)
         │
         └── BLOCK → Reject write, log contradiction
-            (new evidence contradicts existing high-confidence edges)
+            (new evidence contradicts saturated awareness)
 ```
 
 ### The Meticulous Import Map
@@ -245,7 +248,7 @@ Lance-graph Cypher parser → AST → Semantic → LogicalPlan
 
 3. **XOR-DAG ACID** — Write-through to XOR-DAG must go through CollapseGate. lance-graph's immutable model does not understand mutable writes. The Luftschleuse handles this.
 
-4. **Collapse Gate ownership** — Every write creates an XOR micro-copy owned by the gate state (FLOW/HOLD/BLOCK). Lance-graph's copy-on-write versioning is at the dataset level; our micro-copies are at the fingerprint level. These are different granularities. The Luftschleuse translates between them.
+4. **Collapse Gate soaking** — Every write soaks evidence into int8 awareness via bundle (saturating add), NOT XOR. Multiple owned micro-deltas can write back concurrently because bundle is commutative and monotonic — no race conditions. Lance-graph's copy-on-write versioning is at the dataset level; our micro-deltas soak at the fingerprint level via superposition. The Luftschleuse airgaps these two granularities.
 
 5. **NARS truth accumulation** — Every comparison that passes through the DataFusion planner must also update NARS truth values. This is a side effect that lance-graph doesn't know about. Inject it at the Luftschleuse.
 

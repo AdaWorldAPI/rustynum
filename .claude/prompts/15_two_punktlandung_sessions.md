@@ -73,12 +73,13 @@ src/learning/attention_mask.rs  (~250 lines)
   - top_k_positions(transition, k) → most informative nibble positions
   - Wire: called from scent.rs instead of static masks
 
-src/nars/causal_weighting.rs  (~150 lines)  [SHARED with jaxpi session]
-  - CausalWeighting: num_stages, tolerance, momentum
+src/nars/causal_weighting.rs  (~200 lines)  [SHARED with jaxpi session]
+  - CausalWeighting: num_stages, tolerance, momentum, int8 awareness register
   - update(residuals): lower-triangular exponential decay
+  - soak(stage, evidence_delta): bundle into int8 via saturating_add (NOT XOR — race-safe)
+  - awareness_level(stage): read soaked awareness
   - weight_revision(stage, truth) → weighted TruthValue
-  - gate_state(stage) → GateState
-  - Wire: wraps existing collapse_gate.rs evaluate_gate()
+  - Wire: wraps existing collapse_gate.rs — gate reads awareness saturation, not raw σ
 ```
 
 ### Session Plan
