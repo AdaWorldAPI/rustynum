@@ -183,4 +183,4 @@ This gives **semantic edge validation**, not string matching. A query for `:LOVE
 
 ## Note on deepmsm
 
-`AdaWorldAPI/deepmsm` is a **molecular dynamics** repo ("Progress in deep Markov State Modeling: Coarse graining and experimental data restraints"). It has nothing to do with Natural Semantic Metalanguage. The naming collision is unfortunate. This repo should be ignored for the current work.
+`AdaWorldAPI/deepmsm` is a **molecular dynamics** repo ("Progress in deep Markov State Modeling"). While it has nothing to do with Natural Semantic Metalanguage (naming collision), the math is structurally isomorphic to our cognitive dynamics. See `12_deepmsm_isomorphism.md` for the full mapping: nibble↔amino acid, σ-stripe↔metastable state, CollapseGate↔ribosome, grammar↔genetic code. The VAMPE diagnostics, CK consistency test, learned attention masks, and hierarchical coarse-graining all translate directly to fingerprint space.
