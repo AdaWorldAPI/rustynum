@@ -105,6 +105,14 @@ pub use cam_index::{CamConfig, CamHit, CamIndex};
 pub mod dn_tree;
 pub use dn_tree::{DNConfig, DNNode, DNTree, DNTreeStats, TraversalHit};
 
+// Causality decomposition: RGB (causing) ↔ CMYK (experiencing) from BF16 sign patterns
+// Bridges bf16_hamming (sign flips) → spatial_resonance (SPO predicate) → NARS truth values
+pub mod causality;
+pub use causality::{
+    causality_decompose, causality_mask_bf16, spo_encode_causal, spatial_nars_truth,
+    CausalityDecomposition, CausalityDirection, NarsTruthValue,
+};
+
 // Qualia gate: homunculus-shaped gating types for the ResonanzZirkel
 // TuningFork = individual qualia coordinate, ResonanzZirkel = circular topology
 // Gate enforcement lives upstream (Sieves of Socrates in crewai-rust)
