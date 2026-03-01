@@ -147,8 +147,8 @@ const DIMS_16_JSON: &[&str] = &[
 const DIMS_16_NAMES: &[&str] = &[
     "glow",
     "valence",
-    "rooting",
     "agency",
+    "affectionate",
     "resonance",
     "clarity",
     "social",
@@ -199,7 +199,7 @@ fn main() {
 
     // CAUSES: high agency, high volition, forward motion
     let pred_causes = f32_to_bf16_bytes(&[
-        0.7, 0.5, 0.5, 0.9, // glow, valence, rooting, agency=HIGH
+        0.7, 0.5, 0.5, 0.9, // glow, valence, agency, affectionate=HIGH
         0.3, 0.5, 0.3, 0.1, // resonance, clarity, social, gravity=LOW
         0.2, 0.8, 0.3, 0.2, // reverence, volition=HIGH, dissonance, staunen
         0.1, 0.6, 0.3, 0.5, // loss, optimism, friction, equilibrium
@@ -207,7 +207,7 @@ fn main() {
 
     // IS_CAUSED_BY: low agency, high gravity, receptive
     let pred_caused_by = f32_to_bf16_bytes(&[
-        0.3, 0.5, 0.5, 0.1, // glow, valence, rooting, agency=LOW
+        0.3, 0.5, 0.5, 0.1, // glow, valence, agency, affectionate=LOW
         0.7, 0.5, 0.3, 0.9, // resonance, clarity, social, gravity=HIGH
         0.6, 0.2, 0.3, 0.4, // reverence, volition=LOW, dissonance, staunen
         0.3, 0.4, 0.3, 0.5, // loss, optimism, friction, equilibrium
@@ -215,7 +215,7 @@ fn main() {
 
     // TRANSFORMS: high dissonance, high friction, agency moderate
     let pred_transforms = f32_to_bf16_bytes(&[
-        0.5, 0.5, 0.4, 0.5, // glow, valence, rooting, agency=MID
+        0.5, 0.5, 0.4, 0.5, // glow, valence, agency, affectionate=MID
         0.5, 0.4, 0.3, 0.5, // resonance, clarity, social, gravity=MID
         0.4, 0.5, 0.8, 0.5, // reverence, volition, dissonance=HIGH, staunen
         0.2, 0.5, 0.8, 0.7, // loss, optimism, friction=HIGH, equilibrium=HIGH
@@ -223,7 +223,7 @@ fn main() {
 
     // DISSOLVES_INTO: low agency, low gravity, high resonance
     let pred_dissolves = f32_to_bf16_bytes(&[
-        0.8, 0.7, 0.2, 0.1, // glow=HIGH, valence, rooting=LOW, agency=LOW
+        0.8, 0.7, 0.2, 0.1, // glow=HIGH, valence, agency=LOW, affectionate=LOW
         0.9, 0.3, 0.5, 0.1, // resonance=HIGH, clarity=LOW, social, gravity=LOW
         0.3, 0.1, 0.1, 0.7, // reverence, volition=LOW, dissonance=LOW, staunen=HIGH
         0.1, 0.7, 0.1, 0.1, // loss=LOW, optimism, friction=LOW, equilibrium=LOW
