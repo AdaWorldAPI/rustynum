@@ -35,7 +35,7 @@
 use crate::bf16_hamming::{
     self, AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights, SuperpositionState,
 };
-use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SliceGate};
+use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SigmaScore, SliceGate};
 use crate::tail_backend::TailBackend;
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
@@ -58,6 +58,8 @@ pub struct HybridScore {
     pub hdr: HdrScore,
     /// Energy/conflict decomposition from binary Hamming.
     pub energy: EnergyConflict,
+    /// σ-significance score from binary Hamming distance.
+    pub sigma: SigmaScore,
     /// BF16 structured distance (weighted sign/exp/man). Float, quality.
     pub bf16_distance: u64,
     /// BF16 structural diff — per-dimension breakdown of what changed.
@@ -445,6 +447,7 @@ pub fn hybrid_pipeline(
             hamming_distance: km.distance,
             hdr: km.hdr,
             energy: km.energy,
+            sigma: km.sigma,
             bf16_distance: bf16_dist,
             structural_diff: diff,
             index: original_index,
@@ -581,6 +584,7 @@ pub fn hybrid_pipeline_with_backend(
                 hamming_distance: km.distance,
                 hdr: km.hdr,
                 energy: km.energy,
+                sigma: km.sigma,
                 bf16_distance: batch.distances[i],
                 structural_diff: diff.clone(),
                 index: original_index,
@@ -615,6 +619,7 @@ pub fn hybrid_pipeline_with_backend(
                 hamming_distance: km.distance,
                 hdr: km.hdr,
                 energy: km.energy,
+                sigma: km.sigma,
                 bf16_distance: tail.bf16_distance,
                 structural_diff: tail.structural_diff,
                 index: original_index,

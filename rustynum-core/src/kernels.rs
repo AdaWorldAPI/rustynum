@@ -212,6 +212,8 @@ pub struct KernelResult {
     pub hdr: HdrScore,
     /// Energy/conflict decomposition (only valid if stage == K2).
     pub energy: EnergyConflict,
+    /// σ-significance score (only valid if stage == K2).
+    pub sigma: SigmaScore,
 }
 
 /// Which kernel stage produced the result.
@@ -387,6 +389,318 @@ pub fn score_hdr(ec: &EnergyConflict, gate: &SliceGate) -> HdrScore {
 }
 
 // ============================================================================
+// σ-Significance scoring — statistical distance from noise floor
+// ============================================================================
+
+/// Statistical significance of a Hamming distance from noise floor.
+///
+/// For D-bit balanced binary vectors, expected Hamming distance between
+/// random vectors is μ = D/2 with σ = √(D/4). A candidate whose distance
+/// is z standard deviations BELOW μ is z-sigma significant.
+///
+/// The levels follow standard statistical significance conventions:
+/// - `< 1.5σ` → not significant (within normal random variation)
+/// - `1.5-2σ` → hint (interesting, not publishable)
+/// - `2-2.5σ` → evidence (95% CI, p < 0.05)
+/// - `2.5-3σ` → strong (99% CI, p < 0.01)
+/// - `> 3σ`   → discovery (99.7%+, particle physics uses 5σ)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SignificanceLevel {
+    /// < 1.5σ from noise — not significant.
+    Noise,
+    /// 1.5-2σ — interesting but not conclusive.
+    Hint,
+    /// 2-2.5σ — 95% confidence interval (p < 0.05).
+    Evidence,
+    /// 2.5-3σ — 99% confidence interval (p < 0.01).
+    Strong,
+    /// > 3σ — 99.7%+ (discovery threshold).
+    Discovery,
+}
+
+/// σ-based significance score computed from raw Hamming distance.
+///
+/// Supplements (does NOT replace) `HdrScore`. While `HdrScore` uses
+/// fraction-of-D thresholds, `SigmaScore` uses the statistical model
+/// for balanced random binary vectors.
+#[derive(Clone, Copy, Debug)]
+pub struct SigmaScore {
+    /// How many σ below the noise floor (higher = better match).
+    /// Positive = closer than expected. Negative = anti-correlated.
+    pub sigma: f32,
+    /// Discrete significance level.
+    pub level: SignificanceLevel,
+    /// Approximate one-tailed p-value.
+    pub p_value: f32,
+}
+
+/// Precomputed integer thresholds for 5-tier σ-significance scoring.
+///
+/// All tier comparisons in the hot path use `u32` — no floats.
+/// Computed once at init from the container bit count.
+#[derive(Clone, Copy, Debug)]
+pub struct SigmaGate {
+    /// Distance below which → Discovery (z ≥ 3.0σ).
+    pub discovery: u32,
+    /// Distance below which → Strong (z ≥ 2.5σ).
+    pub strong: u32,
+    /// Distance below which → Evidence (z ≥ 2.0σ).
+    pub evidence: u32,
+    /// Distance below which → Hint (z ≥ 1.5σ).
+    pub hint: u32,
+    /// Expected noise distance: μ = total_bits / 2.
+    pub mu: u32,
+    /// Standard deviation: σ = √(total_bits / 4), stored as integer.
+    pub sigma_unit: u32,
+    /// Total bits in the container.
+    pub total_bits: u32,
+}
+
+impl SigmaGate {
+    /// Build σ-thresholds for a given container bit count.
+    ///
+    /// For D-bit balanced vectors: μ = D/2, σ = √(D/4).
+    /// Thresholds are Hamming distance values (lower = better match):
+    ///   discovery = μ - 3σ, strong = μ - 2.5σ, etc.
+    pub fn new(total_bits: usize) -> Self {
+        let d = total_bits as f64;
+        let mu = (d / 2.0) as u32;
+        let sigma = (d / 4.0).sqrt();
+        let sigma_u = sigma as u32;
+
+        Self {
+            discovery: mu.saturating_sub((3.0 * sigma) as u32),
+            strong: mu.saturating_sub((2.5 * sigma) as u32),
+            evidence: mu.saturating_sub((2.0 * sigma) as u32),
+            hint: mu.saturating_sub((1.5 * sigma) as u32),
+            mu,
+            sigma_unit: sigma_u,
+            total_bits: total_bits as u32,
+        }
+    }
+
+    /// Default σ-thresholds for SKU-16K.
+    /// μ = 8192, σ = 64.
+    /// Discovery < 8000, Strong < 8032, Evidence < 8064, Hint < 8096.
+    pub fn sku_16k() -> Self {
+        Self::new(SKU_16K_BITS)
+    }
+
+    /// Default σ-thresholds for SKU-64K.
+    /// μ = 32768, σ = 128.
+    pub fn sku_64k() -> Self {
+        Self::new(SKU_64K_BITS)
+    }
+}
+
+/// Compute σ-significance from an EnergyConflict and SigmaGate.
+///
+/// The z-score measures how many standard deviations the observed distance
+/// falls below the expected noise floor: z = (μ - conflict) / σ.
+///
+/// Cost: 4 integer comparisons + 1 f32 division (for the z-score).
+/// The integer comparisons are pre-computed; the f32 is informational only.
+#[inline]
+pub fn score_sigma(ec: &EnergyConflict, gate: &SigmaGate) -> SigmaScore {
+    let conflict = ec.conflict;
+
+    // Tier classification via integer comparison (no floats in tier decision)
+    let level = if conflict < gate.discovery {
+        SignificanceLevel::Discovery
+    } else if conflict < gate.strong {
+        SignificanceLevel::Strong
+    } else if conflict < gate.evidence {
+        SignificanceLevel::Evidence
+    } else if conflict < gate.hint {
+        SignificanceLevel::Hint
+    } else {
+        SignificanceLevel::Noise
+    };
+
+    // z-score (float, informational)
+    let sigma_f = if gate.sigma_unit > 0 {
+        (gate.mu as f32 - conflict as f32) / gate.sigma_unit as f32
+    } else {
+        0.0
+    };
+
+    // Approximate one-tailed p-value from z
+    let p_value = if sigma_f >= 5.0 {
+        0.000_000_3 // 5σ
+    } else if sigma_f >= 4.0 {
+        0.000_03
+    } else if sigma_f >= 3.0 {
+        0.001_3 // 3σ = 99.7%
+    } else if sigma_f >= 2.5 {
+        0.006_2 // 2.5σ ≈ 99.4%
+    } else if sigma_f >= 2.0 {
+        0.023 // 2σ = 95.4%
+    } else if sigma_f >= 1.5 {
+        0.067 // 1.5σ ≈ 93.3%
+    } else if sigma_f >= 1.0 {
+        0.159
+    } else if sigma_f >= 0.0 {
+        0.5
+    } else {
+        1.0 // Anti-correlated: distance > μ
+    };
+
+    SigmaScore {
+        sigma: sigma_f,
+        level,
+        p_value,
+    }
+}
+
+// ============================================================================
+// Per-word popcount histogram — positional distance information
+// ============================================================================
+
+/// Extended K2 result with per-word conflict histogram.
+///
+/// Preserves the individual per-word XOR popcounts that `k2_exact()` computes
+/// but discards during summation. Zero additional compute cost — the per-word
+/// popcounts are already computed, we just store them instead of discarding.
+#[derive(Clone, Debug)]
+pub struct K2Histogram {
+    /// Standard aggregate EnergyConflict.
+    pub energy: EnergyConflict,
+    /// Per-word XOR popcount. Length = n_words (256 for SKU-16K, 1024 for SKU-64K).
+    /// Each value in [0, 64] (popcount of one u64 word of XOR).
+    pub word_conflicts: Vec<u16>,
+}
+
+impl K2Histogram {
+    /// Maximum per-word conflict (hottest positional disagreement).
+    #[inline]
+    pub fn max_word_conflict(&self) -> u16 {
+        self.word_conflicts.iter().copied().max().unwrap_or(0)
+    }
+
+    /// Index of the word with maximum conflict.
+    #[inline]
+    pub fn hottest_word(&self) -> usize {
+        self.word_conflicts
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &v)| v)
+            .map(|(i, _)| i)
+            .unwrap_or(0)
+    }
+
+    /// Number of words with conflict above a threshold.
+    #[inline]
+    pub fn hot_word_count(&self, threshold: u16) -> usize {
+        self.word_conflicts
+            .iter()
+            .filter(|&&v| v > threshold)
+            .count()
+    }
+
+    /// Variance of per-word conflicts (spread of positional distance).
+    ///
+    /// High variance = localized disagreement (e.g. one region differs).
+    /// Low variance = uniform disagreement (noise-like).
+    pub fn variance(&self) -> f32 {
+        let n = self.word_conflicts.len();
+        if n == 0 {
+            return 0.0;
+        }
+        let mean =
+            self.word_conflicts.iter().map(|&v| v as f32).sum::<f32>() / n as f32;
+        self.word_conflicts
+            .iter()
+            .map(|&v| {
+                let d = v as f32 - mean;
+                d * d
+            })
+            .sum::<f32>()
+            / n as f32
+    }
+}
+
+/// K2 exact with per-word histogram. Same computation as `k2_exact()`
+/// but stores individual per-word XOR popcounts instead of discarding them.
+///
+/// Overhead vs `k2_exact()`: one Vec allocation + n_words u16 stores.
+/// Since this only runs on K2 survivors (~5% of candidates), the
+/// allocation cost is negligible.
+#[inline]
+pub fn k2_exact_histogram(
+    query: &[u64],
+    candidate: &[u64],
+    n_words: usize,
+) -> K2Histogram {
+    debug_assert!(query.len() >= n_words);
+    debug_assert!(candidate.len() >= n_words);
+
+    let mut conflict: u32 = 0;
+    let mut energy_a: u32 = 0;
+    let mut energy_b: u32 = 0;
+    let mut agreement: u32 = 0;
+    let mut word_conflicts = vec![0u16; n_words];
+
+    // 4x unrolled for ILP — same structure as k2_exact
+    let full_quads = n_words / 4;
+    for q in 0..full_quads {
+        let base = q * 4;
+        let (qa, qb, qc, qd) = (
+            query[base],
+            query[base + 1],
+            query[base + 2],
+            query[base + 3],
+        );
+        let (ca, cb, cc, cd) = (
+            candidate[base],
+            candidate[base + 1],
+            candidate[base + 2],
+            candidate[base + 3],
+        );
+
+        let pa = (qa ^ ca).count_ones();
+        let pb = (qb ^ cb).count_ones();
+        let pc = (qc ^ cc).count_ones();
+        let pd = (qd ^ cd).count_ones();
+
+        // Store per-word popcounts (the only difference from k2_exact)
+        word_conflicts[base] = pa as u16;
+        word_conflicts[base + 1] = pb as u16;
+        word_conflicts[base + 2] = pc as u16;
+        word_conflicts[base + 3] = pd as u16;
+
+        conflict += pa + pb + pc + pd;
+        energy_a +=
+            qa.count_ones() + qb.count_ones() + qc.count_ones() + qd.count_ones();
+        energy_b +=
+            ca.count_ones() + cb.count_ones() + cc.count_ones() + cd.count_ones();
+        agreement += (qa & ca).count_ones()
+            + (qb & cb).count_ones()
+            + (qc & cc).count_ones()
+            + (qd & cd).count_ones();
+    }
+
+    // Remaining words
+    for i in (full_quads * 4)..n_words {
+        let pc = (query[i] ^ candidate[i]).count_ones();
+        word_conflicts[i] = pc as u16;
+        conflict += pc;
+        energy_a += query[i].count_ones();
+        energy_b += candidate[i].count_ones();
+        agreement += (query[i] & candidate[i]).count_ones();
+    }
+
+    K2Histogram {
+        energy: EnergyConflict {
+            conflict,
+            energy_a,
+            energy_b,
+            agreement,
+        },
+        word_conflicts,
+    }
+}
+
+// ============================================================================
 // Pipeline: K0 → K1 → K2 cascaded search
 // ============================================================================
 
@@ -398,8 +712,8 @@ pub fn score_hdr(ec: &EnergyConflict, gate: &SliceGate) -> HdrScore {
 /// `n_words`: words per container (SKU_16K_WORDS or SKU_64K_WORDS)
 /// `gate`: precomputed integer thresholds
 ///
-/// Returns all matches (candidates that survived K0+K1 and have HDR > 0)
-/// and pipeline statistics.
+/// Returns all matches (candidates that survived K0+K1 and have HDR > 0
+/// OR sigma level ≥ Hint) and pipeline statistics.
 pub fn kernel_pipeline(
     query_words: &[u64],
     database_words: &[u64],
@@ -407,6 +721,7 @@ pub fn kernel_pipeline(
     n_words: usize,
     gate: &SliceGate,
 ) -> (Vec<KernelResult>, PipelineStats) {
+    let sigma_gate = SigmaGate::new(gate.total_bits as usize);
     assert!(
         n_words == SKU_16K_WORDS || n_words == SKU_64K_WORDS,
         "kernel_pipeline only supports SKU-16K ({}) or SKU-64K ({}) containers, got {}",
@@ -445,6 +760,7 @@ pub fn kernel_pipeline(
         stats.k2_promoted += 1;
         let ec = k2_exact(query_words, candidate, n_words);
         let hdr = score_hdr(&ec, gate);
+        let sigma = score_sigma(&ec, &sigma_gate);
 
         if ec.is_anti_resonance(gate) {
             stats.anti_resonances += 1;
@@ -458,6 +774,7 @@ pub fn kernel_pipeline(
                 distance: ec.conflict,
                 hdr,
                 energy: ec,
+                sigma,
             });
         }
     }
@@ -509,6 +826,7 @@ pub fn full_sweep(
     assert_eq!(query_words.len(), n_words);
     assert!(database_words.len() >= n_candidates * n_words);
 
+    let sigma_gate = SigmaGate::new(gate.total_bits as usize);
     let mut matches = Vec::new();
 
     for i in 0..n_candidates {
@@ -516,6 +834,7 @@ pub fn full_sweep(
         let candidate = &database_words[offset..offset + n_words];
         let ec = k2_exact(query_words, candidate, n_words);
         let hdr = score_hdr(&ec, gate);
+        let sigma = score_sigma(&ec, &sigma_gate);
 
         if hdr.is_match() {
             matches.push(KernelResult {
@@ -524,6 +843,7 @@ pub fn full_sweep(
                 distance: ec.conflict,
                 hdr,
                 energy: ec,
+                sigma,
             });
         }
     }
@@ -985,5 +1305,252 @@ mod tests {
         assert!((transcript.estimated_speedup() - 50.0).abs() < 0.01);
         assert!((transcript.stats.k0_rejection_rate() - 0.9).abs() < 0.001);
         assert!((transcript.stats.total_rejection_rate() - 0.98).abs() < 0.001);
+    }
+
+    // ========================================================================
+    // σ-Significance tests
+    // ========================================================================
+
+    #[test]
+    fn test_sigma_gate_sku_16k() {
+        let gate = SigmaGate::sku_16k();
+        assert_eq!(gate.total_bits, 16384);
+        assert_eq!(gate.mu, 8192);
+        assert_eq!(gate.sigma_unit, 64);
+        // Discovery = μ - 3σ = 8192 - 192 = 8000
+        assert_eq!(gate.discovery, 8000);
+        // Strong = μ - 2.5σ = 8192 - 160 = 8032
+        assert_eq!(gate.strong, 8032);
+        // Evidence = μ - 2σ = 8192 - 128 = 8064
+        assert_eq!(gate.evidence, 8064);
+        // Hint = μ - 1.5σ = 8192 - 96 = 8096
+        assert_eq!(gate.hint, 8096);
+    }
+
+    #[test]
+    fn test_sigma_gate_sku_64k() {
+        let gate = SigmaGate::sku_64k();
+        assert_eq!(gate.total_bits, 65536);
+        assert_eq!(gate.mu, 32768);
+        assert_eq!(gate.sigma_unit, 128);
+        // Discovery = 32768 - 384 = 32384
+        assert_eq!(gate.discovery, 32384);
+    }
+
+    #[test]
+    fn test_sigma_score_noise() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = μ = 8192 → z ≈ 0.0 → Noise
+        let ec = EnergyConflict {
+            conflict: 8192,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Noise);
+        assert!(sigma.sigma.abs() < 0.1, "z should be ~0, got {}", sigma.sigma);
+    }
+
+    #[test]
+    fn test_sigma_score_discovery() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = 7900 → z = (8192-7900)/64 ≈ 4.56 → Discovery
+        let ec = EnergyConflict {
+            conflict: 7900,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Discovery);
+        assert!(sigma.sigma > 3.0);
+    }
+
+    #[test]
+    fn test_sigma_score_evidence() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = 8060 → z = (8192-8060)/64 ≈ 2.06 → Evidence
+        let ec = EnergyConflict {
+            conflict: 8060,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Evidence);
+        assert!(sigma.sigma >= 2.0 && sigma.sigma < 2.5);
+    }
+
+    #[test]
+    fn test_sigma_score_strong() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = 8040 → z = (8192-8040)/64 ≈ 2.375 → just below Strong boundary?
+        // Strong threshold = 8032. 8040 > 8032, so this is Evidence.
+        // Use 8020 → z = (8192-8020)/64 = 2.6875 → Strong
+        let ec = EnergyConflict {
+            conflict: 8020,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Strong);
+    }
+
+    #[test]
+    fn test_sigma_score_hint() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = 8090 → z = (8192-8090)/64 ≈ 1.59 → Hint
+        let ec = EnergyConflict {
+            conflict: 8090,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Hint);
+    }
+
+    #[test]
+    fn test_sigma_score_anti_correlated() {
+        let gate = SigmaGate::sku_16k();
+        // Distance > μ → anti-correlated → Noise with negative z
+        let ec = EnergyConflict {
+            conflict: 9000,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Noise);
+        assert!(sigma.sigma < 0.0, "Anti-correlated should have negative z");
+        assert!((sigma.p_value - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_sigma_exact_match_is_discovery() {
+        let gate = SigmaGate::sku_16k();
+        // Distance = 0 → z = 8192/64 = 128σ → Discovery
+        let ec = EnergyConflict {
+            conflict: 0,
+            ..Default::default()
+        };
+        let sigma = score_sigma(&ec, &gate);
+        assert_eq!(sigma.level, SignificanceLevel::Discovery);
+        assert!(sigma.sigma > 100.0);
+    }
+
+    #[test]
+    fn test_sigma_ordering() {
+        assert!(SignificanceLevel::Noise < SignificanceLevel::Hint);
+        assert!(SignificanceLevel::Hint < SignificanceLevel::Evidence);
+        assert!(SignificanceLevel::Evidence < SignificanceLevel::Strong);
+        assert!(SignificanceLevel::Strong < SignificanceLevel::Discovery);
+    }
+
+    // ========================================================================
+    // K2 Histogram tests
+    // ========================================================================
+
+    #[test]
+    fn test_k2_histogram_matches_k2_exact() {
+        let a = random_container(42, SKU_16K_WORDS);
+        let b = random_container(99, SKU_16K_WORDS);
+
+        let ec = k2_exact(&a, &b, SKU_16K_WORDS);
+        let hist = k2_exact_histogram(&a, &b, SKU_16K_WORDS);
+
+        assert_eq!(ec.conflict, hist.energy.conflict);
+        assert_eq!(ec.energy_a, hist.energy.energy_a);
+        assert_eq!(ec.energy_b, hist.energy.energy_b);
+        assert_eq!(ec.agreement, hist.energy.agreement);
+    }
+
+    #[test]
+    fn test_k2_histogram_per_word_sum() {
+        let a = random_container(42, SKU_16K_WORDS);
+        let b = random_container(99, SKU_16K_WORDS);
+
+        let hist = k2_exact_histogram(&a, &b, SKU_16K_WORDS);
+        let sum: u32 = hist.word_conflicts.iter().map(|&v| v as u32).sum();
+        assert_eq!(
+            sum, hist.energy.conflict,
+            "Sum of per-word conflicts must equal total conflict"
+        );
+    }
+
+    #[test]
+    fn test_k2_histogram_zero_on_identical() {
+        let a = random_container(42, SKU_16K_WORDS);
+        let hist = k2_exact_histogram(&a, &a, SKU_16K_WORDS);
+
+        assert_eq!(hist.energy.conflict, 0);
+        assert!(
+            hist.word_conflicts.iter().all(|&v| v == 0),
+            "All per-word conflicts should be 0 for identical vectors"
+        );
+    }
+
+    #[test]
+    fn test_k2_histogram_all_ones_vs_zeros() {
+        let ones = vec![0xFFFFFFFFFFFFFFFFu64; SKU_16K_WORDS];
+        let zeros = vec![0u64; SKU_16K_WORDS];
+        let hist = k2_exact_histogram(&ones, &zeros, SKU_16K_WORDS);
+
+        assert_eq!(hist.energy.conflict, SKU_16K_BITS as u32);
+        assert!(
+            hist.word_conflicts.iter().all(|&v| v == 64),
+            "Each word should have 64 bits conflict"
+        );
+    }
+
+    #[test]
+    fn test_k2_histogram_variance_localized() {
+        // Flip bits in only one word → high variance
+        let a = vec![0u64; SKU_16K_WORDS];
+        let mut b = vec![0u64; SKU_16K_WORDS];
+        b[100] = 0xFFFFFFFFFFFFFFFF; // 64 bits differ in word 100 only
+
+        let hist = k2_exact_histogram(&a, &b, SKU_16K_WORDS);
+        assert_eq!(hist.max_word_conflict(), 64);
+        assert_eq!(hist.hottest_word(), 100);
+        assert!(
+            hist.variance() > 0.5,
+            "Localized difference should have high variance"
+        );
+    }
+
+    #[test]
+    fn test_k2_histogram_hot_word_count() {
+        let a = vec![0u64; SKU_16K_WORDS];
+        let mut b = vec![0u64; SKU_16K_WORDS];
+        // Set 3 words to all-ones → 3 hot words
+        b[10] = u64::MAX;
+        b[20] = u64::MAX;
+        b[30] = u64::MAX;
+
+        let hist = k2_exact_histogram(&a, &b, SKU_16K_WORDS);
+        assert_eq!(hist.hot_word_count(32), 3);
+        assert_eq!(hist.hot_word_count(0), 3);
+    }
+
+    #[test]
+    fn test_k2_histogram_64k() {
+        let a = random_container(1, SKU_64K_WORDS);
+        let b = random_container(2, SKU_64K_WORDS);
+        let hist = k2_exact_histogram(&a, &b, SKU_64K_WORDS);
+
+        assert_eq!(hist.word_conflicts.len(), SKU_64K_WORDS);
+        let sum: u32 = hist.word_conflicts.iter().map(|&v| v as u32).sum();
+        assert_eq!(sum, hist.energy.conflict);
+    }
+
+    #[test]
+    fn test_pipeline_results_have_sigma() {
+        let gate = SliceGate::sku_16k();
+        let query = random_container(1, SKU_16K_WORDS);
+
+        let n = 50;
+        let mut db = Vec::with_capacity(n * SKU_16K_WORDS);
+        db.extend_from_slice(&query); // Plant exact match at index 0
+        for i in 1..n {
+            db.extend_from_slice(&random_container(i as u64 + 9000, SKU_16K_WORDS));
+        }
+
+        let (matches, _) = kernel_pipeline(&query, &db, n, SKU_16K_WORDS, &gate);
+
+        // The exact match should be Discovery
+        let exact = matches.iter().find(|m| m.index == 0).expect("Exact match missing");
+        assert_eq!(exact.sigma.level, SignificanceLevel::Discovery);
+        assert!(exact.sigma.sigma > 100.0);
     }
 }

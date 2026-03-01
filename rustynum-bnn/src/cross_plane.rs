@@ -44,6 +44,7 @@
 //! - Czégel et al. (2021): Darwinian neurodynamics — error thresholds
 
 use rustynum_core::fingerprint::Fingerprint;
+use rustynum_core::kernels::{SigmaGate, SigmaScore, SignificanceLevel};
 use rustynum_core::layer_stack::CollapseGate;
 use rustynum_core::rng::SplitMix64;
 
@@ -413,6 +414,12 @@ pub struct PartialBinding {
     pub confidence: f32,
     /// Per-plane Hamming distances (u32::MAX if plane does not agree).
     pub plane_distances: [u32; 3],
+    /// Per-plane σ-significance levels (Noise if plane does not agree).
+    ///
+    /// Each plane's Hamming distance is independently scored against the
+    /// noise floor σ = √(D/4). This gives per-plane statistical significance
+    /// that feeds into the B_3 lattice halo classification.
+    pub plane_sigma: [SignificanceLevel; 3],
 }
 
 impl PartialBinding {
@@ -911,6 +918,11 @@ fn try_compose_pair_and_free(
                     pair.plane_distances[1],
                     o_dist,
                 ],
+                plane_sigma: [
+                    pair.plane_sigma[0],
+                    pair.plane_sigma[1],
+                    fv.plane_sigma[2],
+                ],
             });
         }
     }
@@ -926,6 +938,11 @@ fn try_compose_pair_and_free(
                     pair.plane_distances[0],
                     p_dist,
                     pair.plane_distances[2],
+                ],
+                plane_sigma: [
+                    pair.plane_sigma[0],
+                    fv.plane_sigma[1],
+                    pair.plane_sigma[2],
                 ],
             });
         }
@@ -943,10 +960,114 @@ fn try_compose_pair_and_free(
                     pair.plane_distances[1],
                     pair.plane_distances[2],
                 ],
+                plane_sigma: [
+                    fv.plane_sigma[0],
+                    pair.plane_sigma[1],
+                    pair.plane_sigma[2],
+                ],
             });
         }
     }
     None
+}
+
+// ============================================================================
+// Sigma-Gated Cross-Plane Vote — per-plane σ-significance thresholds
+// ============================================================================
+
+/// Per-plane σ-significance summary for a candidate entry.
+///
+/// Records the σ-score from each plane independently. This is the
+/// per-plane decomposition of the aggregate Hamming distance, giving
+/// 2^3 = 8 halo types with statistical grounding instead of ad-hoc thresholds.
+#[derive(Clone, Debug)]
+pub struct PlaneSignificance {
+    /// σ-significance for S-plane distance.
+    pub s: SigmaScore,
+    /// σ-significance for P-plane distance.
+    pub p: SigmaScore,
+    /// σ-significance for O-plane distance.
+    pub o: SigmaScore,
+}
+
+impl PlaneSignificance {
+    /// Classify halo type from per-plane σ-significance.
+    ///
+    /// A plane is considered a survivor if its σ-level meets the minimum
+    /// threshold. The resulting HaloType is the B_3 lattice element from
+    /// the 3-bit membership vector.
+    pub fn halo_type(&self, min_level: SignificanceLevel) -> HaloType {
+        let s = self.s.level >= min_level;
+        let p = self.p.level >= min_level;
+        let o = self.o.level >= min_level;
+        HaloType::from_membership(s, p, o)
+    }
+
+    /// Minimum σ-level across agreeing planes.
+    pub fn min_level(&self) -> SignificanceLevel {
+        self.s.level.min(self.p.level).min(self.o.level)
+    }
+
+    /// Maximum σ-level across any plane (strongest match).
+    pub fn max_level(&self) -> SignificanceLevel {
+        self.s.level.max(self.p.level).max(self.o.level)
+    }
+
+    /// Convert to per-plane SignificanceLevel array [S, P, O].
+    pub fn levels(&self) -> [SignificanceLevel; 3] {
+        [self.s.level, self.p.level, self.o.level]
+    }
+}
+
+/// Build `PartialBinding`s from per-plane Hamming distances with σ-significance.
+///
+/// This replaces the binary survivor mask approach with σ-grounded classification.
+/// Each plane's distance is scored against its noise floor, and the resulting
+/// per-plane significance levels determine the B_3 halo type.
+pub fn classify_with_sigma(
+    entry_index: usize,
+    plane_distances: [u32; 3],
+    sigma_gate: &SigmaGate,
+    min_level: SignificanceLevel,
+) -> PartialBinding {
+    use rustynum_core::kernels::{score_sigma, EnergyConflict};
+
+    // Score each plane independently
+    let levels: [SignificanceLevel; 3] = plane_distances.map(|dist| {
+        let ec = EnergyConflict {
+            conflict: dist,
+            energy_a: 0,
+            energy_b: 0,
+            agreement: 0,
+        };
+        score_sigma(&ec, sigma_gate).level
+    });
+
+    let halo = HaloType::from_membership(
+        levels[0] >= min_level,
+        levels[1] >= min_level,
+        levels[2] >= min_level,
+    );
+
+    // Confidence from σ-significance: sum of per-plane σ values
+    let sigmas: [f32; 3] = plane_distances.map(|dist| {
+        let ec = EnergyConflict {
+            conflict: dist,
+            energy_a: 0,
+            energy_b: 0,
+            agreement: 0,
+        };
+        score_sigma(&ec, sigma_gate).sigma
+    });
+    let confidence: f32 = sigmas.iter().filter(|s| **s >= 0.0).sum();
+
+    PartialBinding {
+        entry_index,
+        halo_type: halo,
+        confidence,
+        plane_distances,
+        plane_sigma: levels,
+    }
 }
 
 // ============================================================================
@@ -1287,18 +1408,21 @@ mod tests {
                 halo_type: HaloType::S,
                 confidence: 0.8,
                 plane_distances: [1000, u32::MAX, u32::MAX],
+                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Noise, SignificanceLevel::Noise],
             },
             PartialBinding {
                 entry_index: 1,
                 halo_type: HaloType::SP,
                 confidence: 1.5,
                 plane_distances: [1000, 2000, u32::MAX],
+                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
             },
             PartialBinding {
                 entry_index: 2,
                 halo_type: HaloType::Core,
                 confidence: 2.5,
                 plane_distances: [1000, 2000, 3000],
+                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Discovery],
             },
         ];
 
@@ -1323,6 +1447,7 @@ mod tests {
             halo_type: HaloType::S,
             confidence: 0.5,
             plane_distances: [1000, u32::MAX, u32::MAX],
+            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Noise, SignificanceLevel::Noise],
         });
         assert_eq!(climber.gate_decision(), CollapseGate::Hold);
 
@@ -1332,6 +1457,7 @@ mod tests {
             halo_type: HaloType::Core,
             confidence: 2.5,
             plane_distances: [500, 600, 700],
+            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Discovery],
         });
         assert_eq!(climber.gate_decision(), CollapseGate::Flow);
     }
@@ -1347,6 +1473,7 @@ mod tests {
                 2000, // P-plane: 2000 / 16384 ≈ 12.2% distance → 87.8% similarity
                 u32::MAX,
             ],
+            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
         };
 
         let (freq, conf) = binding.nars_truth();
@@ -1414,6 +1541,7 @@ mod tests {
             halo_type: HaloType::SP,
             confidence: 1.5,
             plane_distances: [1000, 1200, u32::MAX],
+            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
         });
 
         // O free var at entry 1
@@ -1422,6 +1550,7 @@ mod tests {
             halo_type: HaloType::O,
             confidence: 0.7,
             plane_distances: [u32::MAX, u32::MAX, 800],
+            plane_sigma: [SignificanceLevel::Noise, SignificanceLevel::Noise, SignificanceLevel::Discovery],
         });
 
         // Create dummy codebooks

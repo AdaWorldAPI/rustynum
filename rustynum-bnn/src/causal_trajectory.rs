@@ -34,6 +34,7 @@
 //! - Czégel et al. 2021: error thresholds for staged assembly via Hold state
 
 use rustynum_core::fingerprint::Fingerprint;
+use rustynum_core::kernels::SignificanceLevel;
 use rustynum_core::layer_stack::CollapseGate;
 
 use crate::cross_plane::{CrossPlaneVote, HaloType, InferenceMode};
@@ -58,6 +59,24 @@ pub enum EwmTier {
     Transitional,
     /// No match (σ ≥ 3.0). Irrelevant noise.
     Noise,
+}
+
+impl From<SignificanceLevel> for EwmTier {
+    /// Map σ-significance levels from the kernel pipeline to EWM tiers.
+    ///
+    /// The mapping preserves the semantic alignment:
+    /// - Discovery (> 3σ) → Crystallized: settled, high causal weight
+    /// - Strong (2.5-3σ) → Confident: strong match, familiar territory
+    /// - Evidence/Hint (1.5-2.5σ) → Transitional: under active revision
+    /// - Noise (< 1.5σ) → Noise: irrelevant, zero causal weight
+    fn from(level: SignificanceLevel) -> Self {
+        match level {
+            SignificanceLevel::Discovery => EwmTier::Crystallized,
+            SignificanceLevel::Strong => EwmTier::Confident,
+            SignificanceLevel::Evidence | SignificanceLevel::Hint => EwmTier::Transitional,
+            SignificanceLevel::Noise => EwmTier::Noise,
+        }
+    }
 }
 
 // ============================================================================
@@ -353,6 +372,7 @@ impl CausalSaliency {
 }
 
 /// Classify a single word's trend across the correction window.
+#[allow(clippy::too_many_arguments)]
 fn classify_word_trend(
     first_val: u32,
     last_val: u32,
@@ -375,7 +395,7 @@ fn classify_word_trend(
     for i in 1..corrections.len() {
         let prev = get_correction_val(&corrections[i - 1], plane_idx, word_idx);
         let curr = get_correction_val(&corrections[i], plane_idx, word_idx);
-        if (curr > prev && i > 1) || (curr < prev && i > 1) {
+        if curr != prev && i > 1 {
             let prev2 = get_correction_val(&corrections[i - 2], plane_idx, word_idx);
             if (curr > prev) != (prev > prev2) {
                 direction_changes += 1;
@@ -1104,6 +1124,248 @@ fn next_plane(plane: DominantPlane) -> DominantPlane {
 }
 
 // ============================================================================
+// Stripe Histogram — 0.5σ-band population tracking per plane
+// ============================================================================
+
+/// Per-plane population histogram across 6 σ-significance stripes.
+///
+/// Tracks how many candidates fall into each 0.5σ band. With 3 planes,
+/// this gives 18 counters total. Zero overhead: computed from the same
+/// raw Hamming distances already available.
+///
+/// The 6 stripes correspond to the statistical significance bands:
+/// - below_1s: < 1.0σ (deep noise)
+/// - s1_to_s15: 1.0–1.5σ (emerging from noise)
+/// - s15_to_s2: 1.5–2.0σ (Hint — interesting but not publishable)
+/// - s2_to_s25: 2.0–2.5σ (Evidence — 95% CI)
+/// - s25_to_s3: 2.5–3.0σ (Strong — 99% CI)
+/// - above_3s: > 3.0σ (Discovery — foveal quality)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StripeHistogram {
+    /// < 1.0σ: noise floor.
+    pub below_1s: u32,
+    /// 1.0–1.5σ: emerging from noise.
+    pub s1_to_s15: u32,
+    /// 1.5–2.0σ: hint band (interesting, not conclusive).
+    pub s15_to_s2: u32,
+    /// 2.0–2.5σ: evidence band (p < 0.05).
+    pub s2_to_s25: u32,
+    /// 2.5–3.0σ: strong band (p < 0.01).
+    pub s25_to_s3: u32,
+    /// > 3.0σ: discovery / foveal quality.
+    pub above_3s: u32,
+}
+
+impl StripeHistogram {
+    /// Total population across all stripes.
+    #[inline]
+    pub fn total(&self) -> u32 {
+        self.below_1s + self.s1_to_s15 + self.s15_to_s2
+            + self.s2_to_s25 + self.s25_to_s3 + self.above_3s
+    }
+
+    /// Classify a σ-value into the appropriate stripe and increment.
+    #[inline]
+    pub fn record(&mut self, sigma: f32) {
+        if sigma >= 3.0 {
+            self.above_3s += 1;
+        } else if sigma >= 2.5 {
+            self.s25_to_s3 += 1;
+        } else if sigma >= 2.0 {
+            self.s2_to_s25 += 1;
+        } else if sigma >= 1.5 {
+            self.s15_to_s2 += 1;
+        } else if sigma >= 1.0 {
+            self.s1_to_s15 += 1;
+        } else {
+            self.below_1s += 1;
+        }
+    }
+
+    /// Convert to array of 6 bin counts [below_1s, ..., above_3s].
+    pub fn as_array(&self) -> [u32; 6] {
+        [
+            self.below_1s, self.s1_to_s15, self.s15_to_s2,
+            self.s2_to_s25, self.s25_to_s3, self.above_3s,
+        ]
+    }
+
+    /// Center of mass in σ-space: weighted average of bin centers.
+    ///
+    /// Returns a value in [0.0, 3.5] — higher = population closer to foveal.
+    pub fn center_of_mass(&self) -> f32 {
+        let total = self.total() as f32;
+        if total < 1.0 {
+            return 0.0;
+        }
+        // Bin centers: 0.5, 1.25, 1.75, 2.25, 2.75, 3.25
+        let weighted_sum = self.below_1s as f32 * 0.5
+            + self.s1_to_s15 as f32 * 1.25
+            + self.s15_to_s2 as f32 * 1.75
+            + self.s2_to_s25 as f32 * 2.25
+            + self.s25_to_s3 as f32 * 2.75
+            + self.above_3s as f32 * 3.25;
+        weighted_sum / total
+    }
+}
+
+/// Direction of distributional shift between time windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShiftDirection {
+    /// Population migrating toward foveal (higher σ). Codebook improving.
+    TowardFoveal,
+    /// Population migrating toward noise (lower σ). Codebook going stale.
+    TowardNoise,
+    /// Both directions simultaneously. Speciation / world splitting.
+    Bimodal,
+    /// No significant migration. Steady state.
+    Stable,
+}
+
+/// Signal from distributional shift analysis.
+///
+/// Encapsulates the direction, magnitude, and per-plane breakdown
+/// of population migration across σ-stripes between time windows.
+#[derive(Clone, Debug)]
+pub struct ShiftSignal {
+    /// Overall direction of the shift.
+    pub direction: ShiftDirection,
+    /// Per-plane shift direction.
+    pub plane_directions: [ShiftDirection; 3],
+    /// Per-plane center-of-mass delta (positive = toward foveal).
+    pub com_delta: [f32; 3],
+    /// Aggregate magnitude: absolute sum of center-of-mass deltas.
+    pub magnitude: f32,
+}
+
+/// Distributional shift detector for σ-stripe histograms.
+///
+/// Tracks per-plane population distributions across time windows and
+/// detects migration between adjacent stripes. The migration velocity
+/// IS the NARS evidence rate:
+/// - Net positive flow across 2σ→2.5σ boundary → confidence rising
+/// - Net negative flow → confidence falling
+/// - Bimodal flow → speciation event
+///
+/// Feeds CollapseGate:
+/// - Shift toward noise → bias HOLD (ground is moving, don't commit)
+/// - Shift toward foveal → bias FLOW (world clarifying, commit faster)
+#[derive(Clone, Debug)]
+pub struct ShiftDetector {
+    /// Current window's per-plane histograms [S, P, O].
+    pub current: [StripeHistogram; 3],
+    /// Previous window's per-plane histograms [S, P, O].
+    pub previous: [StripeHistogram; 3],
+    /// Number of windows recorded.
+    pub window_count: u32,
+}
+
+impl ShiftDetector {
+    pub fn new() -> Self {
+        Self {
+            current: [StripeHistogram::default(); 3],
+            previous: [StripeHistogram::default(); 3],
+            window_count: 0,
+        }
+    }
+
+    /// Record a per-plane σ-value into the current window.
+    ///
+    /// `plane` is 0=S, 1=P, 2=O.
+    #[inline]
+    pub fn record(&mut self, plane: usize, sigma: f32) {
+        if plane < 3 {
+            self.current[plane].record(sigma);
+        }
+    }
+
+    /// Advance to the next time window. Current becomes previous.
+    pub fn advance_window(&mut self) {
+        self.previous = self.current;
+        self.current = [StripeHistogram::default(); 3];
+        self.window_count += 1;
+    }
+
+    /// Detect distributional shift between previous and current windows.
+    ///
+    /// Returns None if insufficient data (< 2 windows or empty histograms).
+    pub fn detect_shift(&self) -> Option<ShiftSignal> {
+        if self.window_count < 1 {
+            return None;
+        }
+
+        // Per-plane center-of-mass delta
+        let mut com_delta = [0.0f32; 3];
+        let mut plane_dirs = [ShiftDirection::Stable; 3];
+
+        for plane in 0..3 {
+            let prev_com = self.previous[plane].center_of_mass();
+            let curr_com = self.current[plane].center_of_mass();
+            com_delta[plane] = curr_com - prev_com;
+
+            // Classify per-plane direction
+            let prev_arr = self.previous[plane].as_array();
+            let curr_arr = self.current[plane].as_array();
+
+            // Check for bimodality: lower bins growing AND upper bins growing
+            let lower_growing = curr_arr[0] > prev_arr[0] + 2 || curr_arr[1] > prev_arr[1] + 2;
+            let upper_growing = curr_arr[4] > prev_arr[4] + 2 || curr_arr[5] > prev_arr[5] + 2;
+
+            if lower_growing && upper_growing {
+                plane_dirs[plane] = ShiftDirection::Bimodal;
+            } else if com_delta[plane] > 0.1 {
+                plane_dirs[plane] = ShiftDirection::TowardFoveal;
+            } else if com_delta[plane] < -0.1 {
+                plane_dirs[plane] = ShiftDirection::TowardNoise;
+            }
+        }
+
+        // Aggregate direction
+        let total_delta: f32 = com_delta.iter().sum();
+        let any_bimodal = plane_dirs.contains(&ShiftDirection::Bimodal);
+        let magnitude = com_delta.iter().map(|d| d.abs()).sum();
+
+        let direction = if any_bimodal {
+            ShiftDirection::Bimodal
+        } else if total_delta > 0.15 {
+            ShiftDirection::TowardFoveal
+        } else if total_delta < -0.15 {
+            ShiftDirection::TowardNoise
+        } else {
+            ShiftDirection::Stable
+        };
+
+        Some(ShiftSignal {
+            direction,
+            plane_directions: plane_dirs,
+            com_delta,
+            magnitude,
+        })
+    }
+
+    /// Map shift signal to CollapseGate bias.
+    ///
+    /// - TowardNoise → HOLD (don't commit while ground is moving)
+    /// - TowardFoveal → FLOW (world is clarifying, commit faster)
+    /// - Bimodal → HOLD (world is splitting, need more evidence)
+    /// - Stable → no bias (use existing gate logic)
+    pub fn gate_bias(&self) -> Option<CollapseGate> {
+        self.detect_shift().and_then(|signal| match signal.direction {
+            ShiftDirection::TowardNoise => Some(CollapseGate::Hold),
+            ShiftDirection::TowardFoveal => Some(CollapseGate::Flow),
+            ShiftDirection::Bimodal => Some(CollapseGate::Hold),
+            ShiftDirection::Stable => None,
+        })
+    }
+}
+
+impl Default for ShiftDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1475,5 +1737,170 @@ mod tests {
         assert_eq!(pops[0], 8);
         assert_eq!(pops[1], 16);
         assert_eq!(pops[2], 0);
+    }
+
+    // --- EwmTier from SignificanceLevel tests ---
+
+    #[test]
+    fn test_ewm_tier_from_significance_discovery() {
+        assert_eq!(EwmTier::from(SignificanceLevel::Discovery), EwmTier::Crystallized);
+    }
+
+    #[test]
+    fn test_ewm_tier_from_significance_strong() {
+        assert_eq!(EwmTier::from(SignificanceLevel::Strong), EwmTier::Confident);
+    }
+
+    #[test]
+    fn test_ewm_tier_from_significance_evidence() {
+        assert_eq!(EwmTier::from(SignificanceLevel::Evidence), EwmTier::Transitional);
+    }
+
+    #[test]
+    fn test_ewm_tier_from_significance_hint() {
+        assert_eq!(EwmTier::from(SignificanceLevel::Hint), EwmTier::Transitional);
+    }
+
+    #[test]
+    fn test_ewm_tier_from_significance_noise() {
+        assert_eq!(EwmTier::from(SignificanceLevel::Noise), EwmTier::Noise);
+    }
+
+    // --- StripeHistogram tests ---
+
+    #[test]
+    fn test_stripe_histogram_record() {
+        let mut hist = StripeHistogram::default();
+        hist.record(0.5);   // below_1s
+        hist.record(1.2);   // s1_to_s15
+        hist.record(1.7);   // s15_to_s2
+        hist.record(2.3);   // s2_to_s25
+        hist.record(2.7);   // s25_to_s3
+        hist.record(3.5);   // above_3s
+
+        assert_eq!(hist.below_1s, 1);
+        assert_eq!(hist.s1_to_s15, 1);
+        assert_eq!(hist.s15_to_s2, 1);
+        assert_eq!(hist.s2_to_s25, 1);
+        assert_eq!(hist.s25_to_s3, 1);
+        assert_eq!(hist.above_3s, 1);
+        assert_eq!(hist.total(), 6);
+    }
+
+    #[test]
+    fn test_stripe_histogram_center_of_mass() {
+        let mut hist = StripeHistogram::default();
+        // All in foveal
+        hist.above_3s = 100;
+        assert!((hist.center_of_mass() - 3.25).abs() < 0.01);
+
+        // All in noise
+        let mut hist2 = StripeHistogram::default();
+        hist2.below_1s = 100;
+        assert!((hist2.center_of_mass() - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_stripe_histogram_empty() {
+        let hist = StripeHistogram::default();
+        assert_eq!(hist.total(), 0);
+        assert_eq!(hist.center_of_mass(), 0.0);
+    }
+
+    // --- ShiftDetector tests ---
+
+    #[test]
+    fn test_shift_detector_no_data() {
+        let det = ShiftDetector::new();
+        assert!(det.detect_shift().is_none());
+    }
+
+    #[test]
+    fn test_shift_detector_toward_foveal() {
+        let mut det = ShiftDetector::new();
+
+        // Previous window: mostly noise
+        for _ in 0..100 {
+            det.record(0, 0.5); // S-plane noise
+            det.record(1, 0.5);
+            det.record(2, 0.5);
+        }
+        det.advance_window();
+
+        // Current window: mostly foveal
+        for _ in 0..100 {
+            det.record(0, 3.5); // S-plane foveal
+            det.record(1, 3.5);
+            det.record(2, 3.5);
+        }
+
+        let signal = det.detect_shift().unwrap();
+        assert_eq!(signal.direction, ShiftDirection::TowardFoveal);
+        assert!(signal.com_delta[0] > 0.0);
+    }
+
+    #[test]
+    fn test_shift_detector_toward_noise() {
+        let mut det = ShiftDetector::new();
+
+        // Previous window: mostly foveal
+        for _ in 0..100 {
+            det.record(0, 3.5);
+            det.record(1, 3.5);
+            det.record(2, 3.5);
+        }
+        det.advance_window();
+
+        // Current window: mostly noise
+        for _ in 0..100 {
+            det.record(0, 0.5);
+            det.record(1, 0.5);
+            det.record(2, 0.5);
+        }
+
+        let signal = det.detect_shift().unwrap();
+        assert_eq!(signal.direction, ShiftDirection::TowardNoise);
+        assert!(signal.com_delta[0] < 0.0);
+    }
+
+    #[test]
+    fn test_shift_detector_stable() {
+        let mut det = ShiftDetector::new();
+
+        // Both windows: same distribution
+        for _ in 0..100 {
+            det.record(0, 2.0);
+            det.record(1, 2.0);
+            det.record(2, 2.0);
+        }
+        det.advance_window();
+
+        for _ in 0..100 {
+            det.record(0, 2.0);
+            det.record(1, 2.0);
+            det.record(2, 2.0);
+        }
+
+        let signal = det.detect_shift().unwrap();
+        assert_eq!(signal.direction, ShiftDirection::Stable);
+    }
+
+    #[test]
+    fn test_shift_detector_gate_bias() {
+        let mut det = ShiftDetector::new();
+
+        // Toward noise → HOLD
+        for _ in 0..100 {
+            det.record(0, 3.5);
+            det.record(1, 3.5);
+            det.record(2, 3.5);
+        }
+        det.advance_window();
+        for _ in 0..100 {
+            det.record(0, 0.5);
+            det.record(1, 0.5);
+            det.record(2, 0.5);
+        }
+        assert_eq!(det.gate_bias(), Some(CollapseGate::Hold));
     }
 }
