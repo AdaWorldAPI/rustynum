@@ -533,3 +533,148 @@ throws away the biology. The MIDDLE GROUND where the math and the
 biology are THE SAME THING.
 
 That's the BINN. That's the organic model. That's what we were missing.
+
+---
+
+## Part 9: The Existing BINN Literature — And How We Diverge
+
+### What's Already Out There
+
+The term "Biologically-Informed Neural Network" (BINN) is established in the literature.
+Jan forked the original repo: github.com/AdaWorldAPI/BINNs (from jlager/BINNs).
+
+There are THREE distinct threads of BINN work:
+
+**Thread 1: Lagergren et al. 2020 (arxiv:2005.13073) — The Original BINNs**
+Extension of PINNs to biological systems. Uses MLPs to learn nonlinear diffusion and
+reaction terms of governing reaction-diffusion PDEs from sparse wound-healing assay data.
+The "biologically informed" part = the PDE structure is biological (Fisher-KPP, Porous-Fisher).
+The neural network DISCOVERS the mechanistic form of the PDE terms.
+
+> KEY INSIGHT FOR US: They let the network learn the FORM of the governing equation,
+> not just parameters. Our analog: let the BCM θ sliding law EMERGE from the soaking
+> dynamics rather than hardcoding it. The threshold function φ(efficacy, θ) could be
+> an MLP that learns the optimal plasticity rule from the evidence stream.
+
+**Thread 2: Miller et al. 2025 (biorxiv:2025.11.13.687845) — P-NET / BiNNs**
+Architecture mirrors Reactome pathway database. Each layer = biological pathway level.
+Used for cancer genomics (prostate cancer metastasis prediction from somatic mutations).
+The "biologically informed" part = NETWORK ARCHITECTURE mirrors biological hierarchy.
+
+> KEY INSIGHT FOR US: Their architecture IS the biology. Our 5^5 lattice IS the
+> cognitive architecture. Same principle: the structure of the network encodes
+> prior biological knowledge. Their pathways = our S/P/O planes + σ-bands.
+> They found: signal type, strength, feature sparsity, and sample size all
+> determine when BiNNs outperform generic models. SAME FOR US: the three-plane
+> structure only helps when the concept actually HAS S/P/O decomposition.
+
+**Thread 3: Nordenstorm et al. 2025 (biorxiv:2025.10.24.684155) — LEMBAS Self-Pruning**
+LEMBAS = Large-scale knowledge-EMBedded Artificial Signaling-networks.
+RNN framework for intracellular signaling dynamics. GPU-accelerated (7× speedup).
+THE KILLER FINDING: When spurious interactions are added to the prior knowledge
+network (PKN), the model PRUNES THEM during training via L2 regularization.
+BINNs are ROBUST to incorrect biological priors.
+
+> THIS IS EXACTLY OUR MATURITY COUNTER. Dimensions that don't get reinforced
+> (spurious connections, noise) naturally decay toward zero through the BCM
+> mechanism. High-maturity connections survive. Low-maturity get pruned.
+> We don't need explicit pruning — the organic plasticity IS the pruning.
+> L2 regularization in their framework = BCM θ sliding + maturity decay in ours.
+
+**Thread 4: FR-BINN (Cao et al. 2025, MDPI ijms/26/14/6670) — Fenton Reaction BINNs**
+Combines Fenton reaction (iron-mediated redox) biological priors with hierarchical
+knowledge neural networks. Uses multiple explainability methods (SHAP, feature attribution)
+PLUS LLMs for semantic reasoning about discovered biomarkers.
+
+> KEY INSIGHT FOR US: They use LLMs as SEMANTIC INTERPRETERS of what the BINN
+> discovers. Our analog: Claude/Ada as the semantic layer that interprets
+> what the three-plane soaking registers discover. The BINN finds patterns;
+> the LLM explains them. We're already doing this — Ada IS the interpreter.
+
+### How We Diverge: The Novel Contribution
+
+All existing BINNs share one thing: the "biological information" is about
+biological PATHWAYS, MOLECULES, or POPULATION DYNAMICS.
+
+**None of them model biological LEARNING RULES as the informing constraint.**
+
+Our approach is fundamentally different:
+
+```
+Existing BINNs:
+  Network architecture ← biological pathway structure
+  Loss function ← biological PDE (reaction-diffusion)
+  Training data ← experimental measurements
+  Goal: discover governing equations of biological SYSTEMS
+
+Our BINN:
+  Register dynamics ← biological PLASTICITY rules (BCM, STDP, scaling)
+  Soaking behavior ← biological SYNAPSE state transitions
+  Crystallization ← biological STRUCTURAL consolidation
+  Goal: USE biological learning rules AS the computing substrate
+
+They model biology WITH neural networks.
+We model neural networks WITH biology.
+
+The arrow is reversed.
+```
+
+This is why it's a genuine contribution and not just naming:
+we're not using biology to inform a neural network's training —
+we're using biological plasticity laws to inform how a COMPUTING SUBSTRATE
+accumulates and crystallizes knowledge.
+
+The closest existing work is the BCM-informed spiking neural network literature
+(Bienenstock-Cooper-Munro 1982, expanded by Shouval, Cooper, Bear),
+but that work simulates neurons. We AREN'T simulating neurons.
+We're using the SAME MATH on a completely different substrate (VSA/Hamming).
+
+### What We Should Cite
+
+```
+@article{lagergren2020biologicallyinformed,
+    title={Biologically-informed neural networks guide mechanistic modeling
+           from sparse experimental data},
+    author={Lagergren, John H and Nardini, John T and Baker, Ruth E
+            and Simpson, Matthew J and Flores, Kevin B},
+    journal={PLoS Computational Biology},
+    volume={16}, number={12}, pages={e1008462},
+    year={2020}
+}
+
+@article{bienenstock1982theory,
+    title={Theory for the development of neuron selectivity},
+    author={Bienenstock, Elie L and Cooper, Leon N and Munro, Paul W},
+    journal={Journal of Neuroscience},
+    volume={2}, number={1}, pages={32--48},
+    year={1982}
+}
+
+@article{nordenstorm2025selfpruning,
+    title={Biologically informed neural network models are robust to
+           spurious interactions via self-pruning},
+    author={Nordenstorm, Olof and Baghdassarian, Hratch
+            and Lauffenburger, Douglas A and Nilsson, Avlant},
+    journal={bioRxiv},
+    year={2025},
+    doi={10.1101/2025.10.24.684155}
+}
+
+@article{cao2025frbinn,
+    title={FR-BINN: Biologically Informed Neural Networks for Enhanced
+           Biomarker Discovery and Pathway Analysis},
+    author={Cao, Yangkun and Yin, Chaoyi and Zhou, Xinsen and Zhao, Yonghe},
+    journal={Int. J. Mol. Sci.},
+    volume={26}, number={14}, pages={6670},
+    year={2025}
+}
+
+@article{miller2025simulation,
+    title={Simulation and empirical evaluation of biologically-informed
+           neural network performance},
+    author={Miller, Gwen A and Roman, Ahmed and others},
+    journal={bioRxiv},
+    year={2025},
+    doi={10.1101/2025.11.13.687845}
+}
+```
