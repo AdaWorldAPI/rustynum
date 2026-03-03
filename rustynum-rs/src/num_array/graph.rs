@@ -104,6 +104,7 @@ impl VerbCodebook {
     }
 
     /// Encode edge. Panics if verb is not in codebook.
+    #[deprecated(note = "Use try_encode_edge() for Result-based error handling")]
     pub fn encode_edge(&self, src: &NumArrayU8, verb: &str, tgt: &NumArrayU8) -> NumArrayU8 {
         match self.try_encode_edge(src, verb, tgt) {
             Ok(result) => result,
@@ -126,6 +127,7 @@ impl VerbCodebook {
 
     /// Decode: recover target given edge, source, and verb.
     /// Panics if verb is not in codebook.
+    #[deprecated(note = "Use try_decode_target() for Result-based error handling")]
     pub fn decode_target(&self, edge: &NumArrayU8, src: &NumArrayU8, verb: &str) -> NumArrayU8 {
         match self.try_decode_target(edge, src, verb) {
             Ok(result) => result,
@@ -141,6 +143,7 @@ impl VerbCodebook {
     /// - ~0.5 = maximally asymmetric (strongly directional/causal)
     ///
     /// Cost: 2 edge encodings + 1 Hamming distance = ~256 VPOPCNTDQ instructions.
+    #[allow(deprecated)]
     pub fn causality_asymmetry(&self, src: &NumArrayU8, verb: &str, tgt: &NumArrayU8) -> f64 {
         let fwd = self.encode_edge(src, verb, tgt);
         let rev = self.encode_edge(tgt, verb, src);
@@ -149,6 +152,7 @@ impl VerbCodebook {
     }
 
     /// Full causality check: returns forward edge, reverse edge, and asymmetry score.
+    #[allow(deprecated)]
     pub fn causality_check(
         &self,
         src: &NumArrayU8,
@@ -166,6 +170,7 @@ impl VerbCodebook {
     ///
     /// Returns `(index, asymmetry_score)` for edges below threshold.
     /// Below threshold = not genuinely causal (correlational).
+    #[allow(deprecated)]
     pub fn find_non_causal_edges(
         &self,
         edges: &[(NumArrayU8, &str, NumArrayU8)],
@@ -276,6 +281,7 @@ pub fn decode_target_explicit(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
