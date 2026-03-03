@@ -7,14 +7,15 @@
 ## RUSTYNUM (~94K LOC) — 57/57 tests, 0 warnings
 
 ### Resolved
-- [x] 34 public API panics → try_* variants (27 added across 10 files, only `Div` trait remains)
 - [x] GEMM bounds check (assert at int8_gemm.rs:285)
 - [x] qualia_xor deps feature-gated behind `bert`
 - [x] rustymkl VML: vsexp() + 37 functions implemented and tested
 - [x] portable_simd → std::arch port (870 occurrences)
 - [x] QualiaGateLevel + CollapseGate (47 tests)
+- [x] `try_div_broadcast()` added — last remaining `panic!` in Div trait now has fallible variant
 
-### Partial
+### Partial (verified 2026-03-03)
+- [ ] **34 public API panics → try_* variants**: 28 try_* variants exist (including new `try_div_broadcast`). Panicking wrappers documented with `# Panics` but still panic on Err. ~56 non-test panic!/assert!/.unwrap() remain in rustynum-rs/src/num_array/. Std::ops traits can't return Result — this matches NumPy behavior. Status: PARTIAL, not resolved.
 - [ ] **Zero-copy CogRecordView migration**: `cogrecord_views()` exists, `record_batch_to_cogrecords()` deprecated. **1 production caller** remains: `lance_io.rs:53`. 7 test callers use deprecated path.
 - [ ] **Zero-copy CascadeIndices migration**: `build_from_arrow()` exists, `build()` deprecated. 6 test callers use copying path. 0 production callers outside tests.
 - [ ] **Gate enforcement wire**: QualiaGateLevel implemented, enforcement correctly lives in crewai-rust.
@@ -41,7 +42,7 @@ Migrate `lance_io.rs:53` to `cogrecord_views()` + update 6 test callers to `buil
 - [x] Overlay zero-copy bridge (as_fingerprint_words())
 
 ### Open — P0
-- [ ] **N2: Delete src/core/simd.rs** — 348 lines duplicating rustynum SIMD. Replace with `rustynum_core::simd`. Small effort.
+- [ ] **N2: Consolidate src/core/simd.rs** — 348 lines overlapping with rustynum SIMD. **KEEP as AVX2/CPU silent fallback** for machines without AVX-512. Only deduplicate ops that rustynum-core already covers with its own scalar fallback path. Medium effort.
 - [ ] **N1: Wire BindBridge into server startup** — zero-serde awareness hydration. Medium effort. Cross-repo with crewai-rust.
 - [ ] **N3: Wire CogRecordView into hydrate_nodes()** — zero-copy Lance → BindSpace. Medium effort.
 - [ ] **N9: Add periodic flush_aged() timer** — every 5-30 min in server.rs. Small effort.
@@ -153,7 +154,7 @@ No open points. Functional CLI for Cypher generation, Neo4j ingest, chess knowle
 | Priority | Item | Repos | Effort | Impact |
 |---|---|---|---|---|
 | **P0** | Wire real tool executor | crewai-rust | Small | Agents can think but can't act |
-| **P0** | Delete duplicate simd.rs (N2) | ladybug-rs | Small | Remove 348 lines of duplication |
+| **P1** | Consolidate simd.rs (N2) | ladybug-rs | Medium | Dedupe only where rustynum-core has scalar fallback; keep AVX2 path |
 | **P0** | SubstrateView impl (CR-P0) | ladybug-rs + crewai-rust | Medium | Removes HTTP hop |
 | **P0** | Install protoc | infra | Trivial | Unblocks n8n-rs + ladybug-rs flight |
 | **P1** | WITH clause planner | neo4j-rs | Medium | Main Cypher feature gap |
