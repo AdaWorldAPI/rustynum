@@ -3,7 +3,7 @@
 //! When DataFusion scans a Lance dataset, it returns `RecordBatch` with
 //! `FixedSizeBinaryArray` columns for each CogRecord container. This module
 //! provides zero-copy access to those columns for SIMD-accelerated Hamming
-//! search — no 8KB-per-record allocation.
+//! search — no 16KB-per-record allocation.
 
 use arrow::array::{Array, FixedSizeBinaryArray};
 use rustynum_core::simd::hamming_distance;
@@ -195,7 +195,11 @@ mod tests {
         let far = vec![0xFFu8; CONTAINER_BYTES]; // Hamming distance = CONTAINER_BYTES * 8
         let col = make_column(&[&close, &far], CONTAINER_BYTES as i32);
 
-        let results = hamming_scan_column(&query, &col, 3000);
+        // close: each byte=0x01 vs 0x00 → 1 bit per byte → CONTAINER_BYTES bits total
+        // far: each byte=0xFF vs 0x00 → 8 bits per byte → CONTAINER_BYTES * 8 bits
+        // Threshold must be above close distance but below far distance
+        let threshold = (CONTAINER_BYTES as u64) + 1000;
+        let results = hamming_scan_column(&query, &col, threshold);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, 0);
     }
@@ -258,14 +262,16 @@ mod tests {
         let btree_col = make_column(&b_refs, CONTAINER_BYTES as i32);
         let embed_col = make_column(&e_refs, CONTAINER_BYTES as i32);
 
-        // Threshold: 3000 bits per channel — only record 2 should pass all 4
+        // Close record has Hamming = CONTAINER_BYTES (1 bit per byte), far = CONTAINER_BYTES * 8
+        // Threshold must pass close but reject far
+        let threshold = (CONTAINER_BYTES as u64) + 1000;
         let results = cascade_scan_4ch(
             &query,
             &meta_col,
             &cam_col,
             &btree_col,
             &embed_col,
-            [3000, 3000, 3000, 3000],
+            [threshold, threshold, threshold, threshold],
         );
 
         assert_eq!(results.len(), 1);

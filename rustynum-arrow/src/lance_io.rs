@@ -41,7 +41,7 @@ pub async fn append_cogrecords(uri: &str, records: &[CogRecord]) -> Result<Datas
 
 /// Read all CogRecords from a Lance dataset.
 ///
-/// This allocates owned `CogRecord`s (8192 bytes each). For zero-copy access,
+/// This allocates owned `CogRecord`s (16384 bytes each). For zero-copy access,
 /// use [`read_cogrecord_batches()`] and iterate with [`cogrecord_views()`].
 pub async fn read_cogrecords(uri: &str) -> Result<Vec<CogRecord>, lance::Error> {
     let batches = read_cogrecord_batches(uri).await?;
