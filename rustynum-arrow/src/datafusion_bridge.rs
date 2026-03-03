@@ -136,6 +136,277 @@ pub fn cascade_scan_4ch(
 }
 
 // ---------------------------------------------------------------------------
+// DataFusion UDFs — SIMD-accelerated scalar functions for SQL queries
+// ---------------------------------------------------------------------------
+//
+// These wrap rustynum-core's SIMD kernels as DataFusion ScalarUDFs,
+// so they can be used in SQL: `SELECT rusty_hamming(a.fp, b.fp) FROM ...`
+//
+// Broadcast semantics:
+//   Array × Array  → pairwise (vectorized batch)
+//   Array × Scalar → broadcast search (common case)
+//   Scalar × Scalar → single compute
+
+#[cfg(feature = "datafusion")]
+pub mod udfs {
+    use std::any::Any;
+    use std::sync::Arc;
+
+    use arrow::array::{
+        Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, Float32Array, UInt64Array,
+    };
+    use arrow::datatypes::DataType;
+    use datafusion::common::Result;
+    use datafusion::logical_expr::{
+        ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, TypeSignature,
+        Volatility,
+    };
+    use rustynum_core::simd::{hamming_distance, popcount};
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    fn downcast_binary(arr: &ArrayRef) -> Result<Vec<Option<&[u8]>>> {
+        if let Some(fsb) = arr.as_any().downcast_ref::<FixedSizeBinaryArray>() {
+            Ok((0..fsb.len())
+                .map(|i| if fsb.is_null(i) { None } else { Some(fsb.value(i)) })
+                .collect())
+        } else if let Some(bin) = arr.as_any().downcast_ref::<BinaryArray>() {
+            Ok((0..bin.len())
+                .map(|i| if bin.is_null(i) { None } else { Some(bin.value(i)) })
+                .collect())
+        } else {
+            Err(datafusion::error::DataFusionError::Execution(format!(
+                "expected Binary or FixedSizeBinary array, got {:?}",
+                arr.data_type()
+            )))
+        }
+    }
+
+    fn expand_to_arrays(a: &ColumnarValue, b: &ColumnarValue) -> Result<(ArrayRef, ArrayRef)> {
+        match (a, b) {
+            (ColumnarValue::Array(a), ColumnarValue::Array(b)) => Ok((a.clone(), b.clone())),
+            (ColumnarValue::Array(a), ColumnarValue::Scalar(sb)) => {
+                Ok((a.clone(), sb.to_array_of_size(a.len())?))
+            }
+            (ColumnarValue::Scalar(sa), ColumnarValue::Array(b)) => {
+                Ok((sa.to_array_of_size(b.len())?, b.clone()))
+            }
+            (ColumnarValue::Scalar(sa), ColumnarValue::Scalar(sb)) => {
+                Ok((sa.to_array_of_size(1)?, sb.to_array_of_size(1)?))
+            }
+        }
+    }
+
+    fn binary_pair_signature() -> Signature {
+        Signature::one_of(
+            vec![
+                TypeSignature::Exact(vec![DataType::Binary, DataType::Binary]),
+                TypeSignature::Exact(vec![DataType::LargeBinary, DataType::LargeBinary]),
+                TypeSignature::Any(2),
+            ],
+            Volatility::Immutable,
+        )
+    }
+
+    fn unary_binary_signature() -> Signature {
+        Signature::one_of(
+            vec![
+                TypeSignature::Exact(vec![DataType::Binary]),
+                TypeSignature::Exact(vec![DataType::LargeBinary]),
+                TypeSignature::Any(1),
+            ],
+            Volatility::Immutable,
+        )
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 1. rusty_hamming(a, b) → UInt64
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct RustyHammingUdf {
+        signature: Signature,
+    }
+
+    impl RustyHammingUdf {
+        pub fn new() -> Self {
+            Self { signature: binary_pair_signature() }
+        }
+    }
+
+    impl ScalarUDFImpl for RustyHammingUdf {
+        fn as_any(&self) -> &dyn Any { self }
+        fn name(&self) -> &str { "rusty_hamming" }
+        fn signature(&self) -> &Signature { &self.signature }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::UInt64) }
+        fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+            let (a_arr, b_arr) = expand_to_arrays(&args.args[0], &args.args[1])?;
+            let a_vals = downcast_binary(&a_arr)?;
+            let b_vals = downcast_binary(&b_arr)?;
+            let results: UInt64Array = a_vals
+                .iter()
+                .zip(b_vals.iter())
+                .map(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => Some(hamming_distance(a, b)),
+                    _ => None,
+                })
+                .collect();
+            Ok(ColumnarValue::Array(Arc::new(results)))
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 2. rusty_similarity(a, b) → Float32   [1.0 - hamming/(len*8)]
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct RustySimilarityUdf {
+        signature: Signature,
+    }
+
+    impl RustySimilarityUdf {
+        pub fn new() -> Self {
+            Self { signature: binary_pair_signature() }
+        }
+    }
+
+    impl ScalarUDFImpl for RustySimilarityUdf {
+        fn as_any(&self) -> &dyn Any { self }
+        fn name(&self) -> &str { "rusty_similarity" }
+        fn signature(&self) -> &Signature { &self.signature }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::Float32) }
+        fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+            let (a_arr, b_arr) = expand_to_arrays(&args.args[0], &args.args[1])?;
+            let a_vals = downcast_binary(&a_arr)?;
+            let b_vals = downcast_binary(&b_arr)?;
+            let results: Float32Array = a_vals
+                .iter()
+                .zip(b_vals.iter())
+                .map(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => {
+                        let total_bits = (a.len().min(b.len()) * 8) as f32;
+                        if total_bits == 0.0 {
+                            Some(1.0f32)
+                        } else {
+                            Some(1.0 - hamming_distance(a, b) as f32 / total_bits)
+                        }
+                    }
+                    _ => None,
+                })
+                .collect();
+            Ok(ColumnarValue::Array(Arc::new(results)))
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3. rusty_popcount(x) → UInt64
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct RustyPopcountUdf {
+        signature: Signature,
+    }
+
+    impl RustyPopcountUdf {
+        pub fn new() -> Self {
+            Self { signature: unary_binary_signature() }
+        }
+    }
+
+    impl ScalarUDFImpl for RustyPopcountUdf {
+        fn as_any(&self) -> &dyn Any { self }
+        fn name(&self) -> &str { "rusty_popcount" }
+        fn signature(&self) -> &Signature { &self.signature }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::UInt64) }
+        fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+            let arr = match &args.args[0] {
+                ColumnarValue::Array(a) => a.clone(),
+                ColumnarValue::Scalar(s) => s.to_array_of_size(1)?,
+            };
+            let vals = downcast_binary(&arr)?;
+            let results: UInt64Array = vals
+                .iter()
+                .map(|v| v.map(popcount))
+                .collect();
+            Ok(ColumnarValue::Array(Arc::new(results)))
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 4. rusty_xor_bind(a, b) → Binary  [element-wise XOR for VSA/HDC]
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct RustyXorBindUdf {
+        signature: Signature,
+    }
+
+    impl RustyXorBindUdf {
+        pub fn new() -> Self {
+            Self { signature: binary_pair_signature() }
+        }
+    }
+
+    impl ScalarUDFImpl for RustyXorBindUdf {
+        fn as_any(&self) -> &dyn Any { self }
+        fn name(&self) -> &str { "rusty_xor_bind" }
+        fn signature(&self) -> &Signature { &self.signature }
+        fn return_type(&self, arg_types: &[DataType]) -> Result<DataType> {
+            match &arg_types[0] {
+                dt @ DataType::FixedSizeBinary(_) => Ok(dt.clone()),
+                _ => Ok(DataType::Binary),
+            }
+        }
+        fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+            let (a_arr, b_arr) = expand_to_arrays(&args.args[0], &args.args[1])?;
+            let a_vals = downcast_binary(&a_arr)?;
+            let b_vals = downcast_binary(&b_arr)?;
+            let results: BinaryArray = a_vals
+                .iter()
+                .zip(b_vals.iter())
+                .map(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => {
+                        let len = a.len().min(b.len());
+                        let xored: Vec<u8> = (0..len).map(|i| a[i] ^ b[i]).collect();
+                        Some(xored)
+                    }
+                    _ => None,
+                })
+                .collect();
+            Ok(ColumnarValue::Array(Arc::new(results)))
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Registration
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// Register all rustynum SIMD-accelerated UDFs with a DataFusion session.
+    pub fn register_rustynum_udfs(ctx: &datafusion::execution::context::SessionContext) {
+        ctx.register_udf(ScalarUDF::from(RustyHammingUdf::new()));
+        ctx.register_udf(ScalarUDF::from(RustySimilarityUdf::new()));
+        ctx.register_udf(ScalarUDF::from(RustyPopcountUdf::new()));
+        ctx.register_udf(ScalarUDF::from(RustyXorBindUdf::new()));
+    }
+
+    /// Return all rustynum UDFs as a Vec for custom registration.
+    pub fn all_rustynum_udfs() -> Vec<ScalarUDF> {
+        vec![
+            ScalarUDF::from(RustyHammingUdf::new()),
+            ScalarUDF::from(RustySimilarityUdf::new()),
+            ScalarUDF::from(RustyPopcountUdf::new()),
+            ScalarUDF::from(RustyXorBindUdf::new()),
+        ]
+    }
+}
+
+#[cfg(feature = "datafusion")]
+pub use udfs::{
+    all_rustynum_udfs, register_rustynum_udfs, RustyHammingUdf, RustyPopcountUdf,
+    RustySimilarityUdf, RustyXorBindUdf,
+};
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -286,5 +557,170 @@ mod tests {
 
         let c = vec![0u8; 64];
         assert_eq!(hamming_distance(&a, &c), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DataFusion UDF tests (require `datafusion` feature)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "datafusion"))]
+mod udf_tests {
+    use std::sync::Arc;
+
+    use arrow::array::{BinaryArray, FixedSizeBinaryBuilder};
+    use arrow::datatypes::{DataType, Field};
+    use datafusion::config::ConfigOptions;
+    use datafusion::execution::context::SessionContext;
+    use datafusion::execution::FunctionRegistry;
+    use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl};
+
+    use super::udfs::*;
+
+    fn make_fsb_column(data: &[&[u8]], element_size: i32) -> Arc<dyn arrow::array::Array> {
+        let mut builder =
+            FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
+        for row in data {
+            builder.append_value(row).unwrap();
+        }
+        Arc::new(builder.finish())
+    }
+
+    fn make_args(args: Vec<ColumnarValue>, num_rows: usize, ret_dt: DataType) -> ScalarFunctionArgs {
+        let arg_fields: Vec<_> = args
+            .iter()
+            .enumerate()
+            .map(|(i, cv)| {
+                let dt = cv.data_type();
+                Arc::new(Field::new(format!("c{i}"), dt, true))
+            })
+            .collect();
+        ScalarFunctionArgs {
+            args,
+            arg_fields,
+            number_rows: num_rows,
+            return_field: Arc::new(Field::new("out", ret_dt, true)),
+            config_options: Arc::new(ConfigOptions::default()),
+        }
+    }
+
+    #[test]
+    fn test_udf_hamming_array_x_array() {
+        let a = make_fsb_column(&[&[0u8; 8], &[0xFFu8; 8]], 8);
+        let b = make_fsb_column(&[&[0u8; 8], &[0u8; 8]], 8);
+
+        let udf = RustyHammingUdf::new();
+        let result = udf
+            .invoke_with_args(make_args(
+                vec![ColumnarValue::Array(a), ColumnarValue::Array(b)],
+                2,
+                DataType::UInt64,
+            ))
+            .unwrap();
+
+        if let ColumnarValue::Array(arr) = result {
+            let u64arr = arr
+                .as_any()
+                .downcast_ref::<arrow::array::UInt64Array>()
+                .unwrap();
+            assert_eq!(u64arr.value(0), 0); // 0x00 vs 0x00 → 0
+            assert_eq!(u64arr.value(1), 64); // 0xFF vs 0x00 → 8 bits * 8 bytes
+        } else {
+            panic!("expected Array result");
+        }
+    }
+
+    #[test]
+    fn test_udf_similarity_normalized() {
+        let a = make_fsb_column(&[&[0u8; 8]], 8);
+        let b = make_fsb_column(&[&[0xFFu8; 8]], 8);
+
+        let udf = RustySimilarityUdf::new();
+        let result = udf
+            .invoke_with_args(make_args(
+                vec![ColumnarValue::Array(a), ColumnarValue::Array(b)],
+                1,
+                DataType::Float32,
+            ))
+            .unwrap();
+
+        if let ColumnarValue::Array(arr) = result {
+            let f32arr = arr
+                .as_any()
+                .downcast_ref::<arrow::array::Float32Array>()
+                .unwrap();
+            assert!((f32arr.value(0) - 0.0).abs() < 0.001); // max distance → 0.0 similarity
+        } else {
+            panic!("expected Array result");
+        }
+    }
+
+    #[test]
+    fn test_udf_popcount() {
+        let udf = RustyPopcountUdf::new();
+        let input = make_fsb_column(&[&[0xFFu8; 4]], 4);
+        let result = udf
+            .invoke_with_args(make_args(
+                vec![ColumnarValue::Array(input)],
+                1,
+                DataType::UInt64,
+            ))
+            .unwrap();
+
+        if let ColumnarValue::Array(arr) = result {
+            let u64arr = arr
+                .as_any()
+                .downcast_ref::<arrow::array::UInt64Array>()
+                .unwrap();
+            assert_eq!(u64arr.value(0), 32); // 4 bytes * 8 bits
+        } else {
+            panic!("expected Array result");
+        }
+    }
+
+    #[test]
+    fn test_udf_xor_bind_self_inverse() {
+        let a_data = vec![0xAA, 0xBB, 0xCC, 0xDD];
+        let b_data = vec![0x11, 0x22, 0x33, 0x44];
+        let a = make_fsb_column(&[&a_data], 4);
+        let b = make_fsb_column(&[&b_data], 4);
+
+        let xor_udf = RustyXorBindUdf::new();
+
+        // XOR a and b
+        let result = xor_udf
+            .invoke_with_args(make_args(
+                vec![ColumnarValue::Array(a.clone()), ColumnarValue::Array(b.clone())],
+                1,
+                DataType::Binary,
+            ))
+            .unwrap();
+
+        // XOR result with b → should recover a (XOR is self-inverse)
+        let result2 = xor_udf
+            .invoke_with_args(make_args(
+                vec![result, ColumnarValue::Array(b)],
+                1,
+                DataType::Binary,
+            ))
+            .unwrap();
+
+        if let ColumnarValue::Array(arr) = result2 {
+            let bin = arr.as_any().downcast_ref::<BinaryArray>().unwrap();
+            assert_eq!(bin.value(0), &a_data);
+        } else {
+            panic!("expected Array result");
+        }
+    }
+
+    #[test]
+    fn test_register_rustynum_udfs() {
+        let ctx = SessionContext::new();
+        register_rustynum_udfs(&ctx);
+        // Verify all 4 UDFs are registered
+        assert!(ctx.udf("rusty_hamming").is_ok());
+        assert!(ctx.udf("rusty_similarity").is_ok());
+        assert!(ctx.udf("rusty_popcount").is_ok());
+        assert!(ctx.udf("rusty_xor_bind").is_ok());
     }
 }
