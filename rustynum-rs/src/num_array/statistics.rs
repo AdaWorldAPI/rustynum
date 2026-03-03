@@ -253,6 +253,7 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
     /// let array = NumArrayF32::new(data);
+    /// #[allow(deprecated)]
     /// let var = array.var().item();
     /// assert!((var - 2.0).abs() < 1e-5);
     /// ```
@@ -358,6 +359,7 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
     /// let array = NumArrayF32::new(data);
+    /// #[allow(deprecated)]
     /// let p50 = array.percentile(50.0).item();
     /// assert!((p50 - 3.0).abs() < 1e-5);
     /// ```
@@ -529,6 +531,7 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
     /// let array = NumArrayF32::new(data);
+    /// #[allow(deprecated)]
     /// let std_val = array.std().item();
     /// assert!((std_val - 1.4142135).abs() < 1e-5);
     /// ```

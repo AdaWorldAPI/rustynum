@@ -1,4 +1,5 @@
 // bindings/python/src/cogrecord.rs
+#![allow(deprecated)] // Python API intentionally uses panicking wrappers
 use crate::array_u8::PyNumArrayU8;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
