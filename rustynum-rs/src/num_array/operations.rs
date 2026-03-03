@@ -1,6 +1,6 @@
-// TODO(refactor): Return Result instead of panicking on dimension mismatch.
-// Current: assert!/panic! in public API with 0 Result returns.
-// This is hostile to library consumers who can't recover from invalid inputs.
+// NOTE: std::ops traits (Add, Sub, Mul, Div) cannot return Result, so panics
+// remain in trait impls for shape mismatches — this matches NumPy's behavior.
+// For fallible alternatives, use the try_* methods on NumArray (e.g. try_div_broadcast).
 use super::NumArray;
 use crate::simd_ops::SimdOps;
 use crate::traits::{ExpLog, FromU32, FromUsize, NumOps};
@@ -444,6 +444,63 @@ where
     }
 }
 
+impl<T, Ops> NumArray<T, Ops>
+where
+    T: Clone
+        + Mul<Output = T>
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Div<Output = T>
+        + Sum<T>
+        + NumOps
+        + Copy
+        + PartialOrd
+        + FromU32
+        + FromUsize
+        + ExpLog
+        + Neg<Output = T>
+        + Default
+        + Debug,
+    Ops: SimdOps<T>,
+{
+    /// Fallible element-wise division with broadcasting support.
+    ///
+    /// Returns `Err(BroadcastError)` if shapes are not compatible.
+    /// Supports same-shape division and 2D `[m, n] / [m, 1]` broadcasting.
+    pub fn try_div_broadcast(&self, rhs: &Self) -> Result<Self, crate::NumError> {
+        // Same shape case — SIMD element-wise division
+        if self.shape() == rhs.shape() {
+            let data = self.get_data();
+            let mut result_data = vec![T::default(); data.len()];
+            Ops::div_array(data, rhs.get_data(), &mut result_data);
+            return Ok(NumArray::new_with_shape(result_data, self.shape().to_vec()));
+        }
+
+        // Broadcasting case for 2D arrays: self: [m, n], rhs: [m, 1]
+        if self.shape().len() == 2
+            && rhs.shape().len() == 2
+            && self.shape()[0] == rhs.shape()[0]
+            && rhs.shape()[1] == 1
+        {
+            let (m, n) = (self.shape()[0], self.shape()[1]);
+            let mut result_data = Vec::with_capacity(m * n);
+
+            for i in 0..m {
+                let divisor = rhs.get(&[i, 0]);
+                for j in 0..n {
+                    result_data.push(self.get(&[i, j]) / divisor);
+                }
+            }
+            return Ok(NumArray::new_with_shape(result_data, vec![m, n]));
+        }
+
+        Err(crate::NumError::BroadcastError {
+            lhs: self.shape().to_vec(),
+            rhs: rhs.shape().to_vec(),
+        })
+    }
+}
+
 impl<'b, T, Ops> Div<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
 where
     T: Clone
@@ -465,39 +522,13 @@ where
 {
     type Output = NumArray<T, Ops>;
 
+    /// # Panics
+    /// Panics if shapes are not broadcastable. Use `try_div_broadcast()` for the fallible variant.
     fn div(self, rhs: &'b NumArray<T, Ops>) -> Self::Output {
-        // Same shape case — SIMD element-wise division
-        if self.shape() == rhs.shape() {
-            let data = self.get_data();
-            let mut result_data = vec![T::default(); data.len()];
-            Ops::div_array(data, rhs.get_data(), &mut result_data);
-            return NumArray::new_with_shape(result_data, self.shape().to_vec());
+        match self.try_div_broadcast(rhs) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
         }
-
-        // Broadcasting case for 2D arrays: self: [m, n], rhs: [m, 1]
-        if self.shape().len() == 2
-            && rhs.shape().len() == 2
-            && self.shape()[0] == rhs.shape()[0]
-            && rhs.shape()[1] == 1
-        {
-            let (m, n) = (self.shape()[0], self.shape()[1]);
-            let mut result_data = Vec::with_capacity(m * n);
-
-            for i in 0..m {
-                let divisor = rhs.get(&[i, 0]);
-                for j in 0..n {
-                    result_data.push(self.get(&[i, j]) / divisor);
-                }
-            }
-            // Important: maintain the original shape for the result
-            return NumArray::new_with_shape(result_data, vec![m, n]);
-        }
-
-        panic!(
-            "Shapes not broadcastable for division: {:?} vs {:?}",
-            self.shape(),
-            rhs.shape()
-        );
     }
 }
 
@@ -619,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Shapes not broadcastable")]
+    #[should_panic(expected = "shapes not broadcastable")]
     fn test_invalid_broadcast_division() {
         let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
         let b = NumArrayF32::new_with_shape(vec![2.0], vec![1, 1]);
