@@ -1,4 +1,5 @@
 // bindings/python/src/array_f32.rs
+#![allow(deprecated)] // Python API intentionally uses panicking wrappers
 
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple}; // Keep only what's actually used by PyNumArrayF32 methods

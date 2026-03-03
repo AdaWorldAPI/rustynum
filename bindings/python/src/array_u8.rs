@@ -1,4 +1,5 @@
 // bindings/python/src/array_u8.rs
+#![allow(deprecated)] // Python API intentionally uses panicking wrappers
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};

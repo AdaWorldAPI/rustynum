@@ -20,7 +20,7 @@
 //! use rustynum_rs::NumArrayF32;
 //!
 //! let mut array = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0]);
-//! let mean_value = array.mean().item();
+//! let mean_value = array.mean().try_item().unwrap();
 //! println!("Mean value: {}", mean_value);
 //! ```
 
@@ -320,6 +320,18 @@ where
         + FromUsize,
     Ops: SimdOps<T>,
 {
+    /// Fallible version of [`item()`](Self::item): returns `Err` if the array
+    /// does not have exactly one element.
+    pub fn try_item(&self) -> Result<T, crate::NumError> {
+        if self.data.len() != 1 {
+            return Err(crate::NumError::DimensionMismatch(format!(
+                "item() requires exactly 1 element, got {}",
+                self.data.len()
+            )));
+        }
+        Ok(self.data[0])
+    }
+
     /// Retrieves the single element of the array.
     ///
     /// # Returns
@@ -333,9 +345,11 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0];
     /// let array = NumArrayF32::new(data);
+    /// #[allow(deprecated)]
     /// let item = array.item();
     /// println!("Item: {}", item);
     /// ```
+    #[deprecated(note = "Use try_item() which returns Result instead of panicking")]
     pub fn item(&self) -> T {
         assert_eq!(self.data.len(), 1, "Array must have exactly one element.");
         self.data[0]
@@ -362,6 +376,35 @@ where
         + NumElement,
     Ops: SimdOps<T>,
 {
+    /// Fallible version of [`dot()`](Self::dot): returns `Err` if dimensions
+    /// do not align for dot product or matrix multiplication.
+    #[allow(deprecated)]
+    pub fn try_dot(&self, other: &Self) -> Result<NumArray<T, Ops>, crate::NumError> {
+        let self_shape = self.shape();
+        let other_shape = other.shape();
+
+        if self_shape.last() != Some(&other_shape[0]) {
+            return Err(crate::NumError::DimensionMismatch(format!(
+                "dot product requires self trailing dim ({}) == other leading dim ({})",
+                self_shape.last().copied().unwrap_or(0),
+                other_shape[0]
+            )));
+        }
+
+        if self_shape.len() == 1 && other_shape.len() == 1 {
+            if self_shape[0] != other_shape[0] {
+                return Err(crate::NumError::DimensionMismatch(format!(
+                    "vectors must have same length for dot product: {} vs {}",
+                    self_shape[0], other_shape[0]
+                )));
+            }
+            let dot_product = Ops::dot_product(&self.data, &other.data);
+            Ok(NumArray::new(vec![dot_product]))
+        } else {
+            Ok(matrix_multiply(self, other))
+        }
+    }
+
     /// Computes the dot product of two arrays, which can be vectors or matrices.
     ///
     /// # Parameters
@@ -378,9 +421,11 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let a = NumArrayF32::new(vec![1.0, 2.0, 3.0, 4.0]);
     /// let b = NumArrayF32::new(vec![4.0, 3.0, 2.0, 1.0]);
+    /// #[allow(deprecated)]
     /// let dot_product = a.dot(&b).item();
     /// println!("Dot product: {}", dot_product);
     /// ```
+    #[deprecated(note = "Use try_dot() which returns Result instead of panicking")]
     #[allow(deprecated)]
     pub fn dot(&self, other: &Self) -> NumArray<T, Ops> {
         let self_shape = self.shape();
@@ -534,6 +579,22 @@ where
         Self::new_with_shape(out, self.shape.clone())
     }
 
+    /// Fallible version of [`log()`](Self::log): returns `Err` if any element
+    /// is non-positive.
+    pub fn try_log(&self) -> Result<Self, crate::NumError> {
+        for (i, &x) in self.data.iter().enumerate() {
+            if !(x > T::from_u32(0)) {
+                return Err(crate::NumError::InvalidParameter(format!(
+                    "log undefined for non-positive value at index {}",
+                    i
+                )));
+            }
+        }
+        let mut out = vec![T::from_u32(0); self.data.len()];
+        Ops::log_batch(&self.data, &mut out);
+        Ok(Self::new_with_shape(out, self.shape.clone()))
+    }
+
     /// Applies the natural logarithm to each element of the `NumArray`.
     ///
     /// # Returns
@@ -547,9 +608,11 @@ where
     /// use rustynum_rs::NumArrayF32;
     ///
     /// let array = NumArrayF32::new(vec![1.0, 2.718282, 7.389056]);
+    /// #[allow(deprecated)]
     /// let log_array = array.log();
     /// assert_eq!(log_array.get_data(), &[0.0, 1.0, 2.0]);
     /// ```
+    #[deprecated(note = "Use try_log() which returns Result instead of panicking")]
     pub fn log(&self) -> Self {
         for &x in &self.data {
             assert!(
@@ -600,6 +663,25 @@ where
         Self::new_with_shape(result, self.shape.clone())
     }
 
+    /// Fallible version of [`argmin()`](Self::argmin): returns `Err` if the
+    /// array is empty.
+    pub fn try_argmin(&self) -> Result<usize, crate::NumError> {
+        if self.data.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "cannot compute argmin of empty array".into(),
+            ));
+        }
+        let mut min_idx = 0;
+        let mut min_val = self.data[0];
+        for (i, &val) in self.data.iter().enumerate().skip(1) {
+            if val < min_val {
+                min_val = val;
+                min_idx = i;
+            }
+        }
+        Ok(min_idx)
+    }
+
     /// Returns the index of the minimum value in the array.
     ///
     /// # Returns
@@ -612,8 +694,11 @@ where
     /// ```
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5]);
-    /// assert_eq!(array.argmin(), 1);
+    /// #[allow(deprecated)]
+    /// let idx = array.argmin();
+    /// assert_eq!(idx, 1);
     /// ```
+    #[deprecated(note = "Use try_argmin() which returns Result instead of panicking")]
     pub fn argmin(&self) -> usize {
         assert!(
             !self.data.is_empty(),
@@ -630,6 +715,25 @@ where
         min_idx
     }
 
+    /// Fallible version of [`argmax()`](Self::argmax): returns `Err` if the
+    /// array is empty.
+    pub fn try_argmax(&self) -> Result<usize, crate::NumError> {
+        if self.data.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "cannot compute argmax of empty array".into(),
+            ));
+        }
+        let mut max_idx = 0;
+        let mut max_val = self.data[0];
+        for (i, &val) in self.data.iter().enumerate().skip(1) {
+            if val > max_val {
+                max_val = val;
+                max_idx = i;
+            }
+        }
+        Ok(max_idx)
+    }
+
     /// Returns the index of the maximum value in the array.
     ///
     /// # Returns
@@ -642,8 +746,11 @@ where
     /// ```
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new(vec![3.0, 1.0, 4.0, 1.5]);
-    /// assert_eq!(array.argmax(), 2);
+    /// #[allow(deprecated)]
+    /// let idx = array.argmax();
+    /// assert_eq!(idx, 2);
     /// ```
+    #[deprecated(note = "Use try_argmax() which returns Result instead of panicking")]
     pub fn argmax(&self) -> usize {
         assert!(
             !self.data.is_empty(),
@@ -1214,7 +1321,9 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new_with_shape(vec![3.0, 4.0], vec![2]);
     /// let norm = array.norm(2, None, Some(true));
-    /// assert!((norm.item() - 5.0).abs() < 1e-5);
+    /// #[allow(deprecated)]
+    /// let val = norm.item();
+    /// assert!((val - 5.0).abs() < 1e-5);
     /// ```
     pub fn norm(&self, p: u32, axis: Option<&[usize]>, keepdims: Option<bool>) -> Self {
         let keepdims = keepdims.unwrap_or(false);

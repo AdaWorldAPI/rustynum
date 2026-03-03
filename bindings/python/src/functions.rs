@@ -1,4 +1,5 @@
 // bindings/python/src/functions.rs
+#![allow(deprecated)] // Python API intentionally uses panicking wrappers
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
