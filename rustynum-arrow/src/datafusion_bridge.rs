@@ -148,7 +148,9 @@ mod tests {
     fn make_column(data: &[&[u8]], element_size: i32) -> FixedSizeBinaryArray {
         let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
         for row in data {
-            builder.append_value(row).unwrap();
+            builder
+                .append_value(row)
+                .expect("append_value failed: row length != element_size");
         }
         builder.finish()
     }

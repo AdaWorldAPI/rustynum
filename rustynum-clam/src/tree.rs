@@ -635,14 +635,18 @@ impl ClamTree {
             return LfdStats::default();
         }
 
+        // Use (n-1)*pct/100 for nearest-rank percentile indexing.
+        // Avoids integer division rounding issues with the old n*pct/100 formula
+        // (e.g., n=1 would index out-of-bounds for p95 with the old formula).
+        let last = n - 1;
         LfdStats {
             min: lfds[0],
-            p5: lfds[n * 5 / 100],
-            p25: lfds[n * 25 / 100],
-            p50: lfds[n / 2],
-            p75: lfds[n * 75 / 100],
-            p95: lfds[n * 95 / 100],
-            max: lfds[n - 1],
+            p5: lfds[last * 5 / 100],
+            p25: lfds[last * 25 / 100],
+            p50: lfds[last * 50 / 100],
+            p75: lfds[last * 75 / 100],
+            p95: lfds[last * 95 / 100],
+            max: lfds[last],
             mean: lfds.iter().sum::<f64>() / n as f64,
         }
     }

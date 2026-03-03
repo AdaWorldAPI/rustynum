@@ -2,7 +2,7 @@
 #![allow(deprecated)] // Python API intentionally uses panicking wrappers
 
 use pyo3::prelude::*;
-use pyo3::types::{PyList, PyTuple}; // Keep only what's actually used by PyNumArrayF32 methods
+use pyo3::types::{PyList, PyTuple};
 use rustynum_rs::NumArrayF64;
 
 #[pyclass(module = "_rustynum")]
@@ -30,85 +30,65 @@ impl PyNumArrayF64 {
     }
 
     fn add_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner + scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner + scalar;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn add_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner + &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner + &other.inner;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn sub_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner - scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner - scalar;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn sub_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner - &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner - &other.inner;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn mul_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner * scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner * scalar;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn mul_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner * &other.inner; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner * &other.inner;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn div_scalar(&self, scalar: f64) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner / scalar; // Leveraging Rust's Add implementation
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner / scalar;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn div_array(&self, other: PyRef<PyNumArrayF64>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = &self.inner / &other.inner;
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = &self.inner / &other.inner;
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn mean_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.mean_axis(Some(&axis_vec))
-                }
-                None => self.inner.mean_axis(None),
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.mean_axis(Some(&axis_vec))
+            }
+            None => self.inner.mean_axis(None),
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn median_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.median_axis(Some(&axis_vec))
-                }
-                None => self.inner.median_axis(None),
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.median_axis(Some(&axis_vec))
+            }
+            None => self.inner.median_axis(None),
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn norm(
@@ -117,16 +97,14 @@ impl PyNumArrayF64 {
         axis: Option<&PyList>,
         keepdims: Option<bool>,
     ) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.norm(p, Some(&axis_vec), keepdims)
-                }
-                None => self.inner.norm(p, None, keepdims),
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.norm(p, Some(&axis_vec), keepdims)
+            }
+            None => self.inner.norm(p, None, keepdims),
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn tolist(&self, py: Python) -> PyObject {
@@ -140,11 +118,9 @@ impl PyNumArrayF64 {
         })
     }
 
-    fn shape(&self) -> PyResult<PyObject> {
-        Python::with_gil(|py| {
-            let shape_vec = self.inner.shape();
-            Ok(PyTuple::new(py, shape_vec.iter()).to_object(py))
-        })
+    fn shape(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let shape_vec = self.inner.shape();
+        Ok(PyTuple::new(py, shape_vec.iter()).to_object(py))
     }
 
     fn reshape(&self, shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
@@ -154,18 +130,16 @@ impl PyNumArrayF64 {
     }
 
     fn flip_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let axis_vec: Vec<usize> = match axis {
-                Some(list) => list.extract()?,
-                None => vec![],
-            };
-            let result = if axis_vec.is_empty() {
-                self.inner.clone()
-            } else {
-                self.inner.flip_axis(axis_vec)
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let axis_vec: Vec<usize> = match axis {
+            Some(list) => list.extract()?,
+            None => vec![],
+        };
+        let result = if axis_vec.is_empty() {
+            self.inner.clone()
+        } else {
+            self.inner.flip_axis(axis_vec)
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn exp(&self) -> PyNumArrayF64 {
@@ -187,28 +161,24 @@ impl PyNumArrayF64 {
     }
 
     fn min_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.min_axis(Some(&axis_vec))
-                }
-                None => self.inner.min_axis(None),
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.min_axis(Some(&axis_vec))
+            }
+            None => self.inner.min_axis(None),
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 
     fn max_axis(&self, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-        Python::with_gil(|_py| {
-            let result = match axis {
-                Some(axis_list) => {
-                    let axis_vec: Vec<usize> = axis_list.extract()?;
-                    self.inner.max_axis(Some(&axis_vec))
-                }
-                None => self.inner.max_axis(None),
-            };
-            Ok(PyNumArrayF64 { inner: result })
-        })
+        let result = match axis {
+            Some(axis_list) => {
+                let axis_vec: Vec<usize> = axis_list.extract()?;
+                self.inner.max_axis(Some(&axis_vec))
+            }
+            None => self.inner.max_axis(None),
+        };
+        Ok(PyNumArrayF64 { inner: result })
     }
 }

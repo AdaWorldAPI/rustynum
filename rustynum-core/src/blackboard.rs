@@ -240,6 +240,60 @@ impl Blackboard {
         Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut f64, meta.len_elements) })
     }
 
+    /// Get an immutable i32 slice for the named buffer.
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't i32.
+    pub fn get_i32(&self, name: &str) -> Option<&[i32]> {
+        let meta = self.meta_checked(name, DType::I32)?;
+        if meta.len_elements == 0 {
+            return Some(&[]);
+        }
+        // SAFETY: ptr is non-null (len_elements > 0 implies a live allocation),
+        // 64-byte aligned (satisfies i32 alignment of 4), dtype is verified as I32,
+        // and len_elements matches the allocation size. &self borrows immutably.
+        Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const i32, meta.len_elements) })
+    }
+
+    /// Get a mutable i32 slice for the named buffer.
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't i32.
+    pub fn get_i32_mut(&mut self, name: &str) -> Option<&mut [i32]> {
+        let meta = self.meta_checked(name, DType::I32)?;
+        if meta.len_elements == 0 {
+            return Some(&mut []);
+        }
+        // SAFETY: ptr is non-null, 64-byte aligned (satisfies i32 alignment of 4),
+        // dtype verified as I32, len_elements matches allocation. &mut self guarantees
+        // exclusive access.
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut i32, meta.len_elements) })
+    }
+
+    /// Get an immutable i64 slice for the named buffer.
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't i64.
+    pub fn get_i64(&self, name: &str) -> Option<&[i64]> {
+        let meta = self.meta_checked(name, DType::I64)?;
+        if meta.len_elements == 0 {
+            return Some(&[]);
+        }
+        // SAFETY: ptr is non-null, 64-byte aligned (satisfies i64 alignment of 8),
+        // dtype verified as I64, len_elements matches allocation. &self borrows immutably.
+        Some(unsafe { std::slice::from_raw_parts(meta.ptr as *const i64, meta.len_elements) })
+    }
+
+    /// Get a mutable i64 slice for the named buffer.
+    ///
+    /// Returns `None` if the buffer doesn't exist or isn't i64.
+    pub fn get_i64_mut(&mut self, name: &str) -> Option<&mut [i64]> {
+        let meta = self.meta_checked(name, DType::I64)?;
+        if meta.len_elements == 0 {
+            return Some(&mut []);
+        }
+        // SAFETY: ptr is non-null, 64-byte aligned, dtype verified as I64,
+        // len_elements matches allocation. &mut self guarantees exclusive access.
+        Some(unsafe { std::slice::from_raw_parts_mut(meta.ptr as *mut i64, meta.len_elements) })
+    }
+
     /// Get an immutable u8 slice for the named buffer.
     ///
     /// Returns `None` if the buffer doesn't exist or isn't u8.
@@ -346,6 +400,112 @@ impl Blackboard {
                 std::slice::from_raw_parts_mut(ma.ptr as *mut f64, ma.len_elements),
                 std::slice::from_raw_parts_mut(mb.ptr as *mut f64, mb.len_elements),
                 std::slice::from_raw_parts_mut(mc.ptr as *mut f64, mc.len_elements),
+            ))
+        }
+    }
+
+    /// Split-borrow: get 2 non-overlapping mutable i32 slices simultaneously.
+    ///
+    /// Returns `None` if either buffer doesn't exist or isn't i32.
+    ///
+    /// # Panics
+    ///
+    /// Panics if names are the same (logic error — aliasing would be unsound).
+    pub fn borrow_2_mut_i32<'a>(
+        &'a mut self,
+        a: &str,
+        b: &str,
+    ) -> Option<(&'a mut [i32], &'a mut [i32])> {
+        assert_ne!(a, b, "Cannot borrow the same buffer twice mutably");
+        let ma = self.meta_checked(a, DType::I32)?;
+        let mb = self.meta_checked(b, DType::I32)?;
+        // SAFETY: &mut self → exclusive access. Names are distinct → pointers are
+        // to different heap allocations. No aliasing.
+        unsafe {
+            Some((
+                std::slice::from_raw_parts_mut(ma.ptr as *mut i32, ma.len_elements),
+                std::slice::from_raw_parts_mut(mb.ptr as *mut i32, mb.len_elements),
+            ))
+        }
+    }
+
+    /// Split-borrow: get 3 non-overlapping mutable i32 slices simultaneously.
+    ///
+    /// Returns `None` if any buffer doesn't exist or isn't i32.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any names are the same (logic error — aliasing would be unsound).
+    pub fn borrow_3_mut_i32<'a>(
+        &'a mut self,
+        a: &str,
+        b: &str,
+        c: &str,
+    ) -> Option<(&'a mut [i32], &'a mut [i32], &'a mut [i32])> {
+        assert!(a != b && b != c && a != c, "Buffer names must be distinct");
+        let ma = self.meta_checked(a, DType::I32)?;
+        let mb = self.meta_checked(b, DType::I32)?;
+        let mc = self.meta_checked(c, DType::I32)?;
+        // SAFETY: &mut self guarantees exclusive access. All three names are distinct,
+        // so the pointers refer to different heap allocations. No aliasing.
+        unsafe {
+            Some((
+                std::slice::from_raw_parts_mut(ma.ptr as *mut i32, ma.len_elements),
+                std::slice::from_raw_parts_mut(mb.ptr as *mut i32, mb.len_elements),
+                std::slice::from_raw_parts_mut(mc.ptr as *mut i32, mc.len_elements),
+            ))
+        }
+    }
+
+    /// Split-borrow: get 2 non-overlapping mutable i64 slices simultaneously.
+    ///
+    /// Returns `None` if either buffer doesn't exist or isn't i64.
+    ///
+    /// # Panics
+    ///
+    /// Panics if names are the same (logic error — aliasing would be unsound).
+    pub fn borrow_2_mut_i64<'a>(
+        &'a mut self,
+        a: &str,
+        b: &str,
+    ) -> Option<(&'a mut [i64], &'a mut [i64])> {
+        assert_ne!(a, b, "Cannot borrow the same buffer twice mutably");
+        let ma = self.meta_checked(a, DType::I64)?;
+        let mb = self.meta_checked(b, DType::I64)?;
+        // SAFETY: &mut self → exclusive access. Names are distinct → pointers are
+        // to different heap allocations. No aliasing.
+        unsafe {
+            Some((
+                std::slice::from_raw_parts_mut(ma.ptr as *mut i64, ma.len_elements),
+                std::slice::from_raw_parts_mut(mb.ptr as *mut i64, mb.len_elements),
+            ))
+        }
+    }
+
+    /// Split-borrow: get 3 non-overlapping mutable i64 slices simultaneously.
+    ///
+    /// Returns `None` if any buffer doesn't exist or isn't i64.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any names are the same (logic error — aliasing would be unsound).
+    pub fn borrow_3_mut_i64<'a>(
+        &'a mut self,
+        a: &str,
+        b: &str,
+        c: &str,
+    ) -> Option<(&'a mut [i64], &'a mut [i64], &'a mut [i64])> {
+        assert!(a != b && b != c && a != c, "Buffer names must be distinct");
+        let ma = self.meta_checked(a, DType::I64)?;
+        let mb = self.meta_checked(b, DType::I64)?;
+        let mc = self.meta_checked(c, DType::I64)?;
+        // SAFETY: &mut self guarantees exclusive access. All three names are distinct,
+        // so the pointers refer to different heap allocations. No aliasing.
+        unsafe {
+            Some((
+                std::slice::from_raw_parts_mut(ma.ptr as *mut i64, ma.len_elements),
+                std::slice::from_raw_parts_mut(mb.ptr as *mut i64, mb.len_elements),
+                std::slice::from_raw_parts_mut(mc.ptr as *mut i64, mc.len_elements),
             ))
         }
     }
@@ -522,5 +682,72 @@ mod tests {
         bb.alloc_f32("buf", 8);
         assert!(bb.get_f64("buf").is_none());
         assert!(bb.get_u8("buf").is_none());
+        assert!(bb.get_i32("buf").is_none());
+        assert!(bb.get_i64("buf").is_none());
+    }
+
+    #[test]
+    fn test_alloc_and_access_i32() {
+        let mut bb = Blackboard::new();
+        bb.alloc_i32("counts", 256);
+        let slice = bb.get_i32_mut("counts").unwrap();
+        assert_eq!(slice.len(), 256);
+        assert!(slice.iter().all(|&x| x == 0));
+        slice[0] = -42;
+        slice[255] = i32::MAX;
+        assert_eq!(bb.get_i32("counts").unwrap()[0], -42);
+        assert_eq!(bb.get_i32("counts").unwrap()[255], i32::MAX);
+    }
+
+    #[test]
+    fn test_alloc_and_access_i64() {
+        let mut bb = Blackboard::new();
+        bb.alloc_i64("timestamps", 128);
+        let slice = bb.get_i64_mut("timestamps").unwrap();
+        assert_eq!(slice.len(), 128);
+        assert!(slice.iter().all(|&x| x == 0));
+        slice[0] = i64::MIN;
+        slice[127] = i64::MAX;
+        assert_eq!(bb.get_i64("timestamps").unwrap()[0], i64::MIN);
+        assert_eq!(bb.get_i64("timestamps").unwrap()[127], i64::MAX);
+    }
+
+    #[test]
+    fn test_split_borrow_i32() {
+        let mut bb = Blackboard::new();
+        bb.alloc_i32("A", 16);
+        bb.alloc_i32("B", 16);
+        bb.alloc_i32("C", 16);
+
+        let (a, b, c) = bb.borrow_3_mut_i32("A", "B", "C").unwrap();
+        a.fill(1);
+        b.fill(2);
+        c.fill(3);
+
+        assert!(a.iter().all(|&v| v == 1));
+        assert!(b.iter().all(|&v| v == 2));
+        assert!(c.iter().all(|&v| v == 3));
+    }
+
+    #[test]
+    fn test_split_borrow_i64() {
+        let mut bb = Blackboard::new();
+        bb.alloc_i64("X", 8);
+        bb.alloc_i64("Y", 8);
+
+        let (x, y) = bb.borrow_2_mut_i64("X", "Y").unwrap();
+        x.fill(100);
+        y.fill(-100);
+
+        assert!(x.iter().all(|&v| v == 100));
+        assert!(y.iter().all(|&v| v == -100));
+    }
+
+    #[test]
+    fn test_i32_alignment() {
+        let mut bb = Blackboard::new();
+        bb.alloc_i32("aligned", 256);
+        let (ptr, _, _) = unsafe { bb.raw_ptr("aligned") }.unwrap();
+        assert_eq!(ptr as usize % ALIGNMENT, 0, "I32 buffer not 64-byte aligned");
     }
 }

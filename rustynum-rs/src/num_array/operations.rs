@@ -499,6 +499,105 @@ where
             rhs: rhs.shape().to_vec(),
         })
     }
+
+    /// Fallible element-wise addition with broadcasting support.
+    ///
+    /// Supports same-shape addition and 2D `[m, n] + [m, 1]` broadcasting.
+    pub fn try_add_broadcast(&self, rhs: &Self) -> Result<Self, crate::NumError> {
+        if self.shape() == rhs.shape() {
+            let data = self.get_data();
+            let mut result_data = vec![T::default(); data.len()];
+            Ops::add_array(data, rhs.get_data(), &mut result_data);
+            return Ok(NumArray::new_with_shape(result_data, self.shape().to_vec()));
+        }
+
+        if self.shape().len() == 2
+            && rhs.shape().len() == 2
+            && self.shape()[0] == rhs.shape()[0]
+            && rhs.shape()[1] == 1
+        {
+            let (m, n) = (self.shape()[0], self.shape()[1]);
+            let mut result_data = Vec::with_capacity(m * n);
+            for i in 0..m {
+                let addend = rhs.get(&[i, 0]);
+                for j in 0..n {
+                    result_data.push(self.get(&[i, j]) + addend);
+                }
+            }
+            return Ok(NumArray::new_with_shape(result_data, vec![m, n]));
+        }
+
+        Err(crate::NumError::BroadcastError {
+            lhs: self.shape().to_vec(),
+            rhs: rhs.shape().to_vec(),
+        })
+    }
+
+    /// Fallible element-wise subtraction with broadcasting support.
+    ///
+    /// Supports same-shape subtraction and 2D `[m, n] - [m, 1]` broadcasting.
+    pub fn try_sub_broadcast(&self, rhs: &Self) -> Result<Self, crate::NumError> {
+        if self.shape() == rhs.shape() {
+            let data = self.get_data();
+            let mut result_data = vec![T::default(); data.len()];
+            Ops::sub_array(data, rhs.get_data(), &mut result_data);
+            return Ok(NumArray::new_with_shape(result_data, self.shape().to_vec()));
+        }
+
+        if self.shape().len() == 2
+            && rhs.shape().len() == 2
+            && self.shape()[0] == rhs.shape()[0]
+            && rhs.shape()[1] == 1
+        {
+            let (m, n) = (self.shape()[0], self.shape()[1]);
+            let mut result_data = Vec::with_capacity(m * n);
+            for i in 0..m {
+                let subtrahend = rhs.get(&[i, 0]);
+                for j in 0..n {
+                    result_data.push(self.get(&[i, j]) - subtrahend);
+                }
+            }
+            return Ok(NumArray::new_with_shape(result_data, vec![m, n]));
+        }
+
+        Err(crate::NumError::BroadcastError {
+            lhs: self.shape().to_vec(),
+            rhs: rhs.shape().to_vec(),
+        })
+    }
+
+    /// Fallible element-wise multiplication with broadcasting support.
+    ///
+    /// Supports same-shape multiplication and 2D `[m, n] * [m, 1]` broadcasting.
+    pub fn try_mul_broadcast(&self, rhs: &Self) -> Result<Self, crate::NumError> {
+        if self.shape() == rhs.shape() {
+            let data = self.get_data();
+            let mut result_data = vec![T::default(); data.len()];
+            Ops::mul_array(data, rhs.get_data(), &mut result_data);
+            return Ok(NumArray::new_with_shape(result_data, self.shape().to_vec()));
+        }
+
+        if self.shape().len() == 2
+            && rhs.shape().len() == 2
+            && self.shape()[0] == rhs.shape()[0]
+            && rhs.shape()[1] == 1
+        {
+            let (m, n) = (self.shape()[0], self.shape()[1]);
+            let mut result_data = Vec::with_capacity(m * n);
+            for i in 0..m {
+                let factor = rhs.get(&[i, 0]);
+                for j in 0..n {
+                    result_data.push(self.get(&[i, j]) * factor);
+                }
+            }
+            return Ok(NumArray::new_with_shape(result_data, vec![m, n]));
+        }
+
+        Err(crate::NumError::BroadcastError {
+            lhs: self.shape().to_vec(),
+            rhs: rhs.shape().to_vec(),
+        })
+    }
 }
 
 impl<'b, T, Ops> Div<&'b NumArray<T, Ops>> for &NumArray<T, Ops>
@@ -686,5 +785,49 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_broadcast_addition() {
+        let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+        let b = NumArrayF32::new_with_shape(vec![10.0, 20.0], vec![2, 1]);
+        let result = a.try_add_broadcast(&b).unwrap();
+        assert_eq!(result.shape(), &[2, 3]);
+        assert_eq!(result.get_data(), &[11.0, 12.0, 13.0, 24.0, 25.0, 26.0]);
+    }
+
+    #[test]
+    fn test_broadcast_subtraction() {
+        let a = NumArrayF32::new_with_shape(vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0], vec![2, 3]);
+        let b = NumArrayF32::new_with_shape(vec![1.0, 2.0], vec![2, 1]);
+        let result = a.try_sub_broadcast(&b).unwrap();
+        assert_eq!(result.shape(), &[2, 3]);
+        assert_eq!(result.get_data(), &[9.0, 19.0, 29.0, 38.0, 48.0, 58.0]);
+    }
+
+    #[test]
+    fn test_broadcast_multiplication() {
+        let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+        let b = NumArrayF32::new_with_shape(vec![2.0, 3.0], vec![2, 1]);
+        let result = a.try_mul_broadcast(&b).unwrap();
+        assert_eq!(result.shape(), &[2, 3]);
+        assert_eq!(result.get_data(), &[2.0, 4.0, 6.0, 12.0, 15.0, 18.0]);
+    }
+
+    #[test]
+    fn test_broadcast_same_shape() {
+        let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = NumArrayF32::new_with_shape(vec![10.0, 20.0, 30.0, 40.0], vec![2, 2]);
+        let result = a.try_add_broadcast(&b).unwrap();
+        assert_eq!(result.get_data(), &[11.0, 22.0, 33.0, 44.0]);
+    }
+
+    #[test]
+    fn test_broadcast_incompatible_shapes() {
+        let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        let b = NumArrayF32::new_with_shape(vec![1.0], vec![1, 1]);
+        assert!(a.try_add_broadcast(&b).is_err());
+        assert!(a.try_sub_broadcast(&b).is_err());
+        assert!(a.try_mul_broadcast(&b).is_err());
     }
 }
