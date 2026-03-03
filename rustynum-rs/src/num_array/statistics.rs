@@ -78,6 +78,7 @@ where
         }
     }
 
+    #[deprecated(note = "Use try_mean_axis() for Result-based error handling")]
     pub fn mean_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_mean_axis(axis) {
             Ok(result) => result,
@@ -178,6 +179,7 @@ where
         Ok(self.median_axis_unchecked(axis))
     }
 
+    #[deprecated(note = "Use try_median_axis() for Result-based error handling")]
     pub fn median_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_median_axis(axis) {
             Ok(result) => result,
@@ -293,6 +295,7 @@ where
         Ok(self.var_axis_unchecked(axis))
     }
 
+    #[deprecated(note = "Use try_var_axis() for Result-based error handling")]
     pub fn var_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_var_axis(axis) {
             Ok(result) => result,
@@ -300,6 +303,7 @@ where
         }
     }
 
+    #[allow(deprecated)]
     fn var_axis_unchecked(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axes) => {
@@ -372,6 +376,7 @@ where
         Ok(self.percentile_inner(p))
     }
 
+    #[deprecated(note = "Use try_percentile() for Result-based error handling")]
     pub fn percentile(&self, p: T) -> NumArray<T, Ops> {
         match self.try_percentile(p) {
             Ok(result) => result,
@@ -444,6 +449,7 @@ where
         Ok(self.percentile_axis_unchecked(p, axis))
     }
 
+    #[deprecated(note = "Use try_percentile_axis() for Result-based error handling")]
     pub fn percentile_axis(&self, p: T, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_percentile_axis(p, axis) {
             Ok(result) => result,
@@ -451,6 +457,7 @@ where
         }
     }
 
+    #[allow(deprecated)]
     fn percentile_axis_unchecked(&self, p: T, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axes) => {
@@ -545,6 +552,7 @@ where
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
     /// let std_arr = array.std_axis(Some(&[1]));
     /// ```
+    #[allow(deprecated)]
     pub fn std_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         let var_arr = self.var_axis(axis);
         // TODO(simd): REFACTOR — scalar sqrt via iter().map(). Route through VML vssqrt/vdsqrt.
@@ -558,6 +566,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use crate::num_array::{NumArrayF32, NumArrayF64};
 

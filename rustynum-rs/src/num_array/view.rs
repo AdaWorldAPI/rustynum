@@ -180,6 +180,7 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
     ///
     /// # Panics
     /// Panics if axis is out of bounds, end > shape[axis], or start > end.
+    #[deprecated(note = "Use try_slice_axis() for Result-based error handling")]
     pub fn slice_axis(&self, axis: usize, start: usize, end: usize) -> ArrayView<'a, T> {
         match self.try_slice_axis(axis, start, end) {
             Ok(result) => result,
@@ -213,6 +214,7 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
     ///
     /// # Panics
     /// Panics if axis is out of bounds.
+    #[deprecated(note = "Use try_flip_axis() for Result-based error handling")]
     pub fn flip_axis(&self, axis: usize) -> ArrayView<'a, T> {
         match self.try_flip_axis(axis) {
             Ok(result) => result,
@@ -564,6 +566,7 @@ impl<T: Copy + Debug> std::fmt::Debug for ArrayViewMut<'_, T> {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use crate::NumArrayF32;
 

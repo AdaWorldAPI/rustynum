@@ -37,6 +37,7 @@ where
     ///
     /// # Panics
     /// Panics if the array is not 2D.
+    #[deprecated(note = "Use try_transpose() for Result-based error handling")]
     pub fn transpose(&self) -> Self {
         match self.try_transpose() {
             Ok(result) => result,
@@ -69,9 +70,11 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
+    /// #[allow(deprecated)]
     /// let reshaped_array = array.reshape(&vec![3, 2]);
     /// println!("Reshaped array: {:?}", reshaped_array.get_data());
     /// ```
+    #[deprecated(note = "Use try_reshape() for Result-based error handling")]
     pub fn reshape(&self, new_shape: &[usize]) -> Self {
         match self.try_reshape(new_shape) {
             Ok(result) => result,
@@ -121,6 +124,7 @@ where
     ///
     /// # Panics
     /// Panics if any axis is out of bounds.
+    #[deprecated(note = "Use try_flip_axis() for Result-based error handling")]
     pub fn flip_axis<I>(&self, axis: I) -> Self
     where
         I: IntoIterator<Item = usize>,
@@ -202,9 +206,11 @@ where
     /// ```
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new_with_shape(vec![1.0, 2.0], vec![1, 2, 1]);
+    /// #[allow(deprecated)]
     /// let squeezed = array.squeeze(None); // removes all axis of length 1
     /// assert_eq!(squeezed.shape(), &[2]);
     /// ```
+    #[deprecated(note = "Use try_squeeze() for Result-based error handling")]
     pub fn squeeze(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_squeeze(axis) {
             Ok(result) => result,
@@ -273,9 +279,11 @@ where
     /// use rustynum_rs::NumArrayF32;
     /// let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
+    /// #[allow(deprecated)]
     /// let sliced_array = array.slice(1, 0, 2);
     /// println!("Sliced array: {:?}", sliced_array.get_data());
     /// ```
+    #[deprecated(note = "Use try_slice() for Result-based error handling")]
     pub fn slice(&self, axis: usize, start: usize, end: usize) -> Self {
         match self.try_slice(axis, start, end) {
             Ok(result) => result,
@@ -403,6 +411,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use crate::NumArrayF32;
 

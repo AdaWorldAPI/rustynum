@@ -50,6 +50,7 @@ where
 ///
 /// # Panics
 /// Panics if the number of columns in the matrix does not equal the length of the vector.
+#[deprecated(note = "Use try_matrix_vector_multiply() for Result-based error handling")]
 pub fn matrix_vector_multiply<T, Ops>(
     lhs: &NumArray<T, Ops>,
     rhs: &NumArray<T, Ops>,
@@ -116,6 +117,7 @@ where
 ///
 /// # Panics
 /// Panics if the number of columns in the left-hand side matrix does not equal the number of rows in the right-hand side matrix.
+#[deprecated(note = "Use try_matrix_matrix_multiply() for Result-based error handling")]
 pub fn matrix_matrix_multiply<T, Ops>(
     lhs: &NumArray<T, Ops>,
     rhs: &NumArray<T, Ops>,
@@ -171,6 +173,7 @@ where
 ///
 /// # Panics
 /// Panics if the shapes are not compatible for either matrix-vector or matrix-matrix multiplication.
+#[deprecated(note = "Use try_matrix_multiply() for Result-based error handling")]
 pub fn matrix_multiply<T, Ops>(lhs: &NumArray<T, Ops>, rhs: &NumArray<T, Ops>) -> NumArray<T, Ops>
 where
     T: NumElement,
@@ -183,6 +186,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use crate::NumArrayF32;
 

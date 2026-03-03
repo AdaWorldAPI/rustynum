@@ -134,9 +134,11 @@ where
     /// # Example
     /// ```
     /// use rustynum_rs::NumArrayF32;
+    /// #[allow(deprecated)]
     /// let arange_array = NumArrayF32::arange(0.0, 1.0, 0.2);
     /// println!("Arange array: {:?}", arange_array.get_data());
     /// ```
+    #[deprecated(note = "Use try_arange() for Result-based error handling")]
     pub fn arange(start: T, stop: T, step: T) -> Self {
         match Self::try_arange(start, stop, step) {
             Ok(arr) => arr,
@@ -187,6 +189,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use crate::NumArrayF32;
 

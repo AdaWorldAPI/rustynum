@@ -118,6 +118,7 @@ impl CogRecord {
     ///
     /// # Panics
     /// Panics if `idx > 3`.
+    #[deprecated(note = "Use try_container() for Result-based error handling")]
     pub fn container(&self, idx: usize) -> &NumArrayU8 {
         match self.try_container(idx) {
             Ok(c) => c,
@@ -370,6 +371,7 @@ pub fn sweep_cogrecords(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
