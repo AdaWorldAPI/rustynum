@@ -90,24 +90,47 @@ impl VerbCodebook {
     ///
     /// # Returns
     /// The encoded edge as a NumArrayU8.
+    /// Fallible edge encoding. Returns `Err` if verb is not in codebook.
+    pub fn try_encode_edge(
+        &self,
+        src: &NumArrayU8,
+        verb: &str,
+        tgt: &NumArrayU8,
+    ) -> Result<NumArrayU8, crate::NumError> {
+        let offset = self.offset(verb).ok_or_else(|| {
+            crate::NumError::InvalidParameter(format!("Verb '{}' not in codebook", verb))
+        })?;
+        Ok(encode_edge_with_offset(src, offset, tgt))
+    }
+
+    /// Encode edge. Panics if verb is not in codebook.
     pub fn encode_edge(&self, src: &NumArrayU8, verb: &str, tgt: &NumArrayU8) -> NumArrayU8 {
-        let offset = self
-            .offset(verb)
-            .unwrap_or_else(|| panic!("Verb '{}' not in codebook", verb));
-        encode_edge_with_offset(src, offset, tgt)
+        match self.try_encode_edge(src, verb, tgt) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Fallible target decoding. Returns `Err` if verb is not in codebook.
+    pub fn try_decode_target(
+        &self,
+        edge: &NumArrayU8,
+        src: &NumArrayU8,
+        verb: &str,
+    ) -> Result<NumArrayU8, crate::NumError> {
+        let offset = self.offset(verb).ok_or_else(|| {
+            crate::NumError::InvalidParameter(format!("Verb '{}' not in codebook", verb))
+        })?;
+        Ok(decode_target_with_offset(edge, src, offset))
     }
 
     /// Decode: recover target given edge, source, and verb.
-    ///
-    /// ```text
-    /// tgt_perm2 = edge XOR src XOR permute(verb_vec, 1)
-    /// tgt = permute(tgt_perm2, total_bits - 2)  // inverse rotation
-    /// ```
+    /// Panics if verb is not in codebook.
     pub fn decode_target(&self, edge: &NumArrayU8, src: &NumArrayU8, verb: &str) -> NumArrayU8 {
-        let offset = self
-            .offset(verb)
-            .unwrap_or_else(|| panic!("Verb '{}' not in codebook", verb));
-        decode_target_with_offset(edge, src, offset)
+        match self.try_decode_target(edge, src, verb) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
     }
 
     /// Measure causal asymmetry: how directional is this relationship?

@@ -4,6 +4,16 @@ use crate::traits::{FromU32, FromUsize, NumOps};
 use std::fmt::Debug;
 use std::ops::{Add, Div, Mul, Sub};
 
+/// Validate that all axes are within bounds for the given shape.
+fn validate_axes(axes: &[usize], ndim: usize) -> Result<(), crate::NumError> {
+    for &ax in axes {
+        if ax >= ndim {
+            return Err(crate::NumError::AxisOutOfBounds { axis: ax, ndim });
+        }
+    }
+    Ok(())
+}
+
 impl<T, Ops> NumArray<T, Ops>
 where
     T: Clone
@@ -57,43 +67,50 @@ where
     /// let mean_array = array.mean_axis(Some(&[1]));
     /// println!("Mean array: {:?}", mean_array.get_data());
     /// ```
-    pub fn mean_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+    /// Fallible mean along the specified axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_mean_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
         match axis {
-            Some(axis) => {
-                for &axis in axis {
-                    assert!(axis < self.shape.len(), "Axis {} out of bounds.", axis);
-                }
-
-                let mut reduced_shape = self.shape.clone();
-                let mut total_elements_to_reduce = 1;
-
-                for &axis in axis {
-                    total_elements_to_reduce *= self.shape[axis];
-                    reduced_shape[axis] = 1; // Marking this axis for reduction
-                }
-
-                let reduced_size: usize = reduced_shape.iter().product();
-                let mut reduced_data = vec![T::from_u32(0); reduced_size];
-
-                // Process each element in the data
-                for (i, &val) in self.data.iter().enumerate() {
-                    let reduced_idx = self.calculate_reduced_index(i, &reduced_shape);
-                    reduced_data[reduced_idx] = reduced_data[reduced_idx] + val;
-                }
-
-                // Divide each element in reduced_data by the number of elements that contributed to it
-                for val in reduced_data.iter_mut() {
-                    *val = *val / T::from_usize(total_elements_to_reduce);
-                }
-                // let's squeeze the reduced shape
-                reduced_shape = reduced_shape
-                    .into_iter()
-                    .filter(|&x| x != 1)
-                    .collect::<Vec<_>>();
-                NumArray::new_with_shape(reduced_data, reduced_shape)
+            Some(axes) => {
+                validate_axes(axes, self.shape.len())?;
+                Ok(self.mean_axis_inner(axes))
             }
-            None => self.mean(),
+            None => Ok(self.mean()),
         }
+    }
+
+    pub fn mean_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_mean_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn mean_axis_inner(&self, axis: &[usize]) -> NumArray<T, Ops> {
+        let mut reduced_shape = self.shape.clone();
+        let mut total_elements_to_reduce = 1;
+
+        for &ax in axis {
+            total_elements_to_reduce *= self.shape[ax];
+            reduced_shape[ax] = 1;
+        }
+
+        let reduced_size: usize = reduced_shape.iter().product();
+        let mut reduced_data = vec![T::from_u32(0); reduced_size];
+
+        for (i, &val) in self.data.iter().enumerate() {
+            let reduced_idx = self.calculate_reduced_index(i, &reduced_shape);
+            reduced_data[reduced_idx] = reduced_data[reduced_idx] + val;
+        }
+
+        for val in reduced_data.iter_mut() {
+            *val = *val / T::from_usize(total_elements_to_reduce);
+        }
+
+        reduced_shape = reduced_shape
+            .into_iter()
+            .filter(|&x| x != 1)
+            .collect::<Vec<_>>();
+        NumArray::new_with_shape(reduced_data, reduced_shape)
     }
     /// Sorts the array in ascending order.
     /// The original array is not modified.
@@ -153,15 +170,29 @@ where
     /// let median_array = array.median_axis(Some(&[1]));
     /// println!("Median array: {:?}", median_array.get_data());
     /// ```
+    /// Fallible median along the specified axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_median_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if let Some(axes) = axis {
+            validate_axes(axes, self.shape.len())?;
+        }
+        Ok(self.median_axis_unchecked(axis))
+    }
+
     pub fn median_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_median_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn median_axis_unchecked(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axis) => {
                 let mut reduced_shape = self.shape.clone();
                 let mut total_elements_to_reduce = 1;
-                for &axis in axis {
-                    assert!(axis < self.shape.len(), "Axis {} out of bounds.", axis);
-                    reduced_shape[axis] = 1;
-                    total_elements_to_reduce *= self.shape[axis];
+                for &ax in axis {
+                    reduced_shape[ax] = 1;
+                    total_elements_to_reduce *= self.shape[ax];
                 }
 
                 let reduced_size: usize = reduced_shape.iter().product();
@@ -254,7 +285,22 @@ where
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
     /// let var = array.var_axis(Some(&[1]));
     /// ```
+    /// Fallible variance along the specified axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_var_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if let Some(axes) = axis {
+            validate_axes(axes, self.shape.len())?;
+        }
+        Ok(self.var_axis_unchecked(axis))
+    }
+
     pub fn var_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_var_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn var_axis_unchecked(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axes) => {
                 let mean_arr = self.mean_axis(Some(axes));
@@ -263,7 +309,6 @@ where
                 let mut reduced_shape = self.shape.clone();
                 let mut total_elements_to_reduce = 1;
                 for &ax in axes {
-                    assert!(ax < self.shape.len(), "Axis {} out of bounds.", ax);
                     total_elements_to_reduce *= self.shape[ax];
                     reduced_shape[ax] = 1;
                 }
@@ -312,15 +357,29 @@ where
     /// let p50 = array.percentile(50.0).item();
     /// assert!((p50 - 3.0).abs() < 1e-5);
     /// ```
+    /// Fallible percentile. Returns `Err` if array is empty or p is outside [0, 100].
+    pub fn try_percentile(&self, p: T) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if self.data.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "Cannot compute percentile of empty array".to_string(),
+            ));
+        }
+        if !(p >= T::from_u32(0) && p <= T::from_u32(100)) {
+            return Err(crate::NumError::InvalidParameter(
+                "Percentile must be between 0 and 100".to_string(),
+            ));
+        }
+        Ok(self.percentile_inner(p))
+    }
+
     pub fn percentile(&self, p: T) -> NumArray<T, Ops> {
-        assert!(
-            !self.data.is_empty(),
-            "Cannot compute percentile of empty array."
-        );
-        assert!(
-            p >= T::from_u32(0) && p <= T::from_u32(100),
-            "Percentile must be between 0 and 100."
-        );
+        match self.try_percentile(p) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn percentile_inner(&self, p: T) -> NumArray<T, Ops> {
         let sorted = self.sort();
         let data = sorted.get_data();
         let n = data.len();
@@ -377,13 +436,27 @@ where
     /// let array = NumArrayF32::new_with_shape(data, vec![2, 3]);
     /// let p50 = array.percentile_axis(50.0, Some(&[1]));
     /// ```
+    /// Fallible percentile along axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_percentile_axis(&self, p: T, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if let Some(axes) = axis {
+            validate_axes(axes, self.shape.len())?;
+        }
+        Ok(self.percentile_axis_unchecked(p, axis))
+    }
+
     pub fn percentile_axis(&self, p: T, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_percentile_axis(p, axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn percentile_axis_unchecked(&self, p: T, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axes) => {
                 let mut reduced_shape = self.shape.clone();
                 let mut total_elements_to_reduce = 1;
                 for &ax in axes {
-                    assert!(ax < self.shape.len(), "Axis {} out of bounds.", ax);
                     reduced_shape[ax] = 1;
                     total_elements_to_reduce *= self.shape[ax];
                 }

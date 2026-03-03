@@ -67,23 +67,29 @@ impl SplitMix64 {
 ///
 /// # Returns
 /// Vec of `n` NumArrayU8 containers, each `container_bits / 8` bytes.
-pub fn simhash_batch_project(
+/// Fallible batch SimHash projection. Returns `Err` on invalid inputs.
+pub fn try_simhash_batch_project(
     embeddings: &[f32],
     n: usize,
     d: usize,
     container_bits: usize,
     seed: u64,
-) -> Vec<NumArrayU8> {
-    assert_eq!(embeddings.len(), n * d);
-    assert_eq!(container_bits % 8, 0, "container_bits must be byte-aligned");
+) -> Result<Vec<NumArrayU8>, crate::NumError> {
+    if embeddings.len() != n * d {
+        return Err(crate::NumError::ShapeMismatch {
+            data_len: embeddings.len(),
+            shape_product: n * d,
+        });
+    }
+    if !container_bits.is_multiple_of(8) {
+        return Err(crate::NumError::InvalidParameter(
+            "container_bits must be byte-aligned".to_string(),
+        ));
+    }
 
     let container_bytes = container_bits / 8;
-
-    // Generate random hyperplane matrix: d × container_bits
     let hyperplanes = generate_hyperplane_matrix(d, container_bits, seed);
 
-    // GEMM: projections = embeddings × hyperplanes
-    // (n × d) × (d × container_bits) → (n × container_bits)
     let mut projections = vec![0.0f32; n * container_bits];
     rustyblas::level3::sgemm(
         Layout::RowMajor,
@@ -102,7 +108,6 @@ pub fn simhash_batch_project(
         container_bits,
     );
 
-    // Extract sign bits into packed binary containers
     let mut containers = Vec::with_capacity(n);
     for i in 0..n {
         let row = &projections[i * container_bits..(i + 1) * container_bits];
@@ -110,13 +115,47 @@ pub fn simhash_batch_project(
         containers.push(NumArrayU8::new(packed));
     }
 
-    containers
+    Ok(containers)
+}
+
+/// Batch SimHash projection.
+///
+/// # Panics
+/// Panics if `embeddings.len() != n * d` or `container_bits` is not byte-aligned.
+pub fn simhash_batch_project(
+    embeddings: &[f32],
+    n: usize,
+    d: usize,
+    container_bits: usize,
+    seed: u64,
+) -> Vec<NumArrayU8> {
+    match try_simhash_batch_project(embeddings, n, d, container_bits, seed) {
+        Ok(result) => result,
+        Err(e) => panic!("{}", e),
+    }
+}
+
+/// Fallible single-vector SimHash projection.
+pub fn try_simhash_project(
+    embedding: &[f32],
+    container_bits: usize,
+    seed: u64,
+) -> Result<NumArrayU8, crate::NumError> {
+    let mut result = try_simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed)?;
+    result.pop().ok_or_else(|| {
+        crate::NumError::InvalidParameter("batch projection returned empty".to_string())
+    })
 }
 
 /// Single-vector SimHash projection (convenience wrapper).
+///
+/// # Panics
+/// Panics if `container_bits` is not byte-aligned.
 pub fn simhash_project(embedding: &[f32], container_bits: usize, seed: u64) -> NumArrayU8 {
-    let mut result = simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed);
-    result.pop().unwrap()
+    match try_simhash_project(embedding, container_bits, seed) {
+        Ok(result) => result,
+        Err(e) => panic!("{}", e),
+    }
 }
 
 /// Generate the deterministic hyperplane matrix.

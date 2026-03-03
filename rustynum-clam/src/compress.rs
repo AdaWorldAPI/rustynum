@@ -303,6 +303,11 @@ impl CompressedTree {
             .iter()
             .filter(|&&m| m == CompressionMode::Recursive)
             .count();
+        let pruned_subtrees = cluster_modes
+            .iter()
+            .enumerate()
+            .filter(|&(i, &m)| m == CompressionMode::Unitary && !tree.nodes[i].is_leaf())
+            .count();
 
         CompressedTree {
             encodings,
@@ -314,7 +319,7 @@ impl CompressedTree {
                 ratio,
                 unitary_clusters,
                 recursive_clusters,
-                pruned_subtrees: 0, // TODO: count pruned subtrees
+                pruned_subtrees,
             },
         }
     }
