@@ -88,7 +88,7 @@ impl GemmBackend {
 #[inline]
 #[cfg_attr(any(feature = "avx512", feature = "avx2"), allow(dead_code))]
 fn dot_f32_scalar(a: &[f32], b: &[f32]) -> f32 {
-    debug_assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len());
     // 4x manual unroll for ILP
     let n = a.len();
     let full_quads = n / 4;
