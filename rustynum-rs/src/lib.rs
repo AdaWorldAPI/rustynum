@@ -66,6 +66,7 @@ pub mod traits;
 
 pub use num_array::{binding_popcount_3d, find_discriminative_spots, find_holographic_sweet_spot};
 pub use num_array::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
+#[allow(deprecated)]
 pub use num_array::{simhash_batch_project, simhash_project};
 pub use num_array::{
     sweep_cogrecords, CogRecord, SweepMode, SweepResult, BTREE, CAM, COGRECORD_BYTES,

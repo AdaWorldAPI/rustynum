@@ -30,6 +30,7 @@ use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+#[allow(deprecated)]
 use crate::num_array::linalg::matrix_multiply;
 use crate::simd_ops::SimdOps;
 use crate::traits::{AbsOps, ExpLog, FromU32, FromUsize, NumElement, NumOps};
@@ -380,6 +381,7 @@ where
     /// let dot_product = a.dot(&b).item();
     /// println!("Dot product: {}", dot_product);
     /// ```
+    #[allow(deprecated)]
     pub fn dot(&self, other: &Self) -> NumArray<T, Ops> {
         let self_shape = self.shape();
         let other_shape = other.shape();
@@ -435,6 +437,7 @@ where
         Ok(self.min_axis_unchecked(axis))
     }
 
+    #[deprecated(note = "Use try_min_axis() for Result-based error handling")]
     pub fn min_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_min_axis(axis) {
             Ok(result) => result,
@@ -685,6 +688,7 @@ where
         Ok(self.top_k_unchecked(k))
     }
 
+    #[deprecated(note = "Use try_top_k() for Result-based error handling")]
     pub fn top_k(&self, k: usize) -> (Vec<usize>, Vec<T>) {
         match self.try_top_k(k) {
             Ok(result) => result,
@@ -809,11 +813,21 @@ where
     /// ```
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+    /// #[allow(deprecated)]
     /// let sm = array.softmax();
     /// let sum: f32 = sm.get_data().iter().sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
+    #[deprecated(note = "Use try_softmax() for Result-based error handling")]
     pub fn softmax(&self) -> Self {
+        match self.try_softmax() {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Fallible softmax. Returns `Err` if the array has an empty shape.
+    pub fn try_softmax(&self) -> Result<Self, crate::NumError> {
         if self.shape.len() <= 1 {
             let n = self.data.len();
             let max_val = Ops::max_simd(&self.data);
@@ -828,9 +842,11 @@ where
             // div by sum → SIMD
             let mut result = vec![T::from_u32(0); n];
             Ops::div_scalar(&exp_data, sum, &mut result);
-            Self::new_with_shape(result, self.shape.clone())
+            Self::try_new_with_shape(result, self.shape.clone())
         } else {
-            let last_dim = *self.shape.last().unwrap();
+            let last_dim = *self.shape.last().ok_or_else(|| {
+                crate::NumError::InvalidParameter("softmax requires non-empty shape".to_string())
+            })?;
             let num_rows = self.data.len() / last_dim;
             let mut result = vec![T::from_u32(0); self.data.len()];
             for i in 0..num_rows {
@@ -844,7 +860,7 @@ where
                 let sum = Ops::sum(&exp_row);
                 Ops::div_scalar(&exp_row, sum, out);
             }
-            Self::new_with_shape(result, self.shape.clone())
+            Self::try_new_with_shape(result, self.shape.clone())
         }
     }
 
@@ -861,12 +877,22 @@ where
     /// ```
     /// use rustynum_rs::NumArrayF32;
     /// let array = NumArrayF32::new(vec![1.0, 2.0, 3.0]);
+    /// #[allow(deprecated)]
     /// let lsm = array.log_softmax();
     /// // exp(log_softmax) should sum to 1
     /// let sum: f32 = lsm.get_data().iter().map(|&x| x.exp()).sum();
     /// assert!((sum - 1.0).abs() < 1e-5);
     /// ```
+    #[deprecated(note = "Use try_log_softmax() for Result-based error handling")]
     pub fn log_softmax(&self) -> Self {
+        match self.try_log_softmax() {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Fallible log-softmax. Returns `Err` if the array has an empty shape.
+    pub fn try_log_softmax(&self) -> Result<Self, crate::NumError> {
         if self.shape.len() <= 1 {
             let n = self.data.len();
             let max_val = Ops::max_simd(&self.data);
@@ -881,9 +907,11 @@ where
             // result = shifted - log_sum → SIMD
             let mut result = vec![T::from_u32(0); n];
             Ops::sub_scalar(&shifted, log_sum, &mut result);
-            Self::new_with_shape(result, self.shape.clone())
+            Self::try_new_with_shape(result, self.shape.clone())
         } else {
-            let last_dim = *self.shape.last().unwrap();
+            let last_dim = *self.shape.last().ok_or_else(|| {
+                crate::NumError::InvalidParameter("log_softmax requires non-empty shape".to_string())
+            })?;
             let num_rows = self.data.len() / last_dim;
             let mut result = vec![T::from_u32(0); self.data.len()];
             for i in 0..num_rows {
@@ -899,7 +927,7 @@ where
                 let log_sum = exp_sum.log();
                 Ops::sub_scalar(&shifted, log_sum, out);
             }
-            Self::new_with_shape(result, self.shape.clone())
+            Self::try_new_with_shape(result, self.shape.clone())
         }
     }
 
@@ -934,6 +962,7 @@ where
         Ok(self.max_axis_unchecked(axis))
     }
 
+    #[deprecated(note = "Use try_max_axis() for Result-based error handling")]
     pub fn max_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match self.try_max_axis(axis) {
             Ok(result) => result,
@@ -1273,6 +1302,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

@@ -142,6 +142,7 @@ impl NumArrayU8 {
         Ok(Self::bundle_unchecked(vectors, len))
     }
 
+    #[deprecated(note = "Use try_bundle() for Result-based error handling")]
     pub fn bundle(vectors: &[&NumArrayU8]) -> NumArrayU8 {
         match Self::try_bundle(vectors) {
             Ok(result) => result,
@@ -251,6 +252,7 @@ impl NumArrayU8 {
         Ok(Self::bundle_byte_slices_unchecked(slices, len))
     }
 
+    #[deprecated(note = "Use try_bundle_byte_slices() for Result-based error handling")]
     pub fn bundle_byte_slices(slices: &[&[u8]]) -> Vec<u8> {
         match Self::try_bundle_byte_slices(slices) {
             Ok(result) => result,
@@ -994,6 +996,7 @@ fn bundle_tail_bytes(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

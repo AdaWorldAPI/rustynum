@@ -337,14 +337,15 @@ mod tests {
         assert_eq!(batch.num_rows(), 10);
         assert_eq!(batch.num_columns(), 4);
 
-        let back = record_batch_to_cogrecords(&batch);
-        assert_eq!(back.len(), 10);
+        // Use zero-copy views instead of deprecated record_batch_to_cogrecords
+        let views = cogrecord_views(&batch);
+        assert_eq!(views.len(), 10);
 
-        for (i, rec) in back.iter().enumerate() {
-            assert_eq!(rec.meta.data_slice()[0], i as u8);
-            assert_eq!(rec.cam.data_slice()[0], (i + 10) as u8);
-            assert_eq!(rec.btree.data_slice()[0], (i + 20) as u8);
-            assert_eq!(rec.embed.data_slice()[0], (i + 30) as u8);
+        for (i, view) in views.iter().enumerate() {
+            assert_eq!(view.meta[0], i as u8);
+            assert_eq!(view.cam[0], (i + 10) as u8);
+            assert_eq!(view.btree[0], (i + 20) as u8);
+            assert_eq!(view.embed[0], (i + 30) as u8);
         }
     }
 
@@ -431,9 +432,9 @@ mod tests {
 
         let batch = cogrecords_to_record_batch(&records).unwrap();
         let views = cogrecord_views(&batch);
-        let owned = record_batch_to_cogrecords(&batch);
 
-        for (view, rec) in views.iter().zip(owned.iter()) {
+        // Views should match original records, and to_owned() should round-trip
+        for (view, rec) in views.iter().zip(records.iter()) {
             assert_eq!(view.meta, rec.meta.data_slice());
             assert_eq!(view.cam, rec.cam.data_slice());
             assert_eq!(view.btree, rec.btree.data_slice());

@@ -122,6 +122,7 @@ pub fn try_simhash_batch_project(
 ///
 /// # Panics
 /// Panics if `embeddings.len() != n * d` or `container_bits` is not byte-aligned.
+#[deprecated(note = "Use try_simhash_batch_project() for Result-based error handling")]
 pub fn simhash_batch_project(
     embeddings: &[f32],
     n: usize,
@@ -151,6 +152,7 @@ pub fn try_simhash_project(
 ///
 /// # Panics
 /// Panics if `container_bits` is not byte-aligned.
+#[deprecated(note = "Use try_simhash_project() for Result-based error handling")]
 pub fn simhash_project(embedding: &[f32], container_bits: usize, seed: u64) -> NumArrayU8 {
     match try_simhash_project(embedding, container_bits, seed) {
         Ok(result) => result,
@@ -219,6 +221,7 @@ pub fn simhash_int8_project(embedding_i8: &[i8], container_bits: usize, seed: u6
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

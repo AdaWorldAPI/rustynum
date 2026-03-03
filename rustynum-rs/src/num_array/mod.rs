@@ -22,5 +22,6 @@ pub use cogrecord::{
     CONTAINER_BITS, CONTAINER_BYTES, EMBED, META,
 };
 pub use graph::{decode_target_explicit, encode_edge_explicit, VerbCodebook};
+#[allow(deprecated)]
 pub use projection::{simhash_batch_project, simhash_project};
 pub use view::{ArrayView, ArrayViewMut};
