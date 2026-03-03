@@ -3,10 +3,10 @@
 use crate::array_u8::PyNumArrayU8;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use rustynum_rs::{sweep_cogrecords, CogRecord, SweepResult};
+use rustynum_rs::{sweep_cogrecords, CogRecord, SweepResult, COGRECORD_BYTES};
 
 /// A 4-channel holographic container: meta + cam + btree + embed.
-/// Each channel is 2048 bytes (16384 bits). Total: 8KB per record.
+/// Each channel is 4096 bytes (32768 bits). Total: 16KB per record.
 ///
 /// Used for content-addressable cognitive storage with cascade
 /// rejection search (checks channels in order, early-exits on mismatch).
@@ -18,7 +18,7 @@ pub struct PyCogRecord {
 
 #[pymethods]
 impl PyCogRecord {
-    /// Create from 4 u8 arrays (each must be 2048 bytes).
+    /// Create from 4 u8 arrays (each must be 4096 bytes).
     #[new]
     fn new(
         meta: PyRef<PyNumArrayU8>,
@@ -56,7 +56,7 @@ impl PyCogRecord {
         self.inner.sweep_adaptive(&other.inner, thresholds)
     }
 
-    /// Batch sweep: query against a flat database of N CogRecords (8192*N bytes).
+    /// Batch sweep: query against a flat database of N CogRecords.
     /// Returns list of (index, [u64; 4]) for records passing all thresholds.
     #[staticmethod]
     fn sweep_batch(
@@ -65,10 +65,11 @@ impl PyCogRecord {
         n: usize,
         thresholds: [u64; 4],
     ) -> PyResult<Vec<(usize, [u64; 4])>> {
-        if database.len() != n * 8192 {
+        if database.len() != n * COGRECORD_BYTES {
             return Err(PyValueError::new_err(format!(
-                "Database must be n*8192={} bytes, got {}",
-                n * 8192,
+                "Database must be n*{}={} bytes, got {}",
+                COGRECORD_BYTES,
+                n * COGRECORD_BYTES,
                 database.len()
             )));
         }
@@ -79,7 +80,7 @@ impl PyCogRecord {
             .collect())
     }
 
-    /// Serialize to bytes (8192 bytes).
+    /// Serialize to bytes.
     fn to_bytes(&self) -> Vec<u8> {
         self.inner.to_bytes()
     }
@@ -87,9 +88,10 @@ impl PyCogRecord {
     /// Deserialize from bytes.
     #[staticmethod]
     fn from_bytes(data: Vec<u8>) -> PyResult<Self> {
-        if data.len() < 8192 {
+        if data.len() < COGRECORD_BYTES {
             return Err(PyValueError::new_err(format!(
-                "CogRecord requires 8192 bytes, got {}",
+                "CogRecord requires {} bytes, got {}",
+                COGRECORD_BYTES,
                 data.len()
             )));
         }
@@ -116,10 +118,11 @@ impl PyCogRecord {
         n: usize,
         thresholds: [u64; 4],
     ) -> PyResult<Vec<(usize, [u64; 4], f64)>> {
-        if database.len() != n * 8192 {
+        if database.len() != n * COGRECORD_BYTES {
             return Err(PyValueError::new_err(format!(
-                "Database must be n*8192={} bytes, got {}",
-                n * 8192,
+                "Database must be n*{}={} bytes, got {}",
+                COGRECORD_BYTES,
+                n * COGRECORD_BYTES,
                 database.len()
             )));
         }

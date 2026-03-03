@@ -169,14 +169,14 @@ pub fn record_batch_to_cogrecords(batch: &RecordBatch) -> Vec<CogRecord> {
 /// Zero-copy view of a single CogRecord row from an Arrow RecordBatch.
 ///
 /// Each field borrows directly from the Arrow column buffer — no allocation,
-/// no memcpy. A view is 4 fat pointers (32 bytes) versus 8192 bytes for
+/// no memcpy. A view is 4 fat pointers (32 bytes) versus 16384 bytes for
 /// an owned CogRecord.
 ///
 /// ## Bandwidth savings (100K records)
 ///
 /// | Method                         | Allocation | Time    |
 /// |-------------------------------|------------|---------|
-/// | `record_batch_to_cogrecords`  | 819 MB     | ~120 ms |
+/// | `record_batch_to_cogrecords`  | 1638 MB    | ~240 ms |
 /// | `cogrecord_views`             | 3.2 MB     | ~0.3 ms |
 #[derive(Debug, Clone, Copy)]
 pub struct CogRecordView<'a> {
@@ -187,7 +187,7 @@ pub struct CogRecordView<'a> {
 }
 
 impl<'a> CogRecordView<'a> {
-    /// Convert to an owned CogRecord (copies 8192 bytes).
+    /// Convert to an owned CogRecord (copies 16384 bytes).
     pub fn to_owned(&self) -> CogRecord {
         CogRecord::new(
             NumArrayU8::new(self.meta.to_vec()),
@@ -201,7 +201,7 @@ impl<'a> CogRecordView<'a> {
 /// Produce zero-copy views of CogRecords from an Arrow RecordBatch.
 ///
 /// Each view borrows directly from the Arrow column buffer. The returned
-/// Vec is only 32 bytes per view (4 fat pointers) versus 8192 bytes per
+/// Vec is only 32 bytes per view (4 fat pointers) versus 16384 bytes per
 /// CogRecord in `record_batch_to_cogrecords()`.
 ///
 /// # Panics

@@ -245,25 +245,25 @@ Within the binary, everything is a view.
 
 ### P0 — Must Fix (Blocks Production)
 
-| Debt | Location | Impact | Fix |
-|------|----------|--------|-----|
-| **34 public API panics** | `rustynum-rs/src/operations.rs` | Panic in library code | Replace `assert!`/`panic!` with `Result<_, NumError>` |
-| **GEMM bounds check** | `rustyblas/src/int8_gemm.rs` | Unchecked buffer access | Add `assert!(c.len() == m * n)` at entry |
+| Debt | Location | Impact | Status |
+|------|----------|--------|--------|
+| ~~34 public API panics~~ | `rustynum-rs/src/` | ~~Panic in library code~~ | **DONE** — 38 `try_` variants, 33 deprecated wrappers |
+| ~~GEMM bounds check~~ | `rustyblas/src/int8_gemm.rs` | ~~Unchecked buffer access~~ | **DONE** — bounds check exists at entry |
 
 ### P1 — Should Fix (Quality)
 
-| Debt | Location | Impact | Fix |
-|------|----------|--------|-----|
-| Zero-copy violations | `rustynum-arrow/src/arrow_bridge.rs` | Unnecessary allocations | Use Arrow buffer references |
-| Python binding f32/f64 copy-paste | `bindings/python/` | Duplicated code | Generic impl or macro |
+| Debt | Location | Impact | Status |
+|------|----------|--------|--------|
+| ~~Zero-copy violations~~ | `rustynum-arrow/src/arrow_bridge.rs` | ~~Unnecessary allocations~~ | **DONE** — `cogrecord_views()` + `build_from_arrow()` exist; copying fns deprecated |
+| ~~Python binding f32/f64 copy-paste~~ | `bindings/python/` | ~~Duplicated code~~ | **DONE** — f64 cleaned, matches f32 pattern |
 
 ### P2 — Nice to Have (Parity)
 
-| Debt | Location | Impact | Fix |
-|------|----------|--------|-----|
-| Broadcasting | `operations.rs` | ndarray parity gap | Implement shape broadcast |
-| `s![]` macro | — | Ergonomic slicing | Implement index macro |
-| Compile-time dimensions | — | Shape safety | Add typenum dims |
+| Debt | Location | Impact | Status |
+|------|----------|--------|--------|
+| ~~Broadcasting~~ | `operations.rs` | ~~ndarray parity gap~~ | **DONE** — `try_{add,sub,mul,div}_broadcast()` for same-shape + 2D [m,n] op [m,1] |
+| `s![]` macro | — | Ergonomic slicing | Open |
+| Compile-time dimensions | — | Shape safety | Open |
 
 ### Confirmed Sound
 
@@ -280,6 +280,10 @@ Within the binary, everything is a view.
 | Trait bound copy-paste | Fixed: `NumElement` supertrait | Clean |
 | XOR Delta Layer | Implemented: Fingerprint + DeltaLayer + LayerStack + CollapseGate | 47 tests |
 | Holographic zero-copy | `Overlay.as_fingerprint_words()` = pointer reinterpret | No copy |
+| σ-significance scoring | `score_sigma()`, `K2Histogram`, `k2_exact_histogram()` | 9+ tests |
+| Blackboard I32/I64 | `get_i32/i64()`, `borrow_2/3_mut_i32/i64()` | 5 tests |
+| Broadcasting ops | `try_{add,sub,mul,div}_broadcast()` | 5 tests |
+| CONTAINER_BYTES = 4096 | COGRECORD_BYTES = 16384 across all crates + Python | Migrated |
 
 ### Structural Race Prevention
 
@@ -415,7 +419,7 @@ Full audit: `docs/AVX512_TOOLCHAIN_AUDIT.md`
 | `rustynum-core/src/compute.rs` | ~200 | CPUID detection, tier recommendation |
 | `rustynum-arrow/src/horizontal_sweep.rs` | ~770 | 90° word-by-word early exit |
 | `rustynum-arrow/src/indexed_cascade.rs` | ~400 | Indexed Hamming cascade |
-| `rustynum-rs/src/operations.rs` | ~800 | ndarray ops (P0: needs Result types) |
+| `rustynum-rs/src/operations.rs` | ~800 | ndarray ops (P0 DONE: 38 try_ variants) |
 | `rustyblas/src/bf16_gemm.rs` | ~490 | BF16 GEMM microkernel |
 | `rustyblas/src/int8_gemm.rs` | ~805 | INT8 GEMM with VNNI |
 
@@ -488,15 +492,15 @@ cargo clippy --workspace -- -D warnings
 When rustynum is wired into ladybug-rs through Lance:
 - Lance mmap's data into Arrow `Buffer`s (64-byte aligned)
 - rustynum's `Blackboard` allocations are 64-byte aligned
-- `Fingerprint<256>` is `[u64; 256]` = 2048 bytes, same as `AlignedBuf2K`
+- `Fingerprint<256>` is `[u64; 256]` = 2048 bytes; CONTAINER_BYTES = 4096 (COGRECORD_BYTES = 16384)
 - **They are pointer-compatible. NEVER copy between them.**
 
 ### The 3 Breaks That Were Found (and must not recur)
 
 | Break | Location | What Went Wrong | Fix Applied |
 |-------|----------|----------------|-------------|
-| **Arrow → CogRecord copies** | `rustynum-arrow/arrow_bridge.rs` | `.to_vec()` per row × 4 channels = 819MB/100K records | P1 debt: needs `CogRecordView<'a>` borrowing variant |
-| **Index build copies again** | `rustynum-arrow/indexed_cascade.rs` | `extend_from_slice()` into 4 new Vecs = 819MB more | P1 debt: needs column views over Arrow buffers |
+| **Arrow → CogRecord copies** | `rustynum-arrow/arrow_bridge.rs` | `.to_vec()` per row × 4 channels | **FIXED**: `cogrecord_views()` zero-copy; copying fn deprecated |
+| **Index build copies again** | `rustynum-arrow/indexed_cascade.rs` | `extend_from_slice()` into 4 new Vecs | **FIXED**: `build_from_arrow()` zero-copy; copying fn deprecated |
 | **Duplicate SIMD in ladybug** | `ladybug-rs/src/core/simd.rs` | Compile-time dispatch, not runtime; reimplements what rustynum already has | Should call `rustynum_core::simd::select_hamming_fn()` |
 
 ### The Rule When Wiring rustynum Into Lance
@@ -622,6 +626,14 @@ See `docs/STABLE_INTEGRATION_PLAN.md` for the 4-repo integration plan.
 - [x] 2026-03-01: CLAM → QualiaCAM integration: ClamTree generic DistanceFn, l1_i8_distance, CAKES DFS Sieve, CHAODA anomaly, ClamPath B-tree keys (49 tests)
 - [x] 2026-03-01: σ-significance scoring + per-word histogram: SignificanceLevel, SigmaScore, score_sigma(), K2Histogram, k2_exact_histogram()
 - [x] 2026-03-01: CI exclude typo fixed (qualia_xor → qualia-xor), rustynum-rs Default impls for F32x16/F64x8
+- [x] 2026-03-03: P0 panic→Result migration: 38 try_ variants, 33 deprecated wrappers (try_item, try_dot, try_log, try_argmin, try_argmax, try_softmax, try_log_softmax, try_broadcast ops, etc.)
+- [x] 2026-03-03: Zero-copy: cogrecord_views() + build_from_arrow() exist; record_batch_to_cogrecords() + CascadeIndices::build() deprecated
+- [x] 2026-03-03: Blackboard I32/I64 typed getters + split-borrow helpers (get_i32/i64, borrow_2/3_mut_i32/i64)
+- [x] 2026-03-03: Broadcasting: try_add_broadcast, try_sub_broadcast, try_mul_broadcast (2D [m,n] op [m,1])
+- [x] 2026-03-03: CONTAINER_BYTES 2048→4096 (COGRECORD_BYTES 8192→16384) + Python bindings use constant
+- [x] 2026-03-03: Python f64 bindings cleaned (removed redundant Python::with_gil() calls)
+- [x] 2026-03-03: LFD percentile rounding fix (n*pct/100 → (n-1)*pct/100 nearest-rank)
+- [x] 2026-03-03: Clippy clean (neg_cmp_op_on_partial_ord in try_log fixed)
 
 ---
 

@@ -745,8 +745,10 @@ mod tests {
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
         let col = make_column(&refs, CONTAINER_BYTES as i32);
 
+        // close records: fill=1 → Hamming = CONTAINER_BYTES bits
+        // threshold must be above CONTAINER_BYTES to include close records
         let config = HorizontalSweepConfig {
-            threshold: 3000,
+            threshold: (CONTAINER_BYTES as u64) + 1000,
             safety_margin: 1.5,
             ..Default::default()
         };
@@ -890,8 +892,9 @@ mod tests {
         let hdc_col = make_column(&hdc_refs, CONTAINER_BYTES as i32);
         let dense_col = make_column(&dense_refs, 512);
 
+        // HDC close records: fill=1 → Hamming = CONTAINER_BYTES bits
         let hdc_config = HorizontalSweepConfig {
-            threshold: 3000,
+            threshold: (CONTAINER_BYTES as u64) + 1000,
             safety_margin: 1.5,
             ..Default::default()
         };

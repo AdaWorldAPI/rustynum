@@ -1,28 +1,28 @@
-//! CogRecord: 4 × 16384-bit containers = 8KB cognitive unit.
+//! CogRecord: 4 × 32768-bit containers = 16KB cognitive unit.
 //!
 //! A CogRecord unifies metadata, content fingerprint, graph position,
-//! and raw embedding into a single 8KB record queryable entirely with
+//! and raw embedding into a single 16KB record queryable entirely with
 //! SIMD instructions — no database, no network, no serialization.
 //!
 //! ## Container layout
 //!
 //! | Container | Name  | Size  | Purpose                         | Query via          |
 //! |-----------|-------|-------|---------------------------------|--------------------|
-//! | 0         | META  | 2KB   | Codebook ID, DN, hashtag zone   | VPOPCNTDQ (Hamming)|
-//! | 1         | CAM   | 2KB   | SimHash content fingerprint     | VPOPCNTDQ (Hamming)|
-//! | 2         | BTREE | 2KB   | Structural graph position       | VPOPCNTDQ (Hamming)|
-//! | 3         | EMBED | 2KB   | Quantized embedding / SimHash   | VPDPBUSD or Hamming|
+//! | 0         | META  | 4KB   | Codebook ID, DN, hashtag zone   | VPOPCNTDQ (Hamming)|
+//! | 1         | CAM   | 4KB   | SimHash content fingerprint     | VPOPCNTDQ (Hamming)|
+//! | 2         | BTREE | 4KB   | Structural graph position       | VPOPCNTDQ (Hamming)|
+//! | 3         | EMBED | 4KB   | Quantized embedding / SimHash   | VPDPBUSD or Hamming|
 //!
 //! ## Performance
 //!
-//! - Full 8KB fits in L1 cache — zero cache misses during sweep
-//! - 128 VPOPCNTDQ instructions per CogRecord (32 per container)
+//! - Full 16KB fits in L1 cache — zero cache misses during sweep
+//! - 256 VPOPCNTDQ instructions per CogRecord (64 per container)
 //! - Compound 4-channel early exit: ~99.99% rejection rate
 
 use super::NumArrayU8;
 
-/// Size of each container in bytes.
-pub const CONTAINER_BYTES: usize = 2048;
+/// Size of each container in bytes (4096 = 32768 bits).
+pub const CONTAINER_BYTES: usize = 4096;
 /// Size of each container in bits.
 pub const CONTAINER_BITS: usize = CONTAINER_BYTES * 8;
 /// Total CogRecord size in bytes (4 containers).
@@ -34,9 +34,9 @@ pub const CAM: usize = 1;
 pub const BTREE: usize = 2;
 pub const EMBED: usize = 3;
 
-/// A CogRecord: 4 × 2048-byte (16384-bit) containers = 8KB cognitive unit.
+/// A CogRecord: 4 × 4096-byte (32768-bit) containers = 16KB cognitive unit.
 ///
-/// Each container is a NumArrayU8 of 2048 bytes, queryable via
+/// Each container is a NumArrayU8 of 4096 bytes, queryable via
 /// Hamming distance (VPOPCNTDQ) or int8 dot product (VNNI).
 #[derive(Clone)]
 pub struct CogRecord {
@@ -258,9 +258,9 @@ impl CogRecord {
         results
     }
 
-    /// Flat 8192-byte representation for Arrow/LanceDB storage.
+    /// Flat 16384-byte representation for Arrow/LanceDB storage.
     ///
-    /// Layout: [META(2048) | CAM(2048) | BTREE(2048) | EMBED(2048)]
+    /// Layout: [META(4096) | CAM(4096) | BTREE(4096) | EMBED(4096)]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(COGRECORD_BYTES);
         out.extend_from_slice(self.meta.get_data());
@@ -270,7 +270,7 @@ impl CogRecord {
         out
     }
 
-    /// Construct from flat 8192-byte representation.
+    /// Construct from flat 16384-byte representation.
     pub fn from_bytes(data: &[u8]) -> Self {
         assert_eq!(
             data.len(),
@@ -312,7 +312,7 @@ impl CogRecord {
 ///
 /// # Arguments
 /// * `query` - The query CogRecord
-/// * `database` - Flat byte array, `n × 8192` bytes
+/// * `database` - Flat byte array, `n × 16384` bytes
 /// * `n` - Number of CogRecords in database
 /// * `thresholds` - Per-container Hamming distance thresholds
 ///
@@ -388,7 +388,7 @@ mod tests {
     fn test_cogrecord_size() {
         let cr = CogRecord::zeros();
         assert_eq!(cr.to_bytes().len(), COGRECORD_BYTES);
-        assert_eq!(COGRECORD_BYTES, 8192);
+        assert_eq!(COGRECORD_BYTES, 16384);
     }
 
     #[test]
@@ -414,8 +414,9 @@ mod tests {
         let cr1 = make_record(0x00);
         let cr2 = make_record(0xFF);
         let dists = cr1.hamming_4ch(&cr2);
-        // Each container: 2048 bytes × 8 bits = 16384 differing bits
-        assert_eq!(dists, [16384, 16384, 16384, 16384]);
+        // Each container: CONTAINER_BYTES × 8 bits differing
+        let expected = (CONTAINER_BYTES * 8) as u64;
+        assert_eq!(dists, [expected, expected, expected, expected]);
     }
 
     #[test]

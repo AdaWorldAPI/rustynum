@@ -11,83 +11,67 @@ use crate::array_u8::PyNumArrayU8;
 
 #[pyfunction]
 pub fn zeros_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF32::zeros(shape);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = NumArrayF32::zeros(shape);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn ones_f32(shape: Vec<usize>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF32::ones(shape);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = NumArrayF32::ones(shape);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn matmul_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
-            return Err(PyTypeError::new_err(
-                "Both NumArrayF32 instances must be 2D for matrix multiplication.",
-            ));
-        }
-        let result = a.inner.dot(&b.inner);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
+        return Err(PyTypeError::new_err(
+            "Both NumArrayF32 instances must be 2D for matrix multiplication.",
+        ));
+    }
+    let result = a.inner.dot(&b.inner);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn dot_f32(a: &PyNumArrayF32, b: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = a.inner.dot(&b.inner);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = a.inner.dot(&b.inner);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn arange_f32(start: f32, end: f32, step: f32) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF32::arange(start, end, step);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = NumArrayF32::arange(start, end, step);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn linspace_f32(start: f32, end: f32, num: usize) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF32::linspace(start, end, num);
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = NumArrayF32::linspace(start, end, num);
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn mean_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
-                a.inner.mean_axis(Some(&axis_vec))
-            }
-            None => a.inner.mean_axis(None), // Handle the case where no axis are provided
-        };
-        Ok(PyNumArrayF32 { inner: result }) // Convert the result data to a Python object
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.mean_axis(Some(&axis_vec))
+        }
+        None => a.inner.mean_axis(None),
+    };
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn median_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
-                a.inner.median_axis(Some(&axis_vec))
-            }
-            None => a.inner.median_axis(None), // Handle the case where no axis are provided
-        };
-        Ok(PyNumArrayF32 { inner: result }) // Convert the result data to a Python object
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.median_axis(Some(&axis_vec))
+        }
+        None => a.inner.median_axis(None),
+    };
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
@@ -99,7 +83,7 @@ pub fn min_f32(a: &PyNumArrayF32) -> PyResult<f32> {
 pub fn min_axis_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
     let result = match axis {
         Some(axis_list) => {
-            let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
+            let axis_vec: Vec<usize> = axis_list.extract()?;
             a.inner.min_axis(Some(&axis_vec))
         }
         None => a.inner.min_axis(None),
@@ -116,7 +100,7 @@ pub fn max_f32(a: &PyNumArrayF32) -> PyResult<f32> {
 pub fn max_axis_f32(a: &PyNumArrayF32, axis: Option<&PyList>) -> PyResult<PyNumArrayF32> {
     let result = match axis {
         Some(axis_list) => {
-            let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
+            let axis_vec: Vec<usize> = axis_list.extract()?;
             a.inner.max_axis(Some(&axis_vec))
         }
         None => a.inner.max_axis(None),
@@ -148,89 +132,74 @@ pub fn sigmoid_f32(a: &PyNumArrayF32) -> PyResult<PyNumArrayF32> {
 #[pyfunction]
 pub fn concatenate_f32(arrays: Vec<PyNumArrayF32>, axis: usize) -> PyResult<PyNumArrayF32> {
     let rust_arrays: Vec<NumArrayF32> = arrays.iter().map(|array| array.inner.clone()).collect();
-    let result = NumArrayF32::concatenate(&rust_arrays, axis);
+    let result = NumArrayF32::try_concatenate(&rust_arrays, axis)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
 pub fn zeros_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF64::zeros(shape);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = NumArrayF64::zeros(shape);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn ones_f64(shape: Vec<usize>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF64::ones(shape);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = NumArrayF64::ones(shape);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn matmul_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
-            return Err(PyTypeError::new_err(
-                "Both NumArrayF64 instances must be 2D for matrix multiplication.",
-            ));
-        }
-        let result = a.inner.dot(&b.inner);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    if a.inner.shape().len() != 2 || b.inner.shape().len() != 2 {
+        return Err(PyTypeError::new_err(
+            "Both NumArrayF64 instances must be 2D for matrix multiplication.",
+        ));
+    }
+    let result = a.inner.dot(&b.inner);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn dot_f64(a: &PyNumArrayF64, b: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = a.inner.dot(&b.inner);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = a.inner.dot(&b.inner);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn arange_f64(start: f64, end: f64, step: f64) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF64::arange(start, end, step);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = NumArrayF64::arange(start, end, step);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn linspace_f64(start: f64, end: f64, num: usize) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = NumArrayF64::linspace(start, end, num);
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = NumArrayF64::linspace(start, end, num);
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn mean_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
-                a.inner.mean_axis(Some(&axis_vec))
-            }
-            None => a.inner.mean_axis(None), // Handle the case where no axis are provided
-        };
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.mean_axis(Some(&axis_vec))
+        }
+        None => a.inner.mean_axis(None),
+    };
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
 pub fn median_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
-                a.inner.median_axis(Some(&axis_vec))
-            }
-            None => a.inner.median_axis(None), // Handle the case where no axis are provided
-        };
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.median_axis(Some(&axis_vec))
+        }
+        None => a.inner.median_axis(None),
+    };
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 #[pyfunction]
@@ -242,7 +211,7 @@ pub fn min_f64(a: &PyNumArrayF64) -> PyResult<f64> {
 pub fn min_axis_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
     let result = match axis {
         Some(axis_list) => {
-            let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
+            let axis_vec: Vec<usize> = axis_list.extract()?;
             a.inner.min_axis(Some(&axis_vec))
         }
         None => a.inner.min_axis(None),
@@ -259,7 +228,7 @@ pub fn max_f64(a: &PyNumArrayF64) -> PyResult<f64> {
 pub fn max_axis_f64(a: &PyNumArrayF64, axis: Option<&PyList>) -> PyResult<PyNumArrayF64> {
     let result = match axis {
         Some(axis_list) => {
-            let axis_vec: Vec<usize> = axis_list.extract()?; // Convert PyList to Vec<usize>
+            let axis_vec: Vec<usize> = axis_list.extract()?;
             a.inner.max_axis(Some(&axis_vec))
         }
         None => a.inner.max_axis(None),
@@ -291,7 +260,8 @@ pub fn sigmoid_f64(a: &PyNumArrayF64) -> PyResult<PyNumArrayF64> {
 #[pyfunction]
 pub fn concatenate_f64(arrays: Vec<PyNumArrayF64>, axis: usize) -> PyResult<PyNumArrayF64> {
     let rust_arrays: Vec<NumArrayF64> = arrays.iter().map(|array| array.inner.clone()).collect();
-    let result = NumArrayF64::concatenate(&rust_arrays, axis);
+    let result = NumArrayF64::try_concatenate(&rust_arrays, axis)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     Ok(PyNumArrayF64 { inner: result })
 }
 
@@ -302,16 +272,14 @@ pub fn norm_f32(
     axis: Option<&PyList>,
     keepdims: Option<bool>,
 ) -> PyResult<PyNumArrayF32> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?;
-                a.inner.norm(p, Some(&axis_vec), keepdims)
-            }
-            None => a.inner.norm(p, None, keepdims),
-        };
-        Ok(PyNumArrayF32 { inner: result })
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.norm(p, Some(&axis_vec), keepdims)
+        }
+        None => a.inner.norm(p, None, keepdims),
+    };
+    Ok(PyNumArrayF32 { inner: result })
 }
 
 #[pyfunction]
@@ -321,16 +289,14 @@ pub fn norm_f64(
     axis: Option<&PyList>,
     keepdims: Option<bool>,
 ) -> PyResult<PyNumArrayF64> {
-    Python::with_gil(|_py| {
-        let result = match axis {
-            Some(axis_list) => {
-                let axis_vec: Vec<usize> = axis_list.extract()?;
-                a.inner.norm(p, Some(&axis_vec), keepdims)
-            }
-            None => a.inner.norm(p, None, keepdims),
-        };
-        Ok(PyNumArrayF64 { inner: result })
-    })
+    let result = match axis {
+        Some(axis_list) => {
+            let axis_vec: Vec<usize> = axis_list.extract()?;
+            a.inner.norm(p, Some(&axis_vec), keepdims)
+        }
+        None => a.inner.norm(p, None, keepdims),
+    };
+    Ok(PyNumArrayF64 { inner: result })
 }
 
 // === HDC/VSA Free Functions ===
