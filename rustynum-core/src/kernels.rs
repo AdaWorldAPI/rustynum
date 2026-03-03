@@ -296,8 +296,8 @@ pub fn k0_probe(query_word0: u64, candidate_word0: u64, gate: &SliceGate) -> boo
 /// SIMD XOR, scalar popcount — Rule 5.
 #[inline]
 pub fn k1_stats(query: &[u64], candidate: &[u64], gate: &SliceGate) -> bool {
-    debug_assert!(query.len() >= K1_WORDS);
-    debug_assert!(candidate.len() >= K1_WORDS);
+    assert!(query.len() >= K1_WORDS, "k1_stats: query too short");
+    assert!(candidate.len() >= K1_WORDS, "k1_stats: candidate too short");
 
     let mut conflict: u32 = 0;
     // Unrolled 8-word XOR + popcount
@@ -322,8 +322,8 @@ pub fn k1_stats(query: &[u64], candidate: &[u64], gate: &SliceGate) -> bool {
 /// (hardware POPCNT on each u64 result).
 #[inline]
 pub fn k2_exact(query: &[u64], candidate: &[u64], n_words: usize) -> EnergyConflict {
-    debug_assert!(query.len() >= n_words);
-    debug_assert!(candidate.len() >= n_words);
+    assert!(query.len() >= n_words, "k2_exact: query too short");
+    assert!(candidate.len() >= n_words, "k2_exact: candidate too short");
 
     let mut conflict: u32 = 0;
     let mut energy_a: u32 = 0;
@@ -658,8 +658,8 @@ pub fn k2_exact_histogram(
     candidate: &[u64],
     n_words: usize,
 ) -> K2Histogram {
-    debug_assert!(query.len() >= n_words);
-    debug_assert!(candidate.len() >= n_words);
+    assert!(query.len() >= n_words, "k2_exact_histogram: query too short");
+    assert!(candidate.len() >= n_words, "k2_exact_histogram: candidate too short");
 
     let mut conflict: u32 = 0;
     let mut energy_a: u32 = 0;

@@ -58,10 +58,11 @@ rustynum/
 ├── jitson/              # Cranelift JIT (own workspace — NOT a member)
 │
 │   # Archive crates — INTENTIONAL frozen snapshots, DO NOT DELETE
-├── rustynum-archive/    # V1 reference implementation
-├── rustynum-archive-v3/ # V3 reference implementation
-├── rustynum-carrier/    # Carrier wave experiments
-└── rustynum-focus/      # Focus/attention experiments
+│   # Prefixed with .archive- to distinguish from active crates
+├── .archive-rustynum-v1/       # V1 reference implementation
+├── .archive-rustynum-v3/       # V3 reference implementation
+├── .archive-rustynum-carrier/  # Carrier wave experiments
+└── .archive-rustynum-focus/    # Focus/attention experiments
 ```
 
 ### Workspace Isolation
