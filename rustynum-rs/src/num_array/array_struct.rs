@@ -423,13 +423,28 @@ where
     /// let min_array = array.min_axis(Some(&[1]));
     /// println!("Min array: {:?}", min_array.get_data());
     /// ```
+    /// Fallible min along axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_min_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if let Some(axes) = axis {
+            for &ax in axes {
+                if ax >= self.shape.len() {
+                    return Err(crate::NumError::AxisOutOfBounds { axis: ax, ndim: self.shape.len() });
+                }
+            }
+        }
+        Ok(self.min_axis_unchecked(axis))
+    }
+
     pub fn min_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_min_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn min_axis_unchecked(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axis) => {
-                for &axis in axis {
-                    assert!(axis < self.shape.len(), "Axis {} out of bounds.", axis);
-                }
-
                 let mut reduced_shape = self.shape.clone();
                 for &axis in axis {
                     reduced_shape[axis] = 1; // Mark this axis for reduction
@@ -660,8 +675,24 @@ where
     /// let (indices, values) = array.top_k(3);
     /// assert_eq!(indices, vec![4, 2, 0]);
     /// ```
+    /// Fallible top_k. Returns `Err` if k > array length.
+    pub fn try_top_k(&self, k: usize) -> Result<(Vec<usize>, Vec<T>), crate::NumError> {
+        if k > self.data.len() {
+            return Err(crate::NumError::InvalidParameter(format!(
+                "k ({}) must be <= array length ({})", k, self.data.len()
+            )));
+        }
+        Ok(self.top_k_unchecked(k))
+    }
+
     pub fn top_k(&self, k: usize) -> (Vec<usize>, Vec<T>) {
-        assert!(k <= self.data.len(), "k must be <= array length.");
+        match self.try_top_k(k) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn top_k_unchecked(&self, k: usize) -> (Vec<usize>, Vec<T>) {
         let mut indexed: Vec<(usize, T)> = self.data.iter().copied().enumerate().collect();
         indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         indexed.truncate(k);
@@ -891,13 +922,28 @@ where
     /// let max_array = array.max_axis(Some(&[1]));
     /// println!("Max array: {:?}", max_array.get_data());
     /// ```
+    /// Fallible max along axis. Returns `Err` if any axis is out of bounds.
+    pub fn try_max_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        if let Some(axes) = axis {
+            for &ax in axes {
+                if ax >= self.shape.len() {
+                    return Err(crate::NumError::AxisOutOfBounds { axis: ax, ndim: self.shape.len() });
+                }
+            }
+        }
+        Ok(self.max_axis_unchecked(axis))
+    }
+
     pub fn max_axis(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
+        match self.try_max_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn max_axis_unchecked(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
         match axis {
             Some(axis) => {
-                for &axis in axis {
-                    assert!(axis < self.shape.len(), "Axis {} out of bounds.", axis);
-                }
-
                 let mut reduced_shape = self.shape.clone();
                 for &axis in axis {
                     reduced_shape[axis] = 1; // Mark this axis for reduction

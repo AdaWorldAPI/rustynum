@@ -141,5 +141,14 @@ pub use soaking::{
     AttentionResult, SOAKING_DIM,
 };
 
+// Substrate routing types: multi-substrate cognitive processing
+// Substrate (Structural/Soaking/Evidential/Semantic), SubstrateRoute, SubstrateSignals,
+// coherence detection, transition recommendation, SubstrateSnapshot provenance
+pub mod substrate;
+pub use substrate::{
+    coherence, fill_soaking_signals, recommend_transition, soaking_signals, Coherence, Substrate,
+    SubstrateRoute, SubstrateSignals, SubstrateSnapshot,
+};
+
 // BNN inference primitives live in rustynum-bnn crate (not core).
 // BNN is purely additive neural plasticity — consumes core types without modifying them.

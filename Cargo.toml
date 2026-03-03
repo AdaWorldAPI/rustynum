@@ -19,12 +19,13 @@ members = [
     # Tier 3: Holo — experimental wave substrate (opt-in via `-p rustynum-holo` etc.)
     "rustynum-holo",
     "rustynum-oracle",
-    "rustynum-carrier",       # frozen archive
-    "rustynum-focus",         # frozen archive
 
-    # Frozen archives — scientific reproducibility snapshots
-    "rustynum-archive",
-    "rustynum-archive-v3",
+    # Frozen archives — scientific reproducibility snapshots (.archive prefix)
+    # These are INTENTIONAL frozen reference implementations. DO NOT delete.
+    ".archive-rustynum-v1",
+    ".archive-rustynum-v3",
+    ".archive-rustynum-carrier",
+    ".archive-rustynum-focus",
 ]
 
 # ─── Default build scope: Tier 1 only ───

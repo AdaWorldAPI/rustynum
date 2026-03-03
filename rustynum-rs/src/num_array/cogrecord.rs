@@ -100,14 +100,28 @@ impl CogRecord {
         }
     }
 
-    /// Access a container by index (0=META, 1=CAM, 2=BTREE, 3=EMBED).
-    pub fn container(&self, idx: usize) -> &NumArrayU8 {
+    /// Fallible container access by index (0=META, 1=CAM, 2=BTREE, 3=EMBED).
+    pub fn try_container(&self, idx: usize) -> Result<&NumArrayU8, crate::NumError> {
         match idx {
-            0 => &self.meta,
-            1 => &self.cam,
-            2 => &self.btree,
-            3 => &self.embed,
-            _ => panic!("Container index must be 0-3, got {}", idx),
+            0 => Ok(&self.meta),
+            1 => Ok(&self.cam),
+            2 => Ok(&self.btree),
+            3 => Ok(&self.embed),
+            _ => Err(crate::NumError::InvalidParameter(format!(
+                "Container index must be 0-3, got {}",
+                idx
+            ))),
+        }
+    }
+
+    /// Access a container by index (0=META, 1=CAM, 2=BTREE, 3=EMBED).
+    ///
+    /// # Panics
+    /// Panics if `idx > 3`.
+    pub fn container(&self, idx: usize) -> &NumArrayU8 {
+        match self.try_container(idx) {
+            Ok(c) => c,
+            Err(e) => panic!("{}", e),
         }
     }
 

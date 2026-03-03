@@ -80,16 +80,8 @@ where
     }
 
     /// Reverses the elements along the specified axis or axis.
-    ///
-    /// # Parameters
-    /// * `axis` - An iterable of axis along which to reverse the array.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance with the array reversed along the specified axis.
-    ///
-    /// # Panics
-    /// Panics if any axis is out of bounds.
-    pub fn flip_axis<I>(&self, axis: I) -> Self
+    /// Returns `Err` if any axis is out of bounds.
+    pub fn try_flip_axis<I>(&self, axis: I) -> Result<Self, crate::NumError>
     where
         I: IntoIterator<Item = usize>,
     {
@@ -97,12 +89,12 @@ where
         let new_shape = self.shape.clone();
 
         for axis in axis {
-            assert!(
-                axis < self.shape.len(),
-                "Axis {} is out of bounds for an array with {} dimensions.",
-                axis,
-                self.shape.len()
-            );
+            if axis >= self.shape.len() {
+                return Err(crate::NumError::AxisOutOfBounds {
+                    axis,
+                    ndim: self.shape.len(),
+                });
+            }
 
             let axis_size = self.shape[axis];
 
@@ -122,7 +114,24 @@ where
             }
         }
 
-        Self::new_with_shape(new_data, new_shape)
+        Self::try_new_with_shape(new_data, new_shape)
+    }
+
+    /// Reverses the elements along the specified axis or axis.
+    ///
+    /// # Panics
+    /// Panics if any axis is out of bounds.
+    pub fn flip_axis<I>(&self, axis: I) -> Self
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        match self.try_flip_axis(axis) {
+            Ok(result) => result,
+            Err(crate::NumError::AxisOutOfBounds { axis, ndim }) => {
+                panic!("Axis {} is out of bounds for an array with {} dimensions.", axis, ndim)
+            }
+            Err(e) => panic!("{}", e),
+        }
     }
 }
 
@@ -141,13 +150,50 @@ where
         + FromUsize,
     Ops: SimdOps<T>, // SimdOps was part of the original block for these
 {
+    /// Fallible squeeze: removes axis of length one from the array.
+    /// Returns `Err` if any specified axis is out of bounds or has length > 1.
+    pub fn try_squeeze(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+        match axis {
+            Some(specified_axis) => {
+                for &axis in specified_axis {
+                    if axis >= self.shape.len() {
+                        return Err(crate::NumError::AxisOutOfBounds {
+                            axis,
+                            ndim: self.shape.len(),
+                        });
+                    }
+                    if self.shape[axis] != 1 {
+                        return Err(crate::NumError::InvalidParameter(format!(
+                            "Cannot squeeze axis {} with size {}",
+                            axis, self.shape[axis]
+                        )));
+                    }
+                }
+
+                let new_shape: Vec<usize> = self
+                    .shape
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, &dim)| !specified_axis.contains(&i) || dim != 1)
+                    .map(|(_, &dim)| dim)
+                    .collect();
+
+                NumArray::try_new_with_shape(self.data.clone(), new_shape)
+            }
+            None => {
+                let new_shape: Vec<usize> = self
+                    .shape
+                    .iter()
+                    .filter(|&&dim| dim != 1)
+                    .cloned()
+                    .collect();
+
+                NumArray::try_new_with_shape(self.data.clone(), new_shape)
+            }
+        }
+    }
+
     /// Removes axis of length one from the array.
-    ///
-    /// # Parameters
-    /// * `axis` - Optional slice of axis to squeeze. If None, all axis of length 1 are removed.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance with the specified axis removed.
     ///
     /// # Panics
     /// Panics if any specified axis is out of bounds or has length greater than 1.
@@ -160,45 +206,9 @@ where
     /// assert_eq!(squeezed.shape(), &[2]);
     /// ```
     pub fn squeeze(&self, axis: Option<&[usize]>) -> NumArray<T, Ops> {
-        match axis {
-            Some(specified_axis) => {
-                // Validate axis
-                for &axis in specified_axis {
-                    assert!(
-                        axis < self.shape.len(),
-                        "Axis {} is out of bounds for array of dimension {}",
-                        axis,
-                        self.shape.len()
-                    );
-                    assert!(
-                        self.shape[axis] == 1,
-                        "Cannot squeeze axis {} with size {}",
-                        axis,
-                        self.shape[axis]
-                    );
-                }
-
-                let new_shape: Vec<usize> = self
-                    .shape
-                    .iter()
-                    .enumerate()
-                    .filter(|&(i, &dim)| !specified_axis.contains(&i) || dim != 1)
-                    .map(|(_, &dim)| dim)
-                    .collect();
-
-                NumArray::new_with_shape(self.data.clone(), new_shape)
-            }
-            None => {
-                // Remove all axis of length 1
-                let new_shape: Vec<usize> = self
-                    .shape
-                    .iter()
-                    .filter(|&&dim| dim != 1)
-                    .cloned()
-                    .collect();
-
-                NumArray::new_with_shape(self.data.clone(), new_shape)
-            }
+        match self.try_squeeze(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
         }
     }
 

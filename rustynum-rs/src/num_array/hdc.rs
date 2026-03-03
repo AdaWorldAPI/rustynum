@@ -123,13 +123,33 @@ impl NumArrayU8 {
     /// let result = NumArrayU8::bundle(&[&a, &b, &c]);
     /// assert_eq!(result.get_data(), &[0xFF; 8]); // 2 out of 3 = majority
     /// ```
-    pub fn bundle(vectors: &[&NumArrayU8]) -> NumArrayU8 {
-        assert!(!vectors.is_empty(), "Bundle requires at least one vector");
-        let len = vectors[0].data.len();
-        for v in vectors.iter() {
-            assert_eq!(v.data.len(), len, "All vectors must have the same length");
+    /// Fallible bundle (majority vote). Returns `Err` if input is empty or lengths mismatch.
+    pub fn try_bundle(vectors: &[&NumArrayU8]) -> Result<NumArrayU8, crate::NumError> {
+        if vectors.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "Bundle requires at least one vector".to_string(),
+            ));
         }
+        let len = vectors[0].data.len();
+        for (i, v) in vectors.iter().enumerate() {
+            if v.data.len() != len {
+                return Err(crate::NumError::DimensionMismatch(format!(
+                    "Vector {} has length {} but expected {}",
+                    i, v.data.len(), len
+                )));
+            }
+        }
+        Ok(Self::bundle_unchecked(vectors, len))
+    }
 
+    pub fn bundle(vectors: &[&NumArrayU8]) -> NumArrayU8 {
+        match Self::try_bundle(vectors) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn bundle_unchecked(vectors: &[&NumArrayU8], len: usize) -> NumArrayU8 {
         let n = vectors.len();
         let threshold = n / 2;
 
@@ -212,12 +232,33 @@ impl NumArrayU8 {
     /// avoiding the need to wrap each slice in a `NumArrayU8` allocation.
     /// This is the zero-copy entry point for callers that already have byte views
     /// (e.g., `view_u64_as_bytes(&container.words)` from ladybug-rs).
-    pub fn bundle_byte_slices(slices: &[&[u8]]) -> Vec<u8> {
-        assert!(!slices.is_empty(), "Bundle requires at least one vector");
-        let len = slices[0].len();
-        for s in slices.iter() {
-            assert_eq!(s.len(), len, "All slices must have the same length");
+    /// Fallible bundle from byte slices. Returns `Err` if input is empty or lengths mismatch.
+    pub fn try_bundle_byte_slices(slices: &[&[u8]]) -> Result<Vec<u8>, crate::NumError> {
+        if slices.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "Bundle requires at least one vector".to_string(),
+            ));
         }
+        let len = slices[0].len();
+        for (i, s) in slices.iter().enumerate() {
+            if s.len() != len {
+                return Err(crate::NumError::DimensionMismatch(format!(
+                    "Slice {} has length {} but expected {}",
+                    i, s.len(), len
+                )));
+            }
+        }
+        Ok(Self::bundle_byte_slices_unchecked(slices, len))
+    }
+
+    pub fn bundle_byte_slices(slices: &[&[u8]]) -> Vec<u8> {
+        match Self::try_bundle_byte_slices(slices) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn bundle_byte_slices_unchecked(slices: &[&[u8]], len: usize) -> Vec<u8> {
 
         let n = slices.len();
         let threshold = n / 2;

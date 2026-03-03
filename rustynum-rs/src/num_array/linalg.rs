@@ -176,10 +176,9 @@ where
     T: NumElement,
     Ops: SimdOps<T>,
 {
-    match rhs.shape().len() {
-        1 => matrix_vector_multiply(lhs, rhs),
-        2 => matrix_matrix_multiply(lhs, rhs),
-        _ => panic!("Unsupported shape for RHS; only vectors or matrices are supported."),
+    match try_matrix_multiply(lhs, rhs) {
+        Ok(result) => result,
+        Err(e) => panic!("{}", e),
     }
 }
 
@@ -200,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Column count of the matrix must match the length of the vector.")]
+    #[should_panic(expected = "Column count of the matrix")]
     fn test_matrix_vector_multiply_dimension_mismatch() {
         let matrix = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
         let vector = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0, 4.0], vec![4]);

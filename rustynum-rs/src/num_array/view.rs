@@ -155,18 +155,42 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
         }
     }
 
+    /// Fallible slice along one axis. Returns `Err` on out-of-bounds.
+    pub fn try_slice_axis(&self, axis: usize, start: usize, end: usize) -> Result<ArrayView<'a, T>, crate::NumError> {
+        if axis >= self.ndim() {
+            return Err(crate::NumError::AxisOutOfBounds { axis, ndim: self.ndim() });
+        }
+        if end > self.shape[axis] {
+            return Err(crate::NumError::InvalidParameter(format!(
+                "slice end ({}) out of bounds for axis {} with size {}",
+                end, axis, self.shape[axis]
+            )));
+        }
+        if start > end {
+            return Err(crate::NumError::InvalidParameter(format!(
+                "slice start ({}) must be <= end ({})", start, end
+            )));
+        }
+        Ok(self.slice_axis_inner(axis, start, end))
+    }
+
     /// Slice along one axis — O(1). Returns a narrower view.
     ///
     /// `start..end` selects elements along `axis` in the half-open range.
+    ///
+    /// # Panics
+    /// Panics if axis is out of bounds, end > shape[axis], or start > end.
     pub fn slice_axis(&self, axis: usize, start: usize, end: usize) -> ArrayView<'a, T> {
-        assert!(axis < self.ndim(), "axis out of bounds");
-        assert!(end <= self.shape[axis], "slice end out of bounds");
-        assert!(start <= end, "slice start must be <= end");
+        match self.try_slice_axis(axis, start, end) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
 
+    fn slice_axis_inner(&self, axis: usize, start: usize, end: usize) -> ArrayView<'a, T> {
         let mut shape = self.shape.clone();
         shape[axis] = end - start;
 
-        // Advance offset by start * stride along this axis
         let new_offset = (self.offset as isize + start as isize * self.strides[axis]) as usize;
 
         ArrayView {
@@ -177,9 +201,26 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
         }
     }
 
+    /// Fallible flip along axis. Returns `Err` if axis is out of bounds.
+    pub fn try_flip_axis(&self, axis: usize) -> Result<ArrayView<'a, T>, crate::NumError> {
+        if axis >= self.ndim() {
+            return Err(crate::NumError::AxisOutOfBounds { axis, ndim: self.ndim() });
+        }
+        Ok(self.flip_axis_inner(axis))
+    }
+
     /// Reverse an axis — O(1). Negates the stride and adjusts offset.
+    ///
+    /// # Panics
+    /// Panics if axis is out of bounds.
     pub fn flip_axis(&self, axis: usize) -> ArrayView<'a, T> {
-        assert!(axis < self.ndim(), "axis out of bounds");
+        match self.try_flip_axis(axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    fn flip_axis_inner(&self, axis: usize) -> ArrayView<'a, T> {
         let mut strides = self.strides.clone();
         let n = self.shape[axis];
         if n > 0 {
