@@ -310,17 +310,97 @@ where
         + Debug,
     Ops: SimdOps<T>,
 {
+    /// Fallible concatenation of multiple `NumArray` instances along the specified axis.
+    ///
+    /// Returns `Err` if:
+    /// - `arrays` is empty
+    /// - `axis` is out of bounds
+    /// - Arrays have different numbers of dimensions
+    /// - Shapes differ on non-concatenation axes
+    ///
+    /// # Example
+    /// ```
+    /// use rustynum_rs::NumArrayF32;
+    ///
+    /// let a = NumArrayF32::new_with_shape(vec![1.0, 2.0, 3.0], vec![3]);
+    /// let b = NumArrayF32::new_with_shape(vec![4.0, 5.0], vec![2]);
+    /// let concatenated = NumArrayF32::try_concatenate(&[a, b], 0).unwrap();
+    /// assert_eq!(concatenated.get_data(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
+    /// ```
+    pub fn try_concatenate(arrays: &[Self], axis: usize) -> Result<Self, crate::NumError> {
+        if arrays.is_empty() {
+            return Err(crate::NumError::InvalidParameter(
+                "At least one array must be provided for concatenation.".into(),
+            ));
+        }
+
+        let reference_shape = arrays[0].shape();
+        let ndim = reference_shape.len();
+
+        if axis >= ndim {
+            return Err(crate::NumError::DimensionMismatch(format!(
+                "Concatenation axis {} is out of bounds for arrays with {} dimensions",
+                axis, ndim
+            )));
+        }
+
+        for (idx, array) in arrays.iter().enumerate() {
+            if array.shape().len() != ndim {
+                return Err(crate::NumError::DimensionMismatch(format!(
+                    "Array {} has {} dimensions, expected {}",
+                    idx,
+                    array.shape().len(),
+                    ndim
+                )));
+            }
+            for (i, (&dim_ref, &dim_other)) in
+                reference_shape.iter().zip(array.shape().iter()).enumerate()
+            {
+                if i != axis && dim_ref != dim_other {
+                    return Err(crate::NumError::DimensionMismatch(format!(
+                        "Shape mismatch at axis {}: expected {}, got {} (array {})",
+                        i, dim_ref, dim_other, idx
+                    )));
+                }
+            }
+        }
+
+        let mut new_shape = reference_shape.to_vec();
+        let total_concat_dim: usize = arrays.iter().map(|array| array.shape()[axis]).sum();
+        new_shape[axis] = total_concat_dim;
+
+        let elements_before_axis: usize = reference_shape.iter().take(axis).product();
+        let elements_after_axis: usize = reference_shape.iter().skip(axis + 1).product();
+
+        let total_size: usize = new_shape.iter().product();
+        let mut concatenated_data = Vec::with_capacity(total_size);
+
+        for outer in 0..elements_before_axis {
+            for array in arrays.iter() {
+                let axis_size = array.shape()[axis];
+                let slice_size = axis_size * elements_after_axis;
+                let start = outer * axis_size * elements_after_axis;
+                let end = start + slice_size;
+
+                if end > array.data.len() {
+                    return Err(crate::NumError::InvalidParameter(format!(
+                        "Slice indices {}..{} out of bounds for array with length {}",
+                        start, end, array.data.len()
+                    )));
+                }
+
+                concatenated_data.extend_from_slice(&array.data[start..end]);
+            }
+        }
+
+        Ok(Self::new_with_shape(concatenated_data, new_shape))
+    }
+
     /// Concatenates multiple `NumArray` instances along the specified axis.
     ///
-    /// # Parameters
-    /// * `arrays` - A slice of `NumArray` instances to concatenate.
-    /// * `axis` - The axis along which to concatenate.
-    ///
-    /// # Returns
-    /// A new `NumArray` instance resulting from the concatenation.
-    ///
     /// # Panics
-    /// Panics if the shapes of the arrays are incompatible for concatenation along the specified axis.
+    /// Panics if the shapes of the arrays are incompatible. Use [`try_concatenate()`](Self::try_concatenate)
+    /// for the fallible variant.
     ///
     /// # Example
     /// ```
@@ -331,82 +411,12 @@ where
     /// let concatenated = NumArrayF32::concatenate(&[a, b], 0);
     /// assert_eq!(concatenated.get_data(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
     /// ```
+    #[deprecated(note = "Use try_concatenate() for Result-based error handling")]
     pub fn concatenate(arrays: &[Self], axis: usize) -> Self {
-        // Ensure there is at least one array to concatenate
-        assert!(
-            !arrays.is_empty(),
-            "At least one array must be provided for concatenation."
-        );
-
-        // Determine the reference shape from the first array
-        let reference_shape = arrays[0].shape();
-
-        // Validate that all arrays have the same number of dimensions
-        let ndim = reference_shape.len();
-        assert!(
-            axis < ndim,
-            "Concatenation axis {} is out of bounds for arrays with {} dimensions.",
-            axis,
-            ndim
-        );
-        for array in arrays.iter() {
-            assert!(
-                array.shape().len() == ndim,
-                "All arrays must have the same number of dimensions."
-            );
-            // Validate that shapes match on all axis except the concatenation axis
-            for (i, (&dim_ref, &dim_other)) in
-                reference_shape.iter().zip(array.shape().iter()).enumerate()
-            {
-                if i != axis {
-                    assert!(
-                        dim_ref == dim_other,
-                        "All arrays must have the same shape except along the concatenation axis. Mismatch found at axis {}.",
-                        i
-                    );
-                }
-            }
+        match Self::try_concatenate(arrays, axis) {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e),
         }
-
-        // Compute the new shape
-        let mut new_shape = reference_shape.to_vec();
-        let total_concat_dim: usize = arrays.iter().map(|array| array.shape()[axis]).sum();
-        new_shape[axis] = total_concat_dim;
-
-        // Compute elements_before_axis and elements_after_axis
-        let elements_before_axis: usize = reference_shape.iter().take(axis).product();
-        let elements_after_axis: usize = reference_shape.iter().skip(axis + 1).product();
-
-        // Initialize the new data vector with the appropriate capacity
-        let total_size: usize = new_shape.iter().product();
-        let mut concatenated_data = Vec::with_capacity(total_size);
-
-        // Iterate over each outer slice and concatenate data from all arrays
-        for outer in 0..elements_before_axis {
-            for array in arrays.iter() {
-                let axis_size = array.shape()[axis];
-                let slice_size = axis_size * elements_after_axis;
-
-                // Calculate the start and end indices for the current slice
-                let start = outer * axis_size * elements_after_axis;
-                let end = start + slice_size;
-
-                // Safety check to prevent out-of-bounds access
-                assert!(
-                    end <= array.data.len(),
-                    "Slice indices out of bounds. Attempted to access {}..{} in an array with length {}.",
-                    start,
-                    end,
-                    array.data.len()
-                );
-
-                // Append the slice to the concatenated data
-                concatenated_data.extend_from_slice(&array.data[start..end]);
-            }
-        }
-
-        // Create and return the new NumArray with the concatenated data and new shape
-        Self::new_with_shape(concatenated_data, new_shape)
     }
 }
 

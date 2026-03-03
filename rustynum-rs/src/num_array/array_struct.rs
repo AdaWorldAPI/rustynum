@@ -583,7 +583,7 @@ where
     /// is non-positive.
     pub fn try_log(&self) -> Result<Self, crate::NumError> {
         for (i, &x) in self.data.iter().enumerate() {
-            if !(x > T::from_u32(0)) {
+            if x <= T::from_u32(0) {
                 return Err(crate::NumError::InvalidParameter(format!(
                     "log undefined for non-positive value at index {}",
                     i
