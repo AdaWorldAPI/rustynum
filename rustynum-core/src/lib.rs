@@ -124,5 +124,22 @@ pub use qualia_cam::{QualiaCAM, QualiaHit};
 pub mod qualia_gate;
 pub use qualia_gate::{GatedQualia, QualiaGateLevel, ResonanzZirkel, TuningFork};
 
+// Organic Plasticity Model: BCM-inspired synapse dynamics (BINN)
+// SynapseState (efficacy + theta + maturity), organic_deposit, 5-state packing, homeostasis
+pub mod organic;
+pub use organic::{
+    crystallize, crystallize_quantized, five_state_histogram, homeostatic_scale, mean_efficacy,
+    organic_deposit, organic_deposit_batch, pack_five_states, pack_three, saturation_ratio,
+    unpack_five_states, unpack_three, FiveState, SynapseState,
+};
+
+// Int8 soaking layer: dot-product kernel, binary↔int8 bridge, attention mask
+// Dual-layer bridge: binary Fingerprint<256> ↔ int8 10000D vectors
+pub mod soaking;
+pub use soaking::{
+    binary_to_int8, binary_to_int8_dim, dot_i8_normalized, int8_to_binary, AttentionMask,
+    AttentionResult, SOAKING_DIM,
+};
+
 // BNN inference primitives live in rustynum-bnn crate (not core).
 // BNN is purely additive neural plasticity — consumes core types without modifying them.

@@ -78,7 +78,7 @@ impl CrystalAxis {
     /// (e.g., when `CrystalAxis` gains a `Cow<[u8]>` variant).
     pub fn from_bf16_slice(data: &[u8]) -> Self {
         assert!(
-            data.len() % 2 == 0,
+            data.len().is_multiple_of(2),
             "BF16 data must be even number of bytes"
         );
         let n_dims = data.len() / 2;

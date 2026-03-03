@@ -45,6 +45,16 @@ pub mod indexed_cascade;
 #[cfg(feature = "arrow")]
 pub mod horizontal_sweep;
 
+// Three-plane dual-layer buffer types (bind_nodes_v2 schema)
+// ThreePlaneFingerprintBuffer, SoakingBuffer, OrganicSoakingBuffer, PlaneBuffer
+pub mod three_plane;
+pub use three_plane::{
+    bind_nodes_v2_schema, attention_mask_schema, bind_edges_v2_schema,
+    gate_state, role_provenance,
+    OrganicSoakingBuffer, PlaneBuffer, SoakingBuffer, ThreePlaneFingerprintBuffer,
+    BINARY_BYTES, DEFAULT_SOAKING_DIM,
+};
+
 // Re-exports for convenience
 #[cfg(feature = "arrow")]
 #[allow(deprecated)]
