@@ -39,6 +39,7 @@
 //! ```
 
 use arrow::array::{Array, FixedSizeBinaryArray};
+use rustynum_core::layout::{Layout, Transpose};
 use rustynum_core::simd::select_hamming_fn;
 
 /// Configuration for the horizontal sweep.
@@ -462,6 +463,229 @@ pub struct HybridCascadeResult {
 }
 
 // ---------------------------------------------------------------------------
+// GEMM batch similarity (rustyblas integration)
+// ---------------------------------------------------------------------------
+
+/// Result from GEMM batch similarity post-filtering.
+#[derive(Debug, Clone)]
+pub struct GemmBatchResult {
+    /// (row_index, hamming_distance, cosine_similarity) sorted by similarity descending.
+    pub hits: Vec<(usize, u64, f32)>,
+    /// Number of survivors from HDC stage that were evaluated.
+    pub evaluated: usize,
+}
+
+/// Compute batch pairwise similarity on HDC survivors using SGEMM.
+///
+/// Takes survivors from `horizontal_sweep()` or `hybrid_cascade_sweep()`, quantizes
+/// their fingerprints to f32, and computes similarity via matrix multiply. This
+/// leverages rustyblas's 138 GFLOPS cache-blocked GEMM for the dense evaluation
+/// stage where ~5% of candidates remain after K0/K1/K2 filtering.
+///
+/// # Arguments
+/// * `query_f32` — query vector as f32 slice (pre-quantized, length = `dim`)
+/// * `survivors` — (row_index, hamming_distance) pairs from HDC sweep
+/// * `dense_column` — Arrow column containing dense embeddings
+/// * `dim` — embedding dimensionality (e.g., 1024 for Jina embeddings)
+/// * `threshold` — minimum similarity to include in results (0.0..1.0)
+/// * `top_k` — maximum results (0 = unlimited)
+///
+/// # Panics
+/// If `dense_column.value_length()` is not `dim * 4` (f32 = 4 bytes).
+pub fn gemm_batch_similarity(
+    query_f32: &[f32],
+    survivors: &[(usize, u64)],
+    dense_column: &FixedSizeBinaryArray,
+    dim: usize,
+    threshold: f32,
+    top_k: usize,
+) -> GemmBatchResult {
+    let n = survivors.len();
+    if n == 0 {
+        return GemmBatchResult {
+            hits: Vec::new(),
+            evaluated: 0,
+        };
+    }
+
+    let elem_bytes = dense_column.value_length() as usize;
+    assert_eq!(
+        elem_bytes,
+        dim * 4,
+        "dense column element size must be dim * sizeof(f32)"
+    );
+    assert_eq!(
+        query_f32.len(),
+        dim,
+        "query must have {dim} dimensions"
+    );
+
+    let flat = dense_column.value_data();
+
+    // Build survivor matrix A (n × dim) — each row is a survivor's embedding.
+    let mut a = vec![0.0f32; n * dim];
+    for (i, &(row, _)) in survivors.iter().enumerate() {
+        let offset = row * elem_bytes;
+        let bytes = &flat[offset..offset + elem_bytes];
+        // SAFETY: bytes are aligned f32 values from Arrow FixedSizeBinaryArray.
+        // Arrow guarantees 64-byte alignment. Length is exactly dim * 4.
+        let floats = unsafe {
+            std::slice::from_raw_parts(bytes.as_ptr() as *const f32, dim)
+        };
+        a[i * dim..(i + 1) * dim].copy_from_slice(floats);
+    }
+
+    // C = A × query^T — result is n × 1 (dot products = similarity scores).
+    let mut c = vec![0.0f32; n];
+
+    // Use SGEMM: C(n×1) = A(n×dim) × B(dim×1)
+    rustyblas::level3::sgemm(
+        Layout::RowMajor,
+        Transpose::NoTrans,
+        Transpose::NoTrans,
+        n,         // m: rows of A
+        1,         // n: cols of B (query is a column vector)
+        dim,       // k: inner dimension
+        1.0,       // alpha
+        &a,
+        dim,       // lda
+        query_f32,
+        1,         // ldb (column vector)
+        0.0,       // beta
+        &mut c,
+        1,         // ldc
+    );
+
+    // Filter by threshold and pair with original row indices.
+    let mut hits: Vec<(usize, u64, f32)> = survivors
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &(row, hdc_dist))| {
+            if c[i] >= threshold {
+                Some((row, hdc_dist, c[i]))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Sort by similarity descending.
+    hits.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    if top_k > 0 && hits.len() > top_k {
+        hits.truncate(top_k);
+    }
+
+    GemmBatchResult {
+        hits,
+        evaluated: n,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JIT scan kernel interface (jitson integration point)
+// ---------------------------------------------------------------------------
+
+/// External scan kernel function signature.
+///
+/// This is the ABI-compatible interface for jitson's `ScanKernel::scan()`.
+/// The JIT engine compiles search parameters (threshold, top_k, prefetch_ahead)
+/// into native code with baked immediates, then returns a function pointer
+/// matching this signature.
+///
+/// # Safety
+/// * `query` must point to `record_size` valid bytes.
+/// * `data` must point to `data_len * record_size` valid bytes.
+/// * `candidates_out` must point to a buffer with room for `data_len` u64s.
+pub type ExternalScanFn = unsafe fn(
+    query: *const u8,
+    data: *const u8,
+    data_len: u64,
+    record_size: u64,
+    candidates_out: *mut u64,
+) -> u64;
+
+/// Run horizontal sweep using an external JIT-compiled scan kernel.
+///
+/// This is the integration point for jitson. When a `ScanKernel` is compiled
+/// from `ScanParams { threshold, top_k, prefetch_ahead, focus_mask }`, the
+/// caller wraps it as an `ExternalScanFn` and passes it here.
+///
+/// Falls back to the standard `horizontal_sweep()` if `scan_fn` is None.
+///
+/// # Safety
+/// The `scan_fn` must correctly implement the scan contract (see `ExternalScanFn`).
+pub fn horizontal_sweep_external(
+    query: &[u8],
+    column: &FixedSizeBinaryArray,
+    scan_fn: Option<ExternalScanFn>,
+    config: &HorizontalSweepConfig,
+) -> HorizontalSweepResult {
+    // Fall back to built-in sweep if no external kernel.
+    let scan_fn = match scan_fn {
+        Some(f) => f,
+        None => return horizontal_sweep(query, column, config),
+    };
+
+    let n = column.len();
+    let vec_bytes = column.value_length() as usize;
+    assert_eq!(
+        query.len(),
+        vec_bytes,
+        "query length must match column element size"
+    );
+
+    if n == 0 {
+        return HorizontalSweepResult {
+            hits: Vec::new(),
+            stats: HorizontalSweepStats::default(),
+        };
+    }
+
+    let flat = column.value_data();
+
+    // Allocate output buffer for candidate indices.
+    let mut candidates_out = vec![0u64; n];
+
+    // SAFETY: flat is contiguous Arrow buffer of n × vec_bytes.
+    // candidates_out has room for n entries.
+    let count = unsafe {
+        scan_fn(
+            query.as_ptr(),
+            flat.as_ptr(),
+            n as u64,
+            vec_bytes as u64,
+            candidates_out.as_mut_ptr(),
+        )
+    };
+
+    candidates_out.truncate(count as usize);
+
+    // Compute exact distances for JIT survivors (JIT kernel may only do threshold check).
+    let hamming_fn = select_hamming_fn();
+    let hits: Vec<(usize, u64)> = candidates_out
+        .iter()
+        .map(|&idx| {
+            let row = idx as usize;
+            let offset = row * vec_bytes;
+            let candidate = &flat[offset..offset + vec_bytes];
+            let dist = hamming_fn(query, candidate);
+            (row, dist)
+        })
+        .filter(|&(_, d)| d <= config.threshold)
+        .collect();
+
+    HorizontalSweepResult {
+        hits,
+        stats: HorizontalSweepStats {
+            total_candidates: n,
+            full_eval_count: count as usize,
+            ..Default::default()
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -757,5 +981,169 @@ mod tests {
                 dist
             );
         }
+    }
+
+    // -------------------------------------------------------------------
+    // GEMM batch similarity tests
+    // -------------------------------------------------------------------
+
+    fn make_f32_column(data: &[&[f32]]) -> FixedSizeBinaryArray {
+        let elem_bytes = data[0].len() * 4;
+        let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), elem_bytes as i32);
+        for row in data {
+            let bytes: &[u8] = unsafe {
+                std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4)
+            };
+            builder.append_value(bytes).unwrap();
+        }
+        builder.finish()
+    }
+
+    #[test]
+    fn test_gemm_batch_similarity_basic() {
+        let dim = 8;
+        // Query: unit vector along dim 0
+        let mut query = vec![0.0f32; dim];
+        query[0] = 1.0;
+
+        // 5 "survivors" — row 2 is most similar (aligned with query)
+        let rows: Vec<Vec<f32>> = vec![
+            vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0: orthogonal
+            vec![0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 1: partial
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2: exact match
+            vec![0.3, 0.3, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3: partial
+            vec![-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 4: anti-aligned
+        ];
+        let refs: Vec<&[f32]> = rows.iter().map(|r| r.as_slice()).collect();
+        let dense_col = make_f32_column(&refs);
+
+        // Simulate survivors from HDC sweep
+        let survivors: Vec<(usize, u64)> = vec![
+            (0, 3000),
+            (1, 2000),
+            (2, 1000),
+            (3, 2500),
+            (4, 4000),
+        ];
+
+        let result = gemm_batch_similarity(&query, &survivors, &dense_col, dim, 0.4, 0);
+
+        // Row 2 (similarity 1.0) and row 1 (similarity 0.5) should survive threshold 0.4
+        assert!(
+            result.hits.iter().any(|&(row, _, _)| row == 2),
+            "row 2 (exact match) should survive, got {:?}",
+            result.hits
+        );
+        assert!(
+            result.hits.iter().any(|&(row, _, _)| row == 1),
+            "row 1 (0.5 similarity) should survive, got {:?}",
+            result.hits
+        );
+        // Row 4 (negative similarity) should be filtered
+        assert!(
+            !result.hits.iter().any(|&(row, _, _)| row == 4),
+            "row 4 (anti-aligned) should be filtered, got {:?}",
+            result.hits
+        );
+        // Results should be sorted by similarity descending
+        assert_eq!(result.hits[0].0, 2, "first hit should be row 2");
+        assert_eq!(result.evaluated, 5);
+    }
+
+    #[test]
+    fn test_gemm_batch_similarity_empty() {
+        let query = vec![1.0f32; 4];
+        let rows: Vec<Vec<f32>> = vec![vec![1.0; 4]];
+        let refs: Vec<&[f32]> = rows.iter().map(|r| r.as_slice()).collect();
+        let dense_col = make_f32_column(&refs);
+
+        let result = gemm_batch_similarity(&query, &[], &dense_col, 4, 0.0, 0);
+        assert_eq!(result.hits.len(), 0);
+        assert_eq!(result.evaluated, 0);
+    }
+
+    #[test]
+    fn test_gemm_batch_similarity_top_k() {
+        let dim = 4;
+        let query = vec![1.0f32; dim];
+        let rows: Vec<Vec<f32>> = (0..10)
+            .map(|i| {
+                let v = (i as f32 + 1.0) / 10.0;
+                vec![v; dim]
+            })
+            .collect();
+        let refs: Vec<&[f32]> = rows.iter().map(|r| r.as_slice()).collect();
+        let dense_col = make_f32_column(&refs);
+
+        let survivors: Vec<(usize, u64)> = (0..10).map(|i| (i, 0)).collect();
+        let result = gemm_batch_similarity(&query, &survivors, &dense_col, dim, 0.0, 3);
+
+        assert_eq!(result.hits.len(), 3, "top_k=3 should limit to 3 results");
+        // First hit should have highest similarity
+        assert!(result.hits[0].2 >= result.hits[1].2);
+        assert!(result.hits[1].2 >= result.hits[2].2);
+    }
+
+    // -------------------------------------------------------------------
+    // External JIT scan tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_horizontal_sweep_external_none_fallback() {
+        // With scan_fn=None, should behave exactly like horizontal_sweep
+        let query = vec![0xAAu8; CONTAINER_BYTES];
+        let rows: Vec<Vec<u8>> = (0..20)
+            .map(|i| {
+                if i == 12 {
+                    vec![0xAAu8; CONTAINER_BYTES]
+                } else {
+                    vec![i as u8; CONTAINER_BYTES]
+                }
+            })
+            .collect();
+        let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
+
+        let config = HorizontalSweepConfig {
+            threshold: 0,
+            ..Default::default()
+        };
+
+        let result_external = horizontal_sweep_external(&query, &col, None, &config);
+        let result_builtin = horizontal_sweep(&query, &col, &config);
+
+        assert_eq!(result_external.hits, result_builtin.hits);
+    }
+
+    #[test]
+    fn test_horizontal_sweep_external_with_scan_fn() {
+        let query = vec![0u8; CONTAINER_BYTES];
+        let rows: Vec<Vec<u8>> = (0..10)
+            .map(|i| vec![i as u8; CONTAINER_BYTES])
+            .collect();
+        let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
+        let col = make_column(&refs, CONTAINER_BYTES as i32);
+
+        // Mock JIT kernel: returns only row 0 (exact match)
+        unsafe fn mock_scan(
+            _query: *const u8,
+            _data: *const u8,
+            _data_len: u64,
+            _record_size: u64,
+            candidates_out: *mut u64,
+        ) -> u64 {
+            *candidates_out = 0; // row 0
+            1 // one candidate
+        }
+
+        let config = HorizontalSweepConfig {
+            threshold: 100,
+            ..Default::default()
+        };
+
+        let result = horizontal_sweep_external(&query, &col, Some(mock_scan), &config);
+        assert_eq!(result.hits.len(), 1);
+        assert_eq!(result.hits[0].0, 0);
+        assert_eq!(result.hits[0].1, 0); // exact match distance = 0
     }
 }

@@ -67,7 +67,9 @@ pub use arrow_bridge::{
 pub use datafusion_bridge::{arrow_to_flat_bytes, cascade_scan_4ch, hamming_scan_column};
 
 #[cfg(feature = "lance")]
-pub use lance_io::{append_cogrecords, read_cogrecords, write_cogrecords};
+pub use lance_io::{
+    append_cogrecords, read_cogrecord_batches, read_cogrecords, write_cogrecords,
+};
 
 #[cfg(feature = "arrow")]
 pub use fragment_index::{FragmentIndex, FragmentMeta};
@@ -85,6 +87,7 @@ pub use indexed_cascade::{
 
 #[cfg(feature = "arrow")]
 pub use horizontal_sweep::{
-    horizontal_sweep, horizontal_sweep_filtered, hybrid_cascade_sweep, HorizontalSweepConfig,
-    HorizontalSweepResult, HorizontalSweepStats, HybridCascadeResult,
+    gemm_batch_similarity, horizontal_sweep, horizontal_sweep_external,
+    horizontal_sweep_filtered, hybrid_cascade_sweep, ExternalScanFn, GemmBatchResult,
+    HorizontalSweepConfig, HorizontalSweepResult, HorizontalSweepStats, HybridCascadeResult,
 };

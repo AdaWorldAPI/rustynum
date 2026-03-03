@@ -6,10 +6,8 @@
 //!
 //! All functions are async (Lance uses tokio internally).
 
-#[allow(deprecated)] // read_cogrecords still uses copying path (P1 debt)
-use crate::arrow_bridge::{
-    cogrecord_schema, cogrecords_to_record_batch, record_batch_to_cogrecords,
-};
+use crate::arrow_bridge::{cogrecord_schema, cogrecord_views, cogrecords_to_record_batch};
+use arrow::array::RecordBatch;
 use arrow::array::RecordBatchIterator;
 use futures::StreamExt;
 use lance::dataset::write::{WriteMode, WriteParams};
@@ -42,18 +40,44 @@ pub async fn append_cogrecords(uri: &str, records: &[CogRecord]) -> Result<Datas
 }
 
 /// Read all CogRecords from a Lance dataset.
+///
+/// This allocates owned `CogRecord`s (8192 bytes each). For zero-copy access,
+/// use [`read_cogrecord_batches()`] and iterate with [`cogrecord_views()`].
 pub async fn read_cogrecords(uri: &str) -> Result<Vec<CogRecord>, lance::Error> {
+    let batches = read_cogrecord_batches(uri).await?;
+    let records = batches
+        .iter()
+        .flat_map(|batch| cogrecord_views(batch).into_iter().map(|v| v.to_owned()))
+        .collect();
+    Ok(records)
+}
+
+/// Read raw Arrow RecordBatches from a Lance dataset (zero-copy friendly).
+///
+/// Returns the batches as-is. Use [`cogrecord_views()`] to get zero-copy
+/// `CogRecordView` references into each batch without any allocation.
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// let batches = read_cogrecord_batches("data.lance").await?;
+/// for batch in &batches {
+///     for view in cogrecord_views(batch) {
+///         // view.meta, view.cam, etc. borrow directly from Arrow buffers
+///     }
+/// }
+/// ```
+pub async fn read_cogrecord_batches(uri: &str) -> Result<Vec<RecordBatch>, lance::Error> {
     let dataset = Dataset::open(uri).await?;
-    let mut records = Vec::new();
+    let mut batches = Vec::new();
 
     let mut stream = dataset.scan().try_into_stream().await?;
 
     while let Some(batch_result) = stream.next().await {
-        let batch = batch_result?;
-        records.extend(record_batch_to_cogrecords(&batch));
+        batches.push(batch_result?);
     }
 
-    Ok(records)
+    Ok(batches)
 }
 
 // ---------------------------------------------------------------------------
@@ -126,5 +150,25 @@ mod tests {
         write_cogrecords(uri_str, &[]).await.unwrap();
         let back = read_cogrecords(uri_str).await.unwrap();
         assert_eq!(back.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_read_batches_zero_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let uri = dir.path().join("batches.lance");
+        let uri_str = uri.to_str().unwrap();
+
+        let records = make_test_records(100);
+        write_cogrecords(uri_str, &records).await.unwrap();
+
+        let batches = read_cogrecord_batches(uri_str).await.unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 100);
+
+        // Zero-copy views borrow directly from Arrow buffers
+        let first_batch = &batches[0];
+        let views = crate::arrow_bridge::cogrecord_views(first_batch);
+        assert!(!views.is_empty());
+        assert_eq!(views[0].meta.len(), 2048);
     }
 }

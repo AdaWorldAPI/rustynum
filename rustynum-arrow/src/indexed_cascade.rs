@@ -628,6 +628,11 @@ mod tests {
             .collect()
     }
 
+    /// Convert records to Arrow RecordBatch for zero-copy index building.
+    fn make_test_batch(records: &[CogRecord]) -> RecordBatch {
+        crate::arrow_bridge::cogrecords_to_record_batch(records).unwrap()
+    }
+
     #[test]
     fn test_indexed_cascade_finds_exact_match() {
         let mut records = make_test_records(50);
@@ -645,7 +650,8 @@ mod tests {
             make_container(0),
         );
 
-        let indices = CascadeIndices::build(&records, 5);
+        let batch = make_test_batch(&records);
+        let indices = CascadeIndices::build_from_arrow(&batch, 5);
         let result = indexed_cascade_search(
             &query,
             &records,
@@ -690,7 +696,8 @@ mod tests {
         flat_hits.sort_by_key(|&(idx, _)| idx);
 
         // Indexed cascade
-        let indices = CascadeIndices::build(&records, 3);
+        let batch = make_test_batch(&records);
+        let indices = CascadeIndices::build_from_arrow(&batch, 3);
         let result = indexed_cascade_search(&query, &records, &indices, thresholds);
         let mut indexed_hits = result.hits.clone();
         indexed_hits.sort_by_key(|&(idx, _)| idx);
@@ -720,7 +727,8 @@ mod tests {
         );
         let thresholds = [2000, 2000, 2000, 2000];
 
-        let indices = CascadeIndices::build(&records, 10);
+        let batch = make_test_batch(&records);
+        let indices = CascadeIndices::build_from_arrow(&batch, 10);
         let result = indexed_cascade_search(&query, &records, &indices, thresholds);
 
         // With tight thresholds, should prune at least some fragments.
@@ -742,7 +750,8 @@ mod tests {
     #[test]
     fn test_incremental_learn() {
         let records = make_test_records(40);
-        let mut indices = CascadeIndices::build(&records, 5);
+        let batch = make_test_batch(&records);
+        let mut indices = CascadeIndices::build_from_arrow(&batch, 5);
 
         let old_cam_rows = indices.cam_index.num_rows();
         let old_btree_rows = indices.btree_index.num_rows();
@@ -760,7 +769,8 @@ mod tests {
     #[test]
     fn test_rebuild_produces_valid_indices() {
         let records = make_test_records(50);
-        let indices = rebuild(&records, 5);
+        let batch = make_test_batch(&records);
+        let indices = CascadeIndices::build_from_arrow(&batch, 5);
 
         assert!(indices.meta_index.num_fragments() > 0);
         assert!(indices.cam_index.num_clusters() > 0);
@@ -900,7 +910,8 @@ mod tests {
         let query = records[0].clone();
         let thresholds = [8000, 8000, 8000, 8000];
 
-        let indices = CascadeIndices::build(&records, 5);
+        let batch = make_test_batch(&records);
+        let indices = CascadeIndices::build_from_arrow(&batch, 5);
         let result = indexed_cascade_search(&query, &records, &indices, thresholds);
 
         // Fragments pruned + surviving = total
@@ -923,7 +934,7 @@ mod tests {
     #[test]
     fn test_build_from_arrow_matches_build() {
         let records = make_test_records(30);
-        let batch = crate::arrow_bridge::cogrecords_to_record_batch(&records).unwrap();
+        let batch = make_test_batch(&records);
 
         let indices_vec = CascadeIndices::build(&records, 5);
         let indices_arrow = CascadeIndices::build_from_arrow(&batch, 5);
@@ -946,7 +957,7 @@ mod tests {
     #[test]
     fn test_search_batch_matches_search() {
         let records = make_test_records(30);
-        let batch = crate::arrow_bridge::cogrecords_to_record_batch(&records).unwrap();
+        let batch = make_test_batch(&records);
         let query = CogRecord::new(
             make_container(5),
             make_container(6),
@@ -955,7 +966,7 @@ mod tests {
         );
         let thresholds = [4000, 4000, 4000, 4000];
 
-        let indices = CascadeIndices::build(&records, 3);
+        let indices = CascadeIndices::build_from_arrow(&batch, 3);
         let result_vec = indexed_cascade_search(&query, &records, &indices, thresholds);
         let result_arrow = indexed_cascade_search_batch(&query, &batch, &indices, thresholds);
 
