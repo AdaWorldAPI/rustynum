@@ -1,0 +1,17 @@
+[package]
+name = "rustynum-gpu"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.93"
+description = "GPU compute backend for rustynum HDC operations via wgpu"
+license = "MIT"
+
+[dependencies]
+rustynum-core = { path = "../rustynum-core" }
+wgpu = { version = "24", features = ["vulkan", "dx12"] }
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"

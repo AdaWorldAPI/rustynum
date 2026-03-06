@@ -13,6 +13,9 @@ members = [
     "rustynum-clam",
     "bindings/python",
 
+    # Tier 2: GPU compute — heterogeneous Belichtungsmesser (opt-in via `-p rustynum-gpu`)
+    "rustynum-gpu",
+
     # Tier 2: Qualia — felt/semantic layer (opt-in via `-p qualia-xor`)
     "qualia_xor",
 
