@@ -3,15 +3,49 @@ name = "rustynum-gpu"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
-description = "GPU compute backend for rustynum HDC operations via wgpu"
+description = """
+Heterogeneous compute dispatch for rustynum.
+CPU always available. GPU backends behind feature flags.
+"""
 license = "MIT"
+
+[features]
+default = []
+
+# ─── GPU Backends (all optional, all behind feature flags) ───
+
+# Universal GPU: Vulkan (Linux/Windows), DX12 (Windows), Metal (macOS)
+# Works on: Intel Xe-LPG, Intel Arc, NVIDIA, AMD, Apple, Qualcomm Adreno
+# No vendor SDK install required. Just a GPU and a driver.
+wgpu-backend = ["dep:wgpu", "dep:pollster"]
+
+# NVIDIA-specific: cuBLAS for matmul, tensor cores for INT8/BF16
+# Requires: CUDA toolkit installed, NVIDIA driver
+# Use on: laptops with 3050Ti/4060/etc, servers with A100/H100
+cuda = ["dep:cudarc"]
+
+# Intel Level Zero: direct access to Xe-LPG/Xe2 iGPU + NPU
+# Requires: Level Zero runtime (libze_loader.so / ze_loader.dll)
+# Use on: NUC 185H, Meteor Lake/Arrow Lake/Lunar Lake systems
+# Falls back gracefully if libze_loader not found (dlopen at runtime).
+level-zero = ["dep:libloading"]
 
 [dependencies]
 rustynum-core = { path = "../rustynum-core" }
-wgpu = { version = "24", features = ["vulkan", "dx12"] }
-pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
+
+# wgpu backend deps (optional)
+wgpu = { version = "24", features = ["vulkan", "dx12"], optional = true }
+pollster = { version = "0.4", optional = true }
+
+# CUDA backend deps (optional)
+# cudarc provides safe Rust bindings to CUDA driver API + cuBLAS
+cudarc = { version = "0.16", optional = true }
+
+# Level Zero backend deps (optional)
+# Runtime dlopen — no build-time dependency on Intel SDK
+libloading = { version = "0.8", optional = true }
 
 [dev-dependencies]
 env_logger = "0.11"

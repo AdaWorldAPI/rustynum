@@ -1,75 +1,82 @@
-//! # rustynum-gpu — GPU compute backend for rustynum
+//! # rustynum-gpu — heterogeneous compute for rustynum
 //!
-//! Heterogeneous Belichtungsmesser: GPU Stroke 1 + CPU Strokes 2-3.
+//! Auto-dispatches HDC operations across CPU, GPU, and NPU.
+//! Each backend is behind a feature flag. CPU is always available.
 //!
-//! ## Architecture
+//! ## Quick start
 //!
-//! ```text
-//! ┌──────────────────────────────────────────────────────────┐
-//! │                   NUC 185H (Meteor Lake)                 │
-//! │                                                          │
-//! │   CPU (AVX2 + VNNI)         iGPU (Xe-LPG, 128 XVEs)    │
-//! │   ┌──────────────┐          ┌──────────────────────┐     │
-//! │   │ Stroke 2:    │          │ Stroke 1:            │     │
-//! │   │  incremental │  ←────  │  prefix XOR+popcount │     │
-//! │   │  Hamming on  │ results │  ALL candidates      │     │
-//! │   │  survivors   │          │  zero branching      │     │
-//! │   │              │          │  128×8 = 1024 wide   │     │
-//! │   │ Stroke 3:    │          └──────────────────────┘     │
-//! │   │  VNNI cosine │                                       │
-//! │   │  on finalists│                                       │
-//! │   └──────────────┘                                       │
-//! │                                                          │
-//! │   ─────── 96 GB shared DDR5, zero copy ──────────       │
-//! └──────────────────────────────────────────────────────────┘
+//! ```toml
+//! [dependencies]
+//! rustynum-gpu = { version = "0.1", features = ["wgpu-backend"] }
 //! ```
 //!
-//! ## Why not GPU early-exit?
-//!
-//! GPUs hate divergent branching. The Belichtungsmesser's power comes from
-//! early-exit: killing 90% of candidates after reading 20% of the vector.
-//! On CPU, branch prediction makes this fast. On GPU, divergent threads
-//! within a SIMD lane stall the entire wavefront.
-//!
-//! Solution: **2-stroke engine.** GPU does the uniform work (prefix popcount
-//! on ALL candidates, no branching). CPU does the branchy work (σ threshold,
-//! early-exit evaluation, tree traversal, CLAM refill).
-//!
-//! The GPU never decides. It just popcounts. The CPU never bulk-scans.
-//! It just evaluates and routes. Each processor does what it's built for.
-//!
-//! ## Platform support via wgpu
-//!
-//! | Platform        | Backend    | GPU                    |
-//! |-----------------|------------|------------------------|
-//! | Linux native    | Vulkan/ANV | Intel Xe-LPG/Xe2       |
-//! | WSL2            | DX12 (PV)  | Intel Xe-LPG via host  |
-//! | Windows         | DX12       | Intel/NVIDIA/AMD       |
-//! | macOS           | Metal      | Apple Silicon           |
-//! | Snapdragon      | Vulkan     | Adreno                 |
-//!
-//! Same code. Same API. `wgpu` adapts.
-//!
-//! ## Usage
-//!
 //! ```rust,no_run
-//! use rustynum_gpu::hdr_cascade_search_gpu;
+//! use rustynum_gpu::{hdr_cascade_search, list_backends};
 //! use rustynum_core::simd::PreciseMode;
 //!
-//! let results = hdr_cascade_search_gpu(
+//! // See what's available
+//! for backend in list_backends() {
+//!     println!("{:?}", backend);
+//! }
+//!
+//! // Search — auto-dispatches to best backend
+//! let results = hdr_cascade_search(
 //!     &query, &database,
-//!     1250,       // 10K-bit vectors
-//!     100_000,    // candidate count
-//!     4000,       // threshold
+//!     1250,        // 10K-bit vectors
+//!     100_000,     // candidates
+//!     4000,        // threshold
 //!     PreciseMode::Off,
 //! );
 //! ```
 //!
-//! Falls back to CPU automatically when GPU unavailable or batch too small.
+//! ## Feature flags
+//!
+//! | Feature | Backend | GPU | Use case |
+//! |---------|---------|-----|----------|
+//! | *(none)* | CPU only | — | Servers, CI, no GPU needed |
+//! | `wgpu-backend` | wgpu | Intel/NVIDIA/AMD/Apple/Qualcomm | Universal, no SDK install |
+//! | `cuda` | cudarc | NVIDIA only | cuBLAS, tensor cores, max perf |
+//! | `level-zero` | dlopen | Intel NPU + Xe | 75 TOPS on NUC 185H |
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌────────────────────────────────────────────────────────────────┐
+//! │  rustynum-gpu dispatch                                        │
+//! │                                                                │
+//! │  hdr_cascade_search(query, db, threshold)                     │
+//! │       │                                                        │
+//! │       ├─ estimate(HammingPrefix, batch_size) for each backend │
+//! │       ├─ pick highest throughput                               │
+//! │       └─ fallback chain: best → next → CPU (always works)     │
+//! │                                                                │
+//! ├──────────────────────┬──────────────┬─────────────────────────┤
+//! │  CPU (always)        │  wgpu (opt)  │  CUDA (opt)  │ ZE (opt)│
+//! │                      │              │              │          │
+//! │  AVX-512 VPOPCNTDQ   │  Vulkan      │  cuBLAS      │ NPU     │
+//! │  AVX2 Harley-Seal    │  DX12        │  tensor core │ Xe GPU  │
+//! │  AVX2 VNNI           │  Metal       │  __popc      │ dlopen  │
+//! │  scalar POPCNT       │  WebGPU      │              │          │
+//! │                      │              │              │          │
+//! │  rustynum-core       │  stroke1.wgsl│  PTX kernel  │ SPIR-V  │
+//! └──────────────────────┴──────────────┴──────────────┴──────────┘
+//! ```
+//!
+//! ## Device matrix
+//!
+//! ```text
+//!                     AVX-512   CUDA   iGPU(wgpu)  NPU(ze)   RAM
+//! Laptop 11gen          ✓        ✓        ✓          ✗       64GB
+//! NUC 185H              ✗        ✗        ✓          ✓       96GB
+//! Cloud Sapphire        ✓        ✗        ✗          ✗       varies
+//! MacBook M-series      ✗        ✗        ✓(Metal)   ✗       varies
+//! Snapdragon X          ✗        ✗        ✓(Vulkan)  ✗       varies
+//! ```
 
-pub mod device;
+pub mod backends;
 pub mod dispatch;
+pub mod traits;
 
-// Re-export main entry points
-pub use device::{gpu_available, gpu_capabilities, GpuCapabilities};
-pub use dispatch::{hdr_cascade_search_gpu, plan_dispatch, DispatchStrategy};
+// Re-export the public API
+pub use dispatch::{hamming_batch, hdr_cascade_search, list_backends, which_backend};
+pub use traits::{BackendInfo, ComputeBackend, DeviceKind, ElementwiseOp, OpHint};
