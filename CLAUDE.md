@@ -1,685 +1,104 @@
-# CLAUDE.md — rustynum
+# CLAUDE.md — Rustynum
 
-> **Last Updated**: 2026-02-25
-> **Branch**: `claude/vsaclip-hamming-recognition-y0b94`
-> **Owner**: Jan Hübener (jahube)
-
----
-
-## READ THIS FIRST — Role in the Four-Level Architecture
-
-rustynum is **Level 1 — Surface** (spatial substrate).
-
-> **Canonical cross-repo architecture:** [ada-docs/architecture/FOUR_LEVEL_ARCHITECTURE.md](https://github.com/AdaWorldAPI/ada-docs/blob/main/architecture/FOUR_LEVEL_ARCHITECTURE.md)
-
-rustynum is the **hardware layer AND the bindspace type owner**. It provides:
-
-1. **SIMD-dispatched kernels** for distance computation (Hamming, BF16, dot)
-2. **The unified bindspace surface types**: `Fingerprint<256>`, `DeltaLayer`,
-   `LayerStack`, `CollapseGate`, `AlignedBuf2K`, `MultiOverlay`
-3. **Holographic containers**: `Overlay`, Gabor wavelets, spectral analysis
-
-All crates compile into **ONE binary**. The bindspace surface is the SAME
-memory — never copied between crates. `Overlay.buffer` (2048 bytes) IS
-`Fingerprint<256>` (256 × u64 = 2048 bytes) viewed through `as_fingerprint_words()`.
-No conversion. No copy. Same pointer.
-
-**Dependency direction (LAW — do not violate):**
-
-```
-rustynum-core (types + SIMD)
-    ↑
-rustynum-holo (holographic containers, uses Fingerprint<256> directly)
-    ↑
-ladybug-rs (BindSpace, CollapseGate decisions, storage)
-    ↑
-crewai-rust (Blackboard, agents — reads/writes via TypedSlots)
-```
-
-rustynum NEVER imports BindSpace, crewai-rust, n8n-rs, or neo4j-rs.
-It is a compute + type leaf with zero IO. Arrow points ONE way.
+> **Updated**: 2026-03-12
+> **CI Status**: Rust CI FAILING, Python bindings FAILING
+> **Branch**: main
 
 ---
 
-## 1. Workspace Structure
+## What This Is
+
+"The Muscle." SIMD numerical substrate. AVX-512 Hamming, BF16 GEMM, BNN,
+organic plasticity, CLAM clustering, Arrow integration, DataFusion UDFs.
+
+## ⚠ READ BEFORE WRITING CODE
+
+### 1. CI IS BROKEN
+
+Rust CI and Python bindings both failing as of 2026-03-03 (sha d46f0d20).
+Likely cause: PRs 91/92 deprecated panicking APIs → broke downstream callers.
+**FIX CI BEFORE ADDING NEW CODE.**
+
+### 2. THREE-TIER WORKSPACE
 
 ```
-rustynum/
-├── rustynum-core/       # SIMD, BF16, kernels, Fingerprint, DeltaLayer, LayerStack, CollapseGate
-├── rustynum-holo/       # Holographic containers: Overlay, MultiOverlay, AlignedBuf2K, Gabor
-├── rustynum-rs/         # CogRecord, Python bindings bridge, ndarray ops
-├── rustynum-arrow/      # Arrow bridge, indexed cascade, horizontal sweep
-├── rustyblas/           # BLAS: GEMM (f32, bf16, int8), level1-3
-├── rustymkl/            # MKL-like interface (optional)
-├── rustynum-oracle/     # Sweetspot evaluation for 3D vector sizes
-├── rustynum-clam/       # CLAM integration
-├── qualia_xor/          # Qualia corpus experiments (Nib4/BERT, Cypher VSA, hydrate-agents)
-├── bindings/python/     # PyO3 bindings
-├── jitson/              # Cranelift JIT (own workspace — NOT a member)
-│
-│   # Archive crates — INTENTIONAL frozen snapshots, DO NOT DELETE
-│   # Prefixed with .archive- to distinguish from active crates
-├── .archive-rustynum-v1/       # V1 reference implementation
-├── .archive-rustynum-v3/       # V3 reference implementation
-├── .archive-rustynum-carrier/  # Carrier wave experiments
-└── .archive-rustynum-focus/    # Focus/attention experiments
+Tier 1 (default): rustynum-rs, rustynum-core, rustynum-bnn, rustynum-clam,
+                   rustynum-cam, rustynum-arrow, rustynum-accel
+  → cargo build / cargo test operates on this tier only
+
+Tier 2 (qualia):  qualia-xor (Nib4 vs BERT comparison)
+  → cargo test -p qualia-xor
+
+Tier 3 (holo):    rustynum-holo, rustynum-oracle, rustynum-carrier, rustynum-focus
+  → cargo test -p rustynum-holo
+
+Frozen:           .archive-rustynum-v1, .archive-rustynum-v3, etc.
+  → DO NOT MODIFY. Path dep resolution only.
 ```
 
-### Workspace Isolation
+### 3. ladybug-rs DEPENDS ON THIS
 
-`jitson/` has its own `[workspace]` in its Cargo.toml. It is NOT a
-workspace member. Do NOT add it to the root `[workspace].members`.
-Do NOT add `exclude = ["jitson"]` — that causes Cargo to read its
-deps which pull in the entire wasmtime workspace.
+ladybug-rs has path deps on: `rustynum-rs`, `rustynum-core`, `rustynum-bnn`,
+`rustynum-arrow`, `rustynum-holo`, `rustynum-clam`.
+Breaking changes here break ladybug-rs. Check compatibility.
 
-### Archive Crates Are Sacred
+### 4. DEPRECATED API MIGRATION (PRs 91-92)
 
-`rustynum-archive`, `rustynum-archive-v3`, `rustynum-carrier`, `rustynum-focus`
-are **intentional frozen reference implementations** for scientific
-reproducibility. They are NOT copy-paste debt. Their `path = "../rustynum-core"`
-deps ensure they compile against current infrastructure.
+28 panicking public functions deprecated, `try_*` versions added.
+Old: `softmax()` (panics on bad input)
+New: `try_softmax()` (returns Result)
+Callers in ladybug-rs may not be updated yet.
 
-**DO NOT delete them. DO NOT "clean them up". DO NOT refactor them.**
+### 5. DO NOT MODIFY FROM ladybug-rs SESSIONS
 
----
+Prompt 00_SESSION_A_META.md says: "You have read access to rustynum.
+Do NOT modify rustynum — a separate session owns that."
+ladybug-rs sessions import types, never change them.
 
-## 2. The SIMD Dispatch Pattern (CANONICAL)
-
-```rust
-// One-time CPUID detection at init (cached in static)
-let hamming_fn = select_hamming_fn();   // AVX-512 VPOPCNTDQ / AVX2 Harley-Seal / scalar
-let dot_fn = select_dot_i8_fn();        // AVX-512 VNNI VPDPBUSD / scalar
-let bf16_fn = select_bf16_hamming_fn(); // AVX-512 BITALG / scalar
-
-// Hot path: function pointer call, zero branching
-let distance = hamming_fn(a_bytes, b_bytes);
-```
-
-**Rule: Detection happens ONCE. The hot path is a function pointer call.**
-No `if is_x86_feature_detected!()` in the hot loop.
-
-### Tiered Dispatch
-
-```
-Tier 0: INT8 Prefilter  (VNNI vpdpbusd)      — 90% pruned, cheapest
-Tier 1: Binary Hamming   (VPOPCNTDQ)          — HDC distance, 2ns/2KB
-Tier 2: BF16 Structured  (BITALG vpshufb)     — sign/exp/man weighted
-Tier 3: FP32 AVX-512     (vmulps/vaddps)       — full precision, expensive
-```
-
----
-
-## 3. The 3-Kernel Pipeline (kernels.rs)
-
-LIBXSMM-inspired fixed-size cascade for bitpacked containers:
-
-```
-K0 Probe (64-bit):   XOR + POPCNT on 1 u64    → eliminates ~55%
-K1 Stats (512-bit):  XOR + POPCNT on 8 u64    → eliminates ~90% of survivors
-K2 Exact (full):     XOR + AND + POPCNT        → EnergyConflict decomposition
-```
-
-Two fixed SKUs (no dynamic sizing):
-- **SKU-16K**: 16384 bits = 256 words = 2048 bytes (CogRecord standard)
-- **SKU-64K**: 65536 bits = 1024 words = 8192 bytes (CogRecord8K full)
-
-K2 returns `EnergyConflict` — not just Hamming distance:
-- `conflict`: bits where a=1,b=1 (agreement) vs a=0,b=0 (absence)
-- `energy_a`, `energy_b`: popcount of each input
-- Kills negative cancellation (a key insight)
-
----
-
-## 4. The Hybrid Pipeline (hybrid.rs)
-
-Bridges kernels + BF16 + awareness into one pipeline:
-
-```
-Tier 0 Prefilter (optional)
-  → K0 → K1 → K2 (integer Hamming, ~95% pruned)
-    → BF16 Tail (survivors only, ~5%)
-         ├─ Structured distance: sign/exp/man weighted
-         ├─ Structural diff: which dimensions changed
-         └─ Awareness: crystallized/tensioned/uncertain/noise
-              └→ Learning feedback: attention weights → WideMetaView W144-W159
-```
-
-### Awareness Substrate (bf16_hamming.rs)
-
-Per-dimension classification from BF16 decomposition:
-
-| State | Bits | Meaning |
-|-------|------|---------|
-| Crystallized | 00 | Sign + exp agree → settled knowledge |
-| Tensioned | 01 | Sign disagrees → active contradiction |
-| Uncertain | 10 | Sign agrees, high exp spread → direction known |
-| Noise | 11 | Only mantissa differs → irrelevant |
-
-These 2-bit states pack into `Vec<u8>` (4 dimensions per byte).
-
----
-
-## 5. Spatial Resonance (spatial_resonance.rs)
-
-3D BF16 crystal for SPO (Subject-Predicate-Object) encoding:
-
-```
-SpatialCrystal3D
-├── X-axis: CrystalAxis (2048 bytes) = Subject
-├── Y-axis: CrystalAxis (2048 bytes) = Predicate
-└── Z-axis: CrystalAxis (2048 bytes) = Object
-```
-
-SPO encoding via XOR bind:
-```
-X = S ⊕ P   (Subject bound with Predicate)
-Y = P ⊕ O   (Predicate bound with Object)
-Z = S ⊕ O   (Subject bound with Object)
-```
-
-Recovery (XOR is self-inverse):
-```
-S = X ⊕ P   (unbind Predicate from X)
-O = Y ⊕ P   (unbind Predicate from Y)
-```
-
-### Sweet Spot Evaluation (rustynum-oracle)
-
-The `sweetspot` binary evaluates 3D vector sizes:
-- **D = 8192 bits** (1024 BF16 dims = 2048 bytes) per axis is optimal
-- **Base = Signed(5)** quantization
-- **K = 3–13 concepts** for < 0.1 error
-
-This aligns with Jina 1024-D embeddings, ladybug-rs Crystal4K projections,
-and VSACLIP SKU-16K container standard.
-
----
-
-## 6. Public API Contract
-
-All rustynum compute functions take `&[u8]` or `&[u64]` slices. They NEVER
-allocate, NEVER do IO, NEVER access the network. Pure compute.
-
-### Compute Functions
-
-| Function | Input | Output | File |
-|----------|-------|--------|------|
-| `select_hamming_fn()` | — | `fn(&[u8],&[u8])->u32` | simd.rs |
-| `select_dot_i8_fn()` | — | `fn(&[i8],&[i8])->i32` | simd.rs |
-| `select_bf16_hamming_fn()` | — | `fn(&[u8],&[u8])->BF16Result` | bf16_hamming.rs |
-| `k0_probe()` | `&[u64],&[u64]` | `u32` | kernels.rs |
-| `k1_stats()` | `&[u64],&[u64]` | `u32` | kernels.rs |
-| `k2_exact()` | `&[u64],&[u64]` | `EnergyConflict` | kernels.rs |
-| `hybrid_pipeline()` | config + candidates | `Vec<HybridScore>` | hybrid.rs |
-| `SpatialCrystal3D::spo_encode()` | S,P,O | Crystal | spatial_resonance.rs |
-
-### Unified Bindspace Surface Types (rustynum-core)
-
-These types are the SAME surface across all crates. One binary, one memory.
-
-| Type | Size | Purpose | File |
-|------|------|---------|------|
-| `Fingerprint<256>` | 2048 bytes | The universal container = `[u64; 256]` | fingerprint.rs |
-| `DeltaLayer<N>` | Fingerprint + writer_id | XOR delta from ground truth — writer owns `&mut` | delta.rs |
-| `LayerStack<N>` | ground + Vec<DeltaLayer> | Multi-writer concurrent state | layer_stack.rs |
-| `CollapseGate` | enum | Flow/Hold/Block decision | layer_stack.rs |
-
-### Holographic Surface Types (rustynum-holo)
-
-| Type | Size | Purpose | File |
-|------|------|---------|------|
-| `Overlay` | 2048 bytes | IS `Fingerprint<256>` via `as_fingerprint_words()` | holograph.rs |
-| `AlignedBuf2K` | 2048 bytes | `repr(align(8))` buffer with guaranteed zero-copy view | holograph.rs |
-| `MultiOverlay` | N × Overlay | One per agent, conflict via AND+popcount | holograph.rs |
-
-### The Zero-Copy Rule
-
-`Overlay.as_fingerprint_words()` returns `&[u64; 256]` — a pointer reinterpret
-of the same 2048 bytes. **Never copy between these types in-process.**
-`to_bytes()` / `from_bytes()` exist ONLY for wire serialization (disk, network).
-Within the binary, everything is a view.
-
----
-
-## 7. Technical Debt — Prioritized
-
-### P0 — Must Fix (Blocks Production)
-
-| Debt | Location | Impact | Status |
-|------|----------|--------|--------|
-| ~~34 public API panics~~ | `rustynum-rs/src/` | ~~Panic in library code~~ | **DONE** — 38 `try_` variants, 33 deprecated wrappers |
-| ~~GEMM bounds check~~ | `rustyblas/src/int8_gemm.rs` | ~~Unchecked buffer access~~ | **DONE** — bounds check exists at entry |
-
-### P1 — Should Fix (Quality)
-
-| Debt | Location | Impact | Status |
-|------|----------|--------|--------|
-| ~~Zero-copy violations~~ | `rustynum-arrow/src/arrow_bridge.rs` | ~~Unnecessary allocations~~ | **DONE** — `cogrecord_views()` + `build_from_arrow()` exist; copying fns deprecated |
-| ~~Python binding f32/f64 copy-paste~~ | `bindings/python/` | ~~Duplicated code~~ | **DONE** — f64 cleaned, matches f32 pattern |
-
-### P2 — Nice to Have (Parity)
-
-| Debt | Location | Impact | Status |
-|------|----------|--------|--------|
-| ~~Broadcasting~~ | `operations.rs` | ~~ndarray parity gap~~ | **DONE** — `try_{add,sub,mul,div}_broadcast()` for same-shape + 2D [m,n] op [m,1] |
-| `s![]` macro | — | Ergonomic slicing | Open |
-| Compile-time dimensions | — | Shape safety | Open |
-
-### Confirmed Sound
-
-| Area | Validation | Status |
-|------|------------|--------|
-| SIMD core | Miri pass (PR #59) | Sound |
-| unsafe discipline | `// SAFETY:` on all blocks | Documented |
-| GEMM routing | Fixed (diagonal regression) | Correct |
-| Kernel pipeline (K0/K1/K2) | 17 tests | Passing |
-| Hybrid pipeline | 8 tests | Passing |
-| BF16 awareness | 8 tests | Passing |
-| Blackboard `&self→&mut` UB | Fixed: uses `&mut self` | Sound |
-| u8 matmul `Arc<Mutex>` | Fixed: `parallel_into_slices` + `split_at_mut` | Lock-free |
-| Trait bound copy-paste | Fixed: `NumElement` supertrait | Clean |
-| XOR Delta Layer | Implemented: Fingerprint + DeltaLayer + LayerStack + CollapseGate | 47 tests |
-| Holographic zero-copy | `Overlay.as_fingerprint_words()` = pointer reinterpret | No copy |
-| σ-significance scoring | `score_sigma()`, `K2Histogram`, `k2_exact_histogram()` | 9+ tests |
-| Blackboard I32/I64 | `get_i32/i64()`, `borrow_2/3_mut_i32/i64()` | 5 tests |
-| Broadcasting ops | `try_{add,sub,mul,div}_broadcast()` | 5 tests |
-| CONTAINER_BYTES = 4096 | COGRECORD_BYTES = 16384 across all crates + Python | Migrated |
-
-### Structural Race Prevention
-
-Race conditions cannot exist by construction:
-- **Ground truth is `&self` forever** during processing cycles
-- **Each writer owns their own delta as `&mut`** — standard Rust ownership
-- **`split_at_mut`** for contiguous byte regions (GEMM rows, Z-slabs)
-- **XOR Delta Layers** for scattered binary vector mutations (fingerprints)
-- If a race condition appears, the architecture is wrong — fix the design, not the symptom
-
-### CollapseGate = Airlock (Luftschleuse)
-
-Deltas ARE superposition — they coexist over ground truth without collapsing.
-The CollapseGate is the airlock between superposition and ground truth.
-
-**Two kinds of XOR — never confuse them:**
-
-| XOR | When | Target | Borrow |
-|-----|------|--------|--------|
-| **Delta XOR** | WRITE phase | Writer's own `DeltaLayer` | `&mut DeltaLayer` (private) |
-| **Commit XOR** | After gate FLOW | Ground truth | `&mut LayerStack` (exclusive) |
-
-**Phase ordering (strict):**
-
-```
-1. WRITE         Each writer delta-XORs their intent into their own layer.
-                 Ground is &self — untouched. Each delta is &mut — private.
-                      │
-2. AWARENESS     Read superposition: ground ^ delta[0] ^ delta[1] ^ ...
-                 AND + popcount SEES contradictions between deltas.
-                 Contradictions ARE the awareness signal.
-                 Without contradiction there is nothing to be aware OF.
-                 Everything is &self — nobody writing.
-                      │
-3. GATE          CollapseGate evaluates awareness → decision.
-                      │
-            ┌─────────┼─────────┐
-          FLOW       HOLD      BLOCK
-            │         │         │
-4. COMMIT   │    keep super-  discard
-   ground   │    position     super-
-   ^= Σδ   │    (accumulate  position
-            │    more evidence)
-       collapse
-       to ground
-       truth
-```
-
-- **WRITE → AWARENESS**: you need the contradiction to have the awareness.
-  Awareness is reading the superposition. Without superposition, no signal.
-- **AWARENESS → GATE**: gate uses awareness (AND+popcount) to decide.
-- **GATE → COMMIT**: XOR to ground ONLY on FLOW. This is the only `&mut` on ground.
-- **HOLD**: superposition persists. Next cycle adds more deltas. Awareness grows.
-- **BLOCK**: superposition discarded. Ground unchanged. Start fresh.
-
-XOR is the algebra. Bundle is the superposition. Awareness reads the bundle.
-The gate is the decision. Commit is the only write to ground.
-
----
-
-## 8. Enforced Practices
-
-### Unsafe Discipline
-
-Every `unsafe` block MUST have a `// SAFETY:` comment explaining:
-1. Why unsafe is needed (what safe Rust can't express)
-2. What invariants are maintained
-3. What could go wrong if invariants are violated
-
-```rust
-// SAFETY: CPUID check above guarantees AVX-512 VPOPCNTDQ is available.
-// Input slices are the same length (asserted at function entry).
-// Output is a u32 popcount — no memory safety concern.
-unsafe { _mm512_popcnt_epi64(xor_result) }
-```
-
-### Test Discipline
-
-- Hardware-conditional assertions: do NOT hardcode `assert!(caps.avx512f)`
-- Use `if caps.avx512f { assert!(...) }` pattern
-- CI runners may lack AVX-512 — tests must pass on scalar fallback
-
-### Version Discipline
-
-| Item | Value |
-|------|-------|
-| `rust-version` | 1.93 (all crates) |
-| `edition` | 2021 (core), 2024 acceptable for leaf |
-| Arrow | 57 |
-| DataFusion | 51 |
-| Nightly | NEVER — nightly changes deps across the whole stack |
-
-### AVX-512 Intrinsic Availability (audited 2026-02-27)
-
-Every AVX-512 intrinsic used by rustynum compiles on stable 1.93.1:
-VPOPCNTDQ, BF16 (dpbf16_ps, cvtne2ps_pbh, cvtpbh_ps), VNNI (dpbusd),
-BITALG, mask registers (_kand/_knot/_kor/_kxor for mask8/mask16),
-movepi8_mask, movm_epi8, ternarylogic, and all horizontal reduces
-(reduce_add_epi64, reduce_or_epi64, etc.).
-
-AMX is unstable on BOTH stable AND nightly (rust-lang/rust#126622).
-Not usable. Not on the roadmap until Rust stabilizes it.
-
-`std::simd` (portable SIMD) is nightly-only and permanently out of scope
-— single-ISA target with zero benefit over `std::arch`.
-
-Nightly use: **none**. There is no reason to use nightly.
-
-Full audit: `docs/AVX512_TOOLCHAIN_AUDIT.md`
-
----
-
-## 9. Key Files
-
-### Bindspace Surface (shared by all crates in one binary)
-
-| File | Purpose |
-|------|---------|
-| `rustynum-core/src/fingerprint.rs` | `Fingerprint<N>` — THE container type, `[u64; N]` |
-| `rustynum-core/src/delta.rs` | `DeltaLayer<N>` — XOR delta, writer owns `&mut`, ground is `&self` |
-| `rustynum-core/src/layer_stack.rs` | `LayerStack<N>` + `CollapseGate` — multi-writer + transparent writethrough with bundle |
-| `rustynum-holo/src/holograph.rs` | `Overlay` (IS `Fingerprint<256>` via `as_fingerprint_words()`), `MultiOverlay`, `AlignedBuf2K` |
-
-### SIMD Compute
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `rustynum-core/src/simd.rs` | ~900 | VPOPCNTDQ, VNNI, Harley-Seal, dispatch |
-| `rustynum-core/src/bf16_hamming.rs` | ~500 | BF16 structured distance + awareness |
-| `rustynum-core/src/kernels.rs` | ~1000 | K0/K1/K2 pipeline, EnergyConflict |
-| `rustynum-core/src/hybrid.rs` | ~470 | Hybrid pipeline + Tier 0 prefilter |
-| `rustynum-core/src/spatial_resonance.rs` | ~700 | 3D BF16 crystal + SPO encoding |
-| `rustynum-core/src/compute.rs` | ~200 | CPUID detection, tier recommendation |
-| `rustynum-arrow/src/horizontal_sweep.rs` | ~770 | 90° word-by-word early exit |
-| `rustynum-arrow/src/indexed_cascade.rs` | ~400 | Indexed Hamming cascade |
-| `rustynum-rs/src/operations.rs` | ~800 | ndarray ops (P0 DONE: 38 try_ variants) |
-| `rustyblas/src/bf16_gemm.rs` | ~490 | BF16 GEMM microkernel |
-| `rustyblas/src/int8_gemm.rs` | ~805 | INT8 GEMM with VNNI |
-
----
-
-## 10. Testing
+## Build
 
 ```bash
-# Full test suite
-cargo test
-
-# Core only (SIMD, kernels, hybrid, BF16)
-cargo test -p rustynum-core
-
-# Arrow bridge (horizontal sweep, indexed cascade)
-cargo test -p rustynum-arrow
-
-# BLAS (GEMM, level1-3)
-cargo test -p rustyblas
-
-# Python bindings
-cd bindings/python && cargo test
-
-# Lint — run often, catches type errors and unused imports early
-cargo clippy --workspace -- -D warnings
-
-# Miri — catches UB in split_at_mut / raw pointer patterns
-# Requires nightly toolchain (not used in CI — run locally only)
-# cargo +nightly miri test -p rustynum-core
+cargo test                    # Tier 1 only (default members)
+cargo test --workspace        # All tiers
+cargo test -p rustynum-core   # Single crate
 ```
 
-### Test Counts (2026-02-25)
-
-| Crate | Tests | Status |
-|-------|-------|--------|
-| rustynum-core | 131 | 0 failures |
-| rustynum-arrow | 44 | 0 failures |
-| rustyblas | ~50 | 0 failures |
-| Total | ~225 | All passing |
-
----
-
-## 11. Anti-Patterns — DO NOT
-
-- **DO NOT** import BindSpace, crewai-rust, n8n-rs, or neo4j-rs
-- **DO NOT** do IO (file, network, database) in rustynum functions
-- **DO NOT** copy between Overlay and Fingerprint<256> — they ARE the same memory, use `as_fingerprint_words()`
-- **DO NOT** use `Arc<Mutex>` for parallel output — use `split_at_mut` or XOR delta layers
-- **DO NOT** use `&self → &mut` (UB) — use `&mut self` with field borrows or delta layers
-- **DO NOT** use `is_x86_feature_detected!()` in hot loops — use dispatch
-- **DO NOT** hardcode AVX-512 in test assertions — use conditional
-- **DO NOT** add `jitson` to workspace members or use `exclude`
-- **DO NOT** delete archive crates
-- **DO NOT** use nightly Rust — the entire stack builds on stable 1.93. All SIMD uses `simd_compat` (stable `std::arch` wrappers). `portable_simd` has been fully eliminated.
-- **DO NOT** store intermediate BF16 values — accumulate in FP32
-- **DO NOT** use dynamic SKU sizing — K0/K1/K2 are fixed at 16K or 64K
-- **DO NOT** use `RefCell`, `UnsafeCell`, or runtime borrow checks — the algebra handles isolation
-
----
-
-## 12. The Lance Zero-Copy Contract (HARD-WON — 6 REWRITES)
-
-> **After 1.5M lines of code and 6 rewrites across sessions, this lesson was
-> learned the hard way. DO NOT UNLEARN IT.**
-
-### The Insight
-
-**Arrow is the zero-copy computational backbone. Lance is a persistence layer (cold tier).**
-
-When rustynum is wired into ladybug-rs through Lance:
-- Lance mmap's data into Arrow `Buffer`s (64-byte aligned)
-- rustynum's `Blackboard` allocations are 64-byte aligned
-- `Fingerprint<256>` is `[u64; 256]` = 2048 bytes; CONTAINER_BYTES = 4096 (COGRECORD_BYTES = 16384)
-- **They are pointer-compatible. NEVER copy between them.**
-
-### The 3 Breaks That Were Found (and must not recur)
-
-| Break | Location | What Went Wrong | Fix Applied |
-|-------|----------|----------------|-------------|
-| **Arrow → CogRecord copies** | `rustynum-arrow/arrow_bridge.rs` | `.to_vec()` per row × 4 channels | **FIXED**: `cogrecord_views()` zero-copy; copying fn deprecated |
-| **Index build copies again** | `rustynum-arrow/indexed_cascade.rs` | `extend_from_slice()` into 4 new Vecs | **FIXED**: `build_from_arrow()` zero-copy; copying fn deprecated |
-| **Duplicate SIMD in ladybug** | `ladybug-rs/src/core/simd.rs` | Compile-time dispatch, not runtime; reimplements what rustynum already has | Should call `rustynum_core::simd::select_hamming_fn()` |
-
-### The Rule When Wiring rustynum Into Lance
+## Role in Four-Repo Architecture
 
 ```
-DO:   Arrow Buffer → &[u8] pointer reinterpret → rustynum SIMD kernels
-DO:   FingerprintBuffer.get(i) → &[u64; 256] directly into mmap'd buffer
-DO:   Overlay.as_fingerprint_words() → &[u64; 256] zero-copy view
-DO:   Use select_hamming_fn() for runtime-dispatched SIMD (one impl, all CPUs)
-
-DON'T: .to_vec() on Arrow columns
-DON'T: NumArrayU8::new(arrow_slice.to_vec()) — this copies
-DON'T: Build a second SIMD implementation alongside rustynum's
-DON'T: Use compile-time #[cfg(target_feature)] for SIMD — use runtime dispatch
+rustynum     = The Muscle    ← THIS REPO (SIMD substrate)
+ladybug-rs   = The Brain     (BindSpace, server)
+staunen      = The Bet       (6 instructions, no GPU)
+lance-graph  = The Face      (query surface)
 ```
 
-### What's Still Not Wired (Acceleration Stack)
-
-These rustynum crates are battle-tested but NOT yet connected to the Lance data path:
-
-| Crate | What It Has | Where It Should Wire |
-|-------|-------------|---------------------|
-| **rustyblas** | 138 GFLOPS GEMM, INT8 VNNI, BF16 mixed-precision | `rustynum-arrow` for batch similarity, projection |
-| **rustymkl** | VML (exp, ln, sin, sqrt), LAPACK, FFT | NARS truth scoring (sigmoid), spectral analysis |
-| **jitson** | JSON config → native AVX-512 scan kernels | Per-query compiled scans on Arrow buffers |
-| **rustynum-core/kernels** | K0/K1/K2 cascade | Already wired via indexed_cascade |
-| **rustynum-core/hybrid** | Tiered dispatch pipeline | Wired for search, not for bulk ingest |
-
-### Cross-Repo References
-
-- `ladybug-rs/CLAUDE.md` § "The Rustynum Acceleration Contract"
-- `ladybug-rs/docs/LANCE_HARVEST.md` — why Lance is cold-tier only
-- `ladybug-rs/docs/BINDSPACE_UNIFICATION.md:1122` — the `Buffer::from_slice_ref()` warning
-- `ladybug-rs/PLAN-RUSTYNUM-INTEGRATION.md` — 5-phase integration roadmap
-- `crewai-rust/CLAUDE.md` § "Storage Strategy"
-- `n8n-rs/CLAUDE.md` § "Arrow Zero-Copy Chain"
-
----
-
-## 13. OPEN TODOs — Wiring Checklist (SESSION-DURABLE)
-
-> **READ THIS EVERY SESSION.** These are the concrete tasks that remain.
-> Do NOT invent new code. Wire EXISTING acceleration. Mark items DONE with
-> date when completed. If you skip an item, explain why in a comment.
-
-### P0 — Zero-Copy Breaks (must fix before any new features)
-
-- [ ] **Migrate callers to `CogRecordView<'a>`** — borrowing variant EXISTS in `rustynum-arrow/src/arrow_bridge.rs:205-235`
-  - `cogrecord_views()` already returns `Vec<CogRecordView<'a>>` — zero-copy from Arrow
-  - `column_flat_data()` (line 250-259) provides raw `&[u8]` via pointer reinterpret
-  - **Remaining work**: change callers of `record_batch_to_cogrecords()` → `cogrecord_views()`
-  - The copying function `record_batch_to_cogrecords()` (line 126-159) still has 4× `.to_vec()`
-
-- [ ] **Migrate callers to `CascadeIndices::build_from_arrow()`** — zero-copy variant EXISTS in `rustynum-arrow/src/indexed_cascade.rs:119-161`
-  - `build_from_arrow()` already uses `column_flat_data()` — zero allocation
-  - **Remaining work**: change callers of `build()` (line 83-111) → `build_from_arrow()`
-  - The copying function `build()` still has 4× `extend_from_slice()` = 819MB
-
-- [ ] **Delete ladybug-rs/src/core/simd.rs** — 348 lines duplicating rustynum's SIMD dispatch
-  - Currently: ladybug-rs has its own `hamming_distance()`, `hamming_avx512()`, `hamming_avx2()`, `HammingEngine`
-  - Fix: Delete file, replace all call sites with `rustynum_core::simd::select_hamming_fn()`
-  - No blocker: rustynum is on stable, `simd_compat.rs` provides stable `std::arch` wrappers
-  - Also fix: `ladybug-rs/src/storage/bind_space.rs:1848-1855` — scalar hamming loop, replace with rustynum call
-  - Also fix: `ladybug-rs/src/core/rustynum_accel.rs:148` — `.to_vec()` in container_bundle
-
-### P1 — Wire Existing Acceleration Into Data Path
-
-- [ ] **rustyblas GEMM for batch similarity** — After cascade filtering, survivors need pairwise distance
-  - Entry point: `rustyblas::level3::sgemm()` (138 GFLOPS)
-  - Wire into: `rustynum-arrow/src/horizontal_sweep.rs` for batch post-filtering
-  - Input: Survivors from K0/K1/K2 as `&[f32]` slices (quantized from fingerprints)
-  - Use Blackboard for aligned memory: `alloc_f32("A", n) + alloc_f32("B", n) + alloc_f32("C", n)`
-
-- [ ] **rustymkl VML for NARS truth scoring** — sigmoid, exp, log on truth values
-  - Entry point: `rustymkl::vml::vsexp()` — vectorized exp on `&[f32]`
-  - Wire into: ladybug-rs NARS truth computation (post-search confidence scoring)
-  - Input: Truth frequency/confidence arrays
-
-- [ ] **jitson JIT scan for per-query kernels** — Compile search config to native code
-  - Entry point: `jitson::JitEngine::compile_scan(params) -> ScanKernel`
-  - Wire into: `rustynum-arrow/src/horizontal_sweep.rs` — add `jit_kernel: Option<ScanKernel>` to config
-  - Input: JSON/YAML thinking style → `ScanParams { threshold, top_k, prefetch_ahead, focus_mask }`
-  - Already connected from crewai-rust: `src/persona/jit_link.rs` produces `JitScanParams`
-  - NOTE: jitson is NOT a workspace member (depends on wasmtime Cranelift fork). Build separately.
-
-- [ ] **Wire rustynum_accel into core search** — Currently only called from Python FFI
-  - `ladybug-rs/src/core/rustynum_accel.rs` has `fingerprint_hamming()`, `container_hamming()`, `slice_hamming()`
-  - These call rustynum's runtime-dispatched SIMD — but only used in `python/mod.rs:39`
-  - Wire into: `ladybug-rs/src/storage/bind_space.rs` search functions
-
-### P2 — Remaining Cleanup
-
-**Toolchain is stable 1.93.** `portable_simd` → `std::arch` port complete.
-See `docs/STABLE_INTEGRATION_PLAN.md` for the 4-repo integration plan.
-
-- [ ] **Fix qualia_xor crate** — Missing candle_core, candle_nn, tokenizers dependencies
-  - 7 compilation errors: unresolved imports
-  - Either add deps to Cargo.toml or gate behind feature flag
-  - Currently excluded from CI (`--exclude qualia-xor`)
-
-- [ ] **Corpus expansion 231 → 1024** — 793 new qualia items for full coverage
-  - Currently 231 items across 44 families in qualia_219.json
-  - Goal: 1024 calibrated qualia > 1024 random dimensions
-
-- [ ] **Nib4 hydration with BF16 F:FF** — ResonanzZirkel distance rules with Versatz calibration
-  - Currently Nib4 uses absolute i8 values, needs relative coordinate system
-
-- [ ] **Gate enforcement wire** — QualiaGateLevel exists but enforcement lives in crewai-rust
-  - Wire: QualiaCAM → CollapseGate → crewai-rust "Sieves of Socrates"
-
-### DONE
-
-- [x] 2026-02-27: DeltaLayer + LayerStack + CollapseGate implemented in rustynum-core
-- [x] 2026-02-27: Overlay + AlignedBuf2K + MultiOverlay in rustynum-holo
-- [x] 2026-02-27: as_fingerprint_words() zero-copy bridge
-- [x] 2026-02-27: split_at_mut / parallel_into_slices (Arc<Mutex> eliminated)
-- [x] 2026-02-27: Blackboard takes &mut self (UB fixed)
-- [x] 2026-02-27: NumElement supertrait
-- [x] 2026-02-27: cascade_scan_4ch() zero-copy via arrow_to_flat_bytes()
-- [x] 2026-02-27: CI workflows with lint + miri (5 min timeout per crate)
-- [x] 2026-02-27: Compile-tested ALL AVX-512 intrinsics on stable 1.93.1 — ZERO gaps
-- [x] 2026-03-01: portable_simd → std::arch port COMPLETE (simd_compat.rs). Zero `#![feature(...)]` in any crate. `rust-toolchain.toml` = stable.
-- [x] 2026-03-01: CLAM → QualiaCAM integration: ClamTree generic DistanceFn, l1_i8_distance, CAKES DFS Sieve, CHAODA anomaly, ClamPath B-tree keys (49 tests)
-- [x] 2026-03-01: σ-significance scoring + per-word histogram: SignificanceLevel, SigmaScore, score_sigma(), K2Histogram, k2_exact_histogram()
-- [x] 2026-03-01: CI exclude typo fixed (qualia_xor → qualia-xor), rustynum-rs Default impls for F32x16/F64x8
-- [x] 2026-03-03: P0 panic→Result migration: 38 try_ variants, 33 deprecated wrappers (try_item, try_dot, try_log, try_argmin, try_argmax, try_softmax, try_log_softmax, try_broadcast ops, etc.)
-- [x] 2026-03-03: Zero-copy: cogrecord_views() + build_from_arrow() exist; record_batch_to_cogrecords() + CascadeIndices::build() deprecated
-- [x] 2026-03-03: Blackboard I32/I64 typed getters + split-borrow helpers (get_i32/i64, borrow_2/3_mut_i32/i64)
-- [x] 2026-03-03: Broadcasting: try_add_broadcast, try_sub_broadcast, try_mul_broadcast (2D [m,n] op [m,1])
-- [x] 2026-03-03: CONTAINER_BYTES 2048→4096 (COGRECORD_BYTES 8192→16384) + Python bindings use constant
-- [x] 2026-03-03: Python f64 bindings cleaned (removed redundant Python::with_gil() calls)
-- [x] 2026-03-03: LFD percentile rounding fix (n*pct/100 → (n-1)*pct/100 nearest-rank)
-- [x] 2026-03-03: Clippy clean (neg_cmp_op_on_partial_ord in try_log fixed)
-
----
-
-## 14. Nightly ↔ Stable Audit Trail (2026-03-01)
-
-> **Why this exists:** Session resets lose context. This tracks every nightly/stable
-> decision so future sessions can trace back WHY the toolchain is what it is.
-
-### Current State (2026-03-01) — STABLE
-
-- `rust-toolchain.toml` pins **stable**
-- Zero crates use `#![feature(portable_simd)]` — ALL ported to `simd_compat.rs`
-- `simd_compat.rs` wraps `std::arch::x86_64` intrinsics — stable since Rust 1.89
-- CI uses `dtolnay/rust-toolchain@stable` for build and test
-- Miri requires `cargo +nightly miri test` (standard — Miri always needs nightly)
-- ALL AVX-512 intrinsics (VPOPCNTDQ, BF16, VNNI, BITALG, mask, reduce) stable on 1.93
-
-### SIMD Dispatch Model (FINAL)
+## Key Crates
 
 ```
-AVX-512 default → AVX2 silent fallback → scalar POPCNT
+rustynum-core     SIMD dispatch: AVX-512 → AVX2 → scalar. Hamming, popcount.
+rustynum-bnn      Binary Neural Network: CausalTrajectory, BPReLU, pentary.
+rustynum-clam     CLAM clustering: bipolar splits, codebook training.
+rustynum-cam      Content-Addressable Memory: 48-bit fingerprint, scent index.
+rustynum-arrow    Arrow/DataFusion integration: ScalarUDF wrappers for SIMD kernels.
+rustynum-holo     Holographic: wave substrate, experimental.
+rustynum-rs       Legacy NumArray API (being deprecated in favor of -core).
 ```
 
-- **One binary, all CPUs.** Runtime CPUID detection, function pointer dispatch.
-- `select_hamming_fn()` checks once, returns fn pointer. Hot path = zero branching.
-- Python `.so` works on any x86-64 — no recompile needed for AVX2-only machines.
-- No `#[cfg(target_feature)]` compile-time gates in library code.
+## What NOT To Do
 
-### Port History
+```
+× Don't modify from a ladybug-rs Claude Code session
+× Don't add panicking public APIs (use try_* pattern from PRs 91-92)
+× Don't break Tier 1 default build (ladybug-rs depends on it)
+× Don't add GPU deps (this is CPU SIMD only)
+× Don't remove deprecated functions yet (ladybug-rs may still call them)
+```
 
-| Date | What Changed |
-|------|-------------|
-| 2026-02-27 | Audited ALL AVX-512 intrinsics — confirmed stable 1.93.1, ZERO gaps |
-| 2026-02-28 | Created `simd_compat.rs` — stable `std::arch` wrappers replacing `portable_simd` |
-| 2026-03-01 | Port complete. Zero `#![feature(...)]`. Toolchain = stable. CI = stable. |
+## Session Documents
 
-### Key Decisions (FINAL)
-
-1. **`rust-toolchain.toml` = stable** — port complete, no nightly deps remain
-2. **`simd_compat.rs` is the abstraction** — same API as `portable_simd`, backed by `std::arch`
-3. **CI uses stable for build/test** — Miri uses `+nightly` (standard practice)
-4. **No `#![feature(...)]` allowed** — the port is done, not in progress
-5. **Python bindings inherit dispatch** — same binary, AVX2 fallback = works everywhere
-
----
-
-*This document governs rustynum development. Read
-[ada-docs/architecture/FOUR_LEVEL_ARCHITECTURE.md](https://github.com/AdaWorldAPI/ada-docs/blob/main/architecture/FOUR_LEVEL_ARCHITECTURE.md)
-for the cross-repo architectural contract.*
+```
+.claude/prompts/01-21         Various session prompts (numbered)
+IMPROVEMENT_ROADMAP.md        Outstanding improvements
+COMPARISON_RUSTYNUM_VS_NDARRAY.md  Performance comparison
+SIMD_INTEGRATION_ANALYSIS.md  SIMD tier analysis
+```
