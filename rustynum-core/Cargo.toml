@@ -22,6 +22,7 @@ mkl = ["dep:intel-mkl-src"]
 libxsmm = ["dep:libc"]
 
 [dependencies]
+blake3 = "1"
 intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-seq"], optional = true }
 libc = { version = "0.2", optional = true }
 smallvec = "1"
