@@ -85,23 +85,39 @@ impl<const N: usize> Fingerprint<N> {
     }
 
     /// Hamming distance (number of differing bits).
+    /// Delegates to SIMD arsenal (AVX-512 → AVX2 → scalar) via byte slices.
     #[inline]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
-        let mut dist = 0u32;
-        for i in 0..N {
-            dist += (self.words[i] ^ other.words[i]).count_ones();
+        #[cfg(any(feature = "avx512", feature = "avx2"))]
+        {
+            crate::simd::hamming_distance(self.as_bytes(), other.as_bytes()) as u32
         }
-        dist
+        #[cfg(not(any(feature = "avx512", feature = "avx2")))]
+        {
+            let mut dist = 0u32;
+            for i in 0..N {
+                dist += (self.words[i] ^ other.words[i]).count_ones();
+            }
+            dist
+        }
     }
 
     /// Hamming weight (number of set bits).
+    /// Delegates to SIMD arsenal when available.
     #[inline]
     pub fn popcount(&self) -> u32 {
-        let mut count = 0u32;
-        for i in 0..N {
-            count += self.words[i].count_ones();
+        #[cfg(any(feature = "avx512", feature = "avx2"))]
+        {
+            crate::simd::popcount(self.as_bytes()) as u32
         }
-        count
+        #[cfg(not(any(feature = "avx512", feature = "avx2")))]
+        {
+            let mut count = 0u32;
+            for i in 0..N {
+                count += self.words[i].count_ones();
+            }
+            count
+        }
     }
 
     /// Returns true if all bits are zero (identity element).

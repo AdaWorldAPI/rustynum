@@ -5519,6 +5519,7 @@ dependencies = [
 name = "rustynum-core"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "intel-mkl-src",
  "libc",
  "smallvec",

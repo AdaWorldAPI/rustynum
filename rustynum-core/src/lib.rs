@@ -54,6 +54,14 @@ pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
 pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
+
+// Plane/Node/Mask: i8 accumulator substrate, NaN-free distance/truth, SIMD-wired
+pub mod plane;
+pub mod node;
+pub mod seal;
+pub use plane::{Acc16K, Distance, Plane, Truth, PLANE_BITS, PLANE_BYTES};
+pub use node::{Mask, Node, SPO, SP_, S_O, _PO, S__, _P_, __O, ___};
+pub use seal::{MerkleRoot, Seal};
 pub use hybrid::{
     extract_learning_signal, hybrid_pipeline, hybrid_pipeline_with_backend, resonance_decompose,
     update_hybrid_weights, HybridConfig, HybridScore, HybridStats, LearningSignal, ResonanceResult,
