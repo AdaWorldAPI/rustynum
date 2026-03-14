@@ -1555,20 +1555,19 @@ fn main() {
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║                                                            ║");
     println!(
-        "║  Cypher corpus: {} nodes, {} edges, {} statements     ║",
-        format!("{:>3}", graph.nodes.len()),
-        format!("{:>4}", graph.edges.len()),
-        format!("{:>4}", graph.statements.len())
+        "║  Cypher corpus: {:>3} nodes, {:>4} edges, {:>4} statements     ║",
+        graph.nodes.len(),
+        graph.edges.len(),
+        graph.statements.len()
     );
     println!(
-        "║  VSA projection: {} node vecs, {} SPO triples        ║",
-        format!("{:>3}", projection.node_vectors.len()),
-        format!("{:>4}", projection.edge_triples.len())
+        "║  VSA projection: {:>3} node vecs, {:>4} SPO triples        ║",
+        projection.node_vectors.len(),
+        projection.edge_triples.len()
     );
     println!(
-        "║  Relationship contract: {} types, {} causal rungs    ║",
-        format!("{:>2}", contracts.len()),
-        "4"
+        "║  Relationship contract: {:>2} types, 4 causal rungs    ║",
+        contracts.len()
     );
     println!("║                                                            ║");
     println!("║  Key findings:                                             ║");

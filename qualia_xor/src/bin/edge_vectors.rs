@@ -63,6 +63,7 @@ fn bf16_structural_diff(a: &[u8], b: &[u8]) -> (usize, usize, usize, Vec<usize>)
 }
 
 /// Raw Hamming distance (popcount of XOR). For σ-scoring.
+#[allow(dead_code)]
 fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
     a.iter().zip(b).map(|(x, y)| (x ^ y).count_ones()).sum()
 }
@@ -75,18 +76,17 @@ fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
 fn project_to_16k(vals: &[f32], seed: u64) -> Vec<u8> {
     let n_bits = 16384;
     let n_bytes = n_bits / 8;
-    let n_dims = vals.len();
     let mut rng = SplitMix64::new(seed);
     let mut result = vec![0u8; n_bytes];
 
     for bit_idx in 0..n_bits {
         // Generate random hyperplane normal (±1 entries)
         let mut dot = 0.0f32;
-        for d in 0..n_dims {
+        for &v in vals {
             // Random sign: use PRNG bit to select +1 or -1
             let r = rng.next_u64();
             let sign = if r & 1 == 0 { 1.0f32 } else { -1.0f32 };
-            dot += vals[d] * sign;
+            dot += v * sign;
         }
         // Bit = 1 if dot product is positive
         if dot > 0.0 {
@@ -169,10 +169,13 @@ impl SpoTriple {
 #[derive(Deserialize)]
 struct QualiaItem {
     id: String,
+    #[allow(dead_code)]
     label: String,
+    #[allow(dead_code)]
     family: String,
     vector: HashMap<String, f64>,
     #[serde(default)]
+    #[allow(dead_code)]
     qualia: Option<Vec<String>>,
     #[allow(dead_code)]
     #[serde(default)]
@@ -235,7 +238,7 @@ fn main() {
     // ========================================================================
     // STEP 1: Encode all items as BF16 byte vectors
     // ========================================================================
-    let vecs_f32: Vec<Vec<f32>> = items.iter().map(|it| extract_16(it)).collect();
+    let vecs_f32: Vec<Vec<f32>> = items.iter().map(extract_16).collect();
     let vecs_bf16: Vec<Vec<u8>> = vecs_f32.iter().map(|v| f32_to_bf16_bytes(v)).collect();
 
     println!(
@@ -333,7 +336,9 @@ fn main() {
     struct EdgeResult {
         a_name: String,
         b_name: String,
+        #[allow(dead_code)]
         active: SpoTriple,
+        #[allow(dead_code)]
         passive: SpoTriple,
         edge_xor: Vec<u8>, // flat XOR of all 3 axes
         sign_flips: usize,
@@ -445,7 +450,7 @@ fn main() {
         let y_flips: Vec<&str> = result
             .sign_flip_dims
             .iter()
-            .filter(|&&d| d >= 16 && d < 32)
+            .filter(|&&d| (16..32).contains(&d))
             .map(|&d| DIMS_16_NAMES[d - 16])
             .collect();
         let z_flips: Vec<&str> = result
@@ -609,7 +614,7 @@ fn main() {
         .collect();
     let y_proto: Vec<&str> = proto_dims
         .iter()
-        .filter(|&&d| d >= 16 && d < 32)
+        .filter(|&&d| (16..32).contains(&d))
         .map(|&d| DIMS_16_NAMES[d - 16])
         .collect();
     let z_proto: Vec<&str> = proto_dims
@@ -655,10 +660,10 @@ fn main() {
     }
 
     println!("  Vote distribution (how many edges agree on each bit):");
-    for i in 0..=10 {
-        let bar_len = (hist[i] as f64 / (n_bytes * 8) as f64 * 50.0) as usize;
+    for (i, &count) in hist.iter().enumerate().take(11) {
+        let bar_len = (count as f64 / (n_bytes * 8) as f64 * 50.0) as usize;
         let bar = "#".repeat(bar_len);
-        println!("    {:>3}%: {:>5}  {}", i * 10, hist[i], bar);
+        println!("    {:>3}%: {:>5}  {}", i * 10, count, bar);
     }
 
     // ========================================================================
@@ -906,7 +911,7 @@ fn main() {
     println!("\n--- Step 9: SKU-16K Projection (16 dims → 16384 bits) ---\n");
 
     let gate_16k = SigmaGate::sku_16k();
-    let gate_16k_triple = SigmaGate::new(16384 * 3);
+    let _gate_16k_triple = SigmaGate::new(16384 * 3);
 
     println!(
         "  Projecting {} items from 16 dims → 16384-bit fingerprints...",

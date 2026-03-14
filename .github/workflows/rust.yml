@@ -2,15 +2,12 @@ name: Rust CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'claude/**']
   pull_request:
     branches: [main, develop]
 
 env:
   CARGO_TERM_COLOR: always
-  # qualia-xor: missing candle/tokenizers deps.
-  # Archives: frozen snapshots, use AVX-512 without runtime dispatch (SIGILL on CI).
-  EXCLUDED: "--exclude qualia-xor --exclude rustynum-archive --exclude rustynum-archive-v3 --exclude rustynum-carrier --exclude rustynum-focus"
 
 jobs:
   lint:
@@ -39,8 +36,8 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-      - name: cargo clippy (workspace, excluding qualia_xor)
-        run: cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
+      - name: cargo clippy (workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -71,11 +68,11 @@ jobs:
 
       - name: cargo test (workspace)
         run: |
-          EXCLUDES="${{ env.EXCLUDED }}"
+          EXCLUDES=""
           # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
           # from simd_avx512 throughout their public API. They are x86_64-only
           # until the ISA trait migration is complete.
           if [ "$(uname -m)" != "x86_64" ]; then
-            EXCLUDES="$EXCLUDES --exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
+            EXCLUDES="--exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
           fi
           cargo test --workspace $EXCLUDES

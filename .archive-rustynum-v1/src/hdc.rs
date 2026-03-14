@@ -95,7 +95,7 @@ mod tests {
         let a = NumArrayU8::new(vec![0xFF; 8]);
         let b = NumArrayU8::new(vec![0xFF; 8]);
         let c = NumArrayU8::new(vec![0x00; 8]);
-        let result = NumArrayU8::bundle(&[&a, &b, &c]);
+        let result = NumArrayU8::try_bundle(&[&a, &b, &c]).unwrap();
         assert_eq!(result.get_data(), &vec![0xFF; 8]);
     }
 
@@ -104,7 +104,7 @@ mod tests {
         let a = NumArrayU8::new(vec![0b10101010; 8]);
         let b = NumArrayU8::new(vec![0b11001100; 8]);
         let c = NumArrayU8::new(vec![0b11110000; 8]);
-        let result = NumArrayU8::bundle(&[&a, &b, &c]);
+        let result = NumArrayU8::try_bundle(&[&a, &b, &c]).unwrap();
         assert_eq!(result.get_data(), &vec![0b11101000; 8]);
     }
 

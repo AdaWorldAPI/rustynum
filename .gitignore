@@ -10,4 +10,11 @@
 # Ignore compiled shared object files
 **/*.so
 site/
-**/.DS_Storequalia_xor/src/jina_embeddings_1024.npy
+**/.DS_Store
+qualia_xor/src/jina_embeddings_1024.npy
+
+# Frozen archives — scientific reproducibility snapshots
+.archive-rustynum-v1/
+.archive-rustynum-v3/
+.archive-rustynum-carrier/
+.archive-rustynum-focus/
