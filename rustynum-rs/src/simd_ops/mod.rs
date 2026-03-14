@@ -1,3 +1,4 @@
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{f32x16, f64x8, i32x16, i64x8, u8x64};
 
 const LANES_8: usize = 64;

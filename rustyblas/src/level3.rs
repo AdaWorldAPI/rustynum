@@ -14,6 +14,7 @@ use rustynum_core::simd::{
     SGEMM_NR,
 };
 // SIMD vector types from simd_avx512 — AVX-512 primary, no nightly needed.
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{F32x16 as F32Simd, F64x8 as F64Simd};
 
 /// Wrapper to send a raw mutable pointer across thread boundaries.

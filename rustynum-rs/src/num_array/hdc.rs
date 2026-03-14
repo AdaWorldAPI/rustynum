@@ -32,6 +32,7 @@
 //! so every SIMD path uses full u64x8 vectors with zero scalar tail.
 
 use super::NumArrayU8;
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::u64x8;
 
 /// Crossover point: use ripple-carry for n > this, naive per-byte for n ≤ this.

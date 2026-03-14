@@ -735,13 +735,16 @@ pub fn select_hamming_fn() -> fn(&[u8], &[u8]) -> u64 {
 /// Select the best int8 dot product function for this CPU.
 /// Call ONCE, use many times — avoids redundant CPUID checks.
 ///
-/// Dispatch chain: AVX-512 VNNI (VPDPBUSD) → scalar.
+/// Dispatch chain: AVX-512 VNNI (VPDPBUSD) → AVX2 (VPMADDUBSW+VPMADDWD) → scalar.
 #[inline]
 pub fn select_dot_i8_fn() -> fn(&[u8], &[u8]) -> i64 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512vnni") && is_x86_feature_detected!("avx512f") {
             return dot_i8_vnni_safe;
+        }
+        if is_x86_feature_detected!("avx2") {
+            return dot_i8_avx2_safe;
         }
     }
     dot_i8_scalar
@@ -753,6 +756,14 @@ fn dot_i8_vnni_safe(a: &[u8], b: &[u8]) -> i64 {
     // SAFETY: This wrapper is only returned by select_dot_i8_fn() when
     // AVX-512 VNNI + AVX-512F are detected. Slices come from the caller.
     unsafe { dot_i8_vnni(a, b) }
+}
+
+/// Safe wrapper for dot_i8_avx2 (coerces to fn pointer).
+#[cfg(target_arch = "x86_64")]
+fn dot_i8_avx2_safe(a: &[u8], b: &[u8]) -> i64 {
+    // SAFETY: This wrapper is only returned by select_dot_i8_fn() when
+    // AVX2 is detected. Slices come from the caller.
+    unsafe { dot_i8_avx2(a, b) }
 }
 
 /// Batch Hamming distance: compute distances from `query` to each row in `database`.
@@ -1172,6 +1183,11 @@ pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
             // Slice lengths are verified equal by the assert_eq at function entry.
             return unsafe { dot_i8_vnni(a, b) };
         }
+        if is_x86_feature_detected!("avx2") {
+            // SAFETY: CPU feature detection above guarantees AVX2 is available.
+            // Slice lengths are verified equal by the assert_eq at function entry.
+            return unsafe { dot_i8_avx2(a, b) };
+        }
     }
 
     dot_i8_scalar(a, b)
@@ -1230,6 +1246,74 @@ unsafe fn dot_i8_vnni(a: &[u8], b: &[u8]) -> i64 {
 
     // Scalar tail
     for i in (chunks * 64)..len {
+        result += (a[i] as i8 as i64) * (b[i] as i8 as i64);
+    }
+
+    result
+}
+
+/// AVX2 fast path: 32 bytes per iteration.
+///
+/// Uses VPMADDUBSW (unsigned×signed → i16 pairs) + VPMADDWD (horizontal i16→i32 add)
+/// with the same XOR-0x80 bias correction as the VNNI path:
+///   a_unsigned = a_signed XOR 0x80
+///   pmaddubsw_result = Σ(a_unsigned[j] × b_signed[j]) per 2-byte group → i16
+///   pmaddwd_result = horizontal add adjacent i16 pairs → i32
+///   signed_result = pmaddwd_result − 128 × Σ(b_signed)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn dot_i8_avx2(a: &[u8], b: &[u8]) -> i64 {
+    use core::arch::x86_64::*;
+
+    let len = a.len();
+    let chunks = len / 32;
+
+    // Bias mask: XOR with 0x80 per byte to convert signed→unsigned
+    let bias = _mm256_set1_epi8(-128i8); // 0x80
+    // Ones vector for computing sum(b) via pmaddubsw(ones, b)
+    let ones_u8 = _mm256_set1_epi8(1);
+    // Ones vector for horizontal add in pmaddwd
+    let ones_i16 = _mm256_set1_epi16(1);
+
+    let mut acc = _mm256_setzero_si256();
+    let mut b_sum = _mm256_setzero_si256();
+
+    for i in 0..chunks {
+        let base = i * 32;
+        let av = _mm256_loadu_si256(a[base..].as_ptr() as *const __m256i);
+        let bv = _mm256_loadu_si256(b[base..].as_ptr() as *const __m256i);
+
+        // Convert a from signed to unsigned-with-bias
+        let av_u = _mm256_xor_si256(av, bias);
+
+        // VPMADDUBSW: unsigned×signed → i16 (saturating add of adjacent products)
+        let prod = _mm256_maddubs_epi16(av_u, bv);
+        // VPMADDWD: horizontal add adjacent i16 pairs → i32
+        let widened = _mm256_madd_epi16(prod, ones_i16);
+        acc = _mm256_add_epi32(acc, widened);
+
+        // Accumulate sum(b_signed) for bias correction
+        let b_abs = _mm256_maddubs_epi16(ones_u8, bv);
+        let b_wide = _mm256_madd_epi16(b_abs, ones_i16);
+        b_sum = _mm256_add_epi32(b_sum, b_wide);
+    }
+
+    // Horizontal sum of acc (8 × i32 → i64)
+    let mut acc_vals = [0i32; 8];
+    _mm256_storeu_si256(acc_vals.as_mut_ptr() as *mut __m256i, acc);
+    let total_biased: i64 = acc_vals.iter().map(|&v| v as i64).sum();
+
+    // Horizontal sum of b_sum
+    let mut bsum_vals = [0i32; 8];
+    _mm256_storeu_si256(bsum_vals.as_mut_ptr() as *mut __m256i, b_sum);
+    let total_b: i64 = bsum_vals.iter().map(|&v| v as i64).sum();
+
+    // Correction: biased_result = signed_result + 128 * sum(b)
+    let mut result = total_biased - 128 * total_b;
+
+    // Scalar tail
+    for i in (chunks * 32)..len {
         result += (a[i] as i8 as i64) * (b[i] as i8 as i64);
     }
 
