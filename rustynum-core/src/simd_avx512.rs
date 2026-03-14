@@ -1405,8 +1405,19 @@ pub type f64x4 = F64x4;
 mod tests {
     use super::*;
 
+    /// Skip test at runtime if AVX-512 is not available on this CPU.
+    macro_rules! require_avx512 {
+        () => {
+            if !is_x86_feature_detected!("avx512f") {
+                eprintln!("skipping: AVX-512 not available on this CPU");
+                return;
+            }
+        };
+    }
+
     #[test]
     fn f32x16_basic() {
+        require_avx512!();
         let a = F32x16::splat(1.0);
         let b = F32x16::splat(2.0);
         let c = a + b;
@@ -1415,6 +1426,7 @@ mod tests {
 
     #[test]
     fn f32x16_from_slice() {
+        require_avx512!();
         let data: Vec<f32> = (0..16).map(|i| i as f32).collect();
         let v = F32x16::from_slice(&data);
         let arr = v.to_array();
@@ -1424,6 +1436,7 @@ mod tests {
 
     #[test]
     fn f32x16_reduce() {
+        require_avx512!();
         let data: Vec<f32> = (1..=16).map(|i| i as f32).collect();
         let v = F32x16::from_slice(&data);
         assert!((v.reduce_sum() - 136.0).abs() < 1e-4); // sum(1..=16) = 136
@@ -1433,6 +1446,7 @@ mod tests {
 
     #[test]
     fn f32x16_math() {
+        require_avx512!();
         let v = F32x16::splat(4.0);
         assert!((v.sqrt().reduce_sum() - 32.0).abs() < 1e-4); // 16 × 2.0
         assert!((v.abs().reduce_sum() - 64.0).abs() < 1e-4);
@@ -1444,6 +1458,7 @@ mod tests {
 
     #[test]
     fn f32x16_fma() {
+        require_avx512!();
         let a = F32x16::splat(2.0);
         let b = F32x16::splat(3.0);
         let c = F32x16::splat(1.0);
@@ -1454,6 +1469,7 @@ mod tests {
 
     #[test]
     fn f32x16_comparison_select() {
+        require_avx512!();
         let a = F32x16::from_array([
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
         ]);
@@ -1465,6 +1481,7 @@ mod tests {
 
     #[test]
     fn f64x8_basic() {
+        require_avx512!();
         let a = F64x8::splat(1.0);
         let b = F64x8::splat(2.0);
         let c = a + b;
@@ -1473,6 +1490,7 @@ mod tests {
 
     #[test]
     fn u8x64_bitwise() {
+        require_avx512!();
         let a = U8x64::splat(0xF0);
         let b = U8x64::splat(0x0F);
         assert_eq!((a & b).to_array()[0], 0x00);
@@ -1483,6 +1501,7 @@ mod tests {
 
     #[test]
     fn i32x16_basic() {
+        require_avx512!();
         let a = I32x16::splat(10);
         let b = I32x16::splat(3);
         assert_eq!((a + b).reduce_sum(), 16 * 13);
@@ -1491,6 +1510,7 @@ mod tests {
 
     #[test]
     fn i64x8_basic() {
+        require_avx512!();
         let a = I64x8::splat(100);
         let b = I64x8::splat(50);
         assert_eq!((a + b).reduce_sum(), 8 * 150);
@@ -1499,6 +1519,7 @@ mod tests {
 
     #[test]
     fn u32x16_from_bits_roundtrip() {
+        require_avx512!();
         let f = F32x16::splat(1.0);
         let bits = f.to_bits();
         let f2 = F32x16::from_bits(bits);
@@ -1507,6 +1528,7 @@ mod tests {
 
     #[test]
     fn u64x8_from_array() {
+        require_avx512!();
         let arr = [1u64, 2, 3, 4, 5, 6, 7, 8];
         let v = U64x8::from_array(arr);
         assert_eq!(v.to_array(), arr);
@@ -1514,6 +1536,7 @@ mod tests {
 
     #[test]
     fn cast_f32_i32_roundtrip() {
+        require_avx512!();
         let f = F32x16::splat(42.7);
         let i = f.cast_i32(); // truncating: 42.7 → 42
         assert_eq!(i.reduce_sum(), 16 * 42);

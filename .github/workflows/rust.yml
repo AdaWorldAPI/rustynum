@@ -37,7 +37,14 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy (workspace)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: |
+          EXCLUDES=""
+          # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
+          # in their public API. They are x86_64-only until the ISA trait migration.
+          if [ "$(uname -m)" != "x86_64" ]; then
+            EXCLUDES="--exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
+          fi
+          cargo clippy --workspace $EXCLUDES --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
