@@ -41,7 +41,9 @@ jobs:
           cargo fmt --all -- --check
 
       - name: cargo clippy (workspace, excluding qualia_xor)
-        run: cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
+        run: |
+          rustup component add clippy 2>/dev/null || true
+          cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})

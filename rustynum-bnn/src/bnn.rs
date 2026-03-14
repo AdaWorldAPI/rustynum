@@ -555,7 +555,7 @@ pub fn bnn_hdr_search(
     threshold: u64,
     top_k: usize,
 ) -> Vec<(usize, BnnDotResult)> {
-    use rustynum_core::simd::{hdr_cascade_search, PreciseMode};
+    use rustynum_core::hdr::{Cascade, PreciseMode};
 
     if weights.is_empty() {
         return Vec::new();
@@ -570,12 +570,12 @@ pub fn bnn_hdr_search(
         db_bytes.extend_from_slice(w.as_bytes());
     }
 
-    let hdr_results = hdr_cascade_search(
+    let cascade = Cascade::from_threshold(threshold, vec_bytes);
+    let hdr_results = cascade.query(
         query_bytes,
         &db_bytes,
         vec_bytes,
         weights.len(),
-        threshold,
         PreciseMode::Off,
     );
 
