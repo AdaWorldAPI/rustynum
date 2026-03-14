@@ -70,5 +70,13 @@ jobs:
           key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-test-
 
-      - name: cargo test (workspace, excluding qualia_xor)
-        run: cargo test --workspace ${{ env.EXCLUDED }}
+      - name: cargo test (workspace)
+        run: |
+          EXCLUDES="${{ env.EXCLUDED }}"
+          # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
+          # from simd_avx512 throughout their public API. They are x86_64-only
+          # until the ISA trait migration is complete.
+          if [ "$(uname -m)" != "x86_64" ]; then
+            EXCLUDES="$EXCLUDES --exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
+          fi
+          cargo test --workspace $EXCLUDES

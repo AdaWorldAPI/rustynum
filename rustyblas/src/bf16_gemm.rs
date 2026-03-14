@@ -23,6 +23,7 @@ use rustynum_core::simd::dot_f32;
 #[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{F32x16 as F32Simd, U32x16 as U32Simd};
 
+#[cfg(target_arch = "x86_64")]
 const F32_LANES: usize = 16;
 
 /// BFloat16 stored as raw u16 bits.

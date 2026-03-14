@@ -9,11 +9,12 @@
 //! - `avx2`:   f32x8  (6x8  microkernel), f64x4 (4x4 microkernel)
 
 use rustynum_core::layout::{Diag, Layout, Side, Transpose, Uplo};
+// GEMM blocking constants and AVX-512 types — only used in blocked GEMM path (x86_64 only).
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd::{
     DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC,
     SGEMM_NR,
 };
-// SIMD vector types from simd_avx512 — AVX-512 primary, no nightly needed.
 #[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{F32x16 as F32Simd, F64x8 as F64Simd};
 

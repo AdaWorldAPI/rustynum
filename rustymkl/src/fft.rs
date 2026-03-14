@@ -24,13 +24,16 @@
 #[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{f32x16, f64x8};
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd::{F32_LANES, F64_LANES};
 
 /// Number of complex values processed per f32 SIMD iteration.
 /// Each complex number occupies 2 f32 lanes (re, im).
+#[cfg(target_arch = "x86_64")]
 const F32_COMPLEX_PER_SIMD: usize = F32_LANES / 2; // 8
 
 /// Number of complex values processed per f64 SIMD iteration.
+#[cfg(target_arch = "x86_64")]
 const F64_COMPLEX_PER_SIMD: usize = F64_LANES / 2; // 4
 
 // ============================================================================
