@@ -20,11 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # rust-toolchain.toml pins the channel; just ensure components are present.
+      # rust-toolchain.toml pins channel = "1.94.0"; install it and add components.
       - name: Install Rust toolchain with components
         run: |
-          rustup show
-          rustup component add rustfmt clippy
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.94.0
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -53,9 +53,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # rust-toolchain.toml pins the channel; rustup show triggers install.
+      # rust-toolchain.toml pins channel = "1.94.0".
       - name: Install Rust toolchain
-        run: rustup show
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          rustup default 1.94.0
 
       - name: Cache Cargo
         uses: actions/cache@v4
