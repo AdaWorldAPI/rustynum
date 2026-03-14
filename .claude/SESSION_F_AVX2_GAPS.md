@@ -1,401 +1,224 @@
 # SESSION_F_AVX2_GAPS.md
 
-## One binary. Runtime dispatch. No feature flags for ISA selection.
+## Six-line dispatch. Compile-time ISA selection via target_feature.
 
-**Repo:** rustynum (WRITE — rustynum-core + rustyblas + rustymkl + rustynum-rs)
-**Prereq:** Session E (simd_isa.rs exists with Isa trait + dispatch())
-**Scope:** eliminate compile-time ISA selection, make every entry point runtime-dispatched
-**Stop when:** `cargo test --workspace` passes with NO feature flags, NO RUSTFLAGS
+**Repo:** rustynum (WRITE)
+**Scope:** fix simd.rs to use `target_feature` gates, fix defaults, fill two gaps
+**Stop when:** `cargo test --workspace` passes with NO flags
 
 ---
 
-## THE REAL PROBLEM
+## THE FIX
 
-The codebase currently uses COMPILE-TIME feature gates for ISA selection:
+The codebase already has three complete implementations:
+- `simd_avx512.rs` — AVX-512 (F32x16, VPOPCNTDQ, etc.)
+- `simd_avx2.rs` — AVX2 (F32x8, vpshufb nibble LUT, etc.)
+- `scalar_fns.rs` — scalar fallback (plain loops)
 
-```toml
-# rustynum-core/Cargo.toml:
-default = ["avx512"]
+The ONLY problem was `simd.rs` using `cfg(feature = "avx512")` (Cargo feature)
+instead of `cfg(target_feature = "avx512f")` (CPU feature).
 
-# lib.rs:
+Cargo features are set in Cargo.toml. `target_feature` is set by the compiler
+based on `-C target-cpu=native` or `-C target-feature=+avx512f`. The compiler
+knows what the CPU has. Let it pick.
+
+---
+
+## STEP 1: simd.rs becomes six lines of re-exports
+
+Delete the entire body of simd.rs. Replace with:
+
+```rust
+//! SIMD dispatch: compile-time ISA selection via target_feature.
+//!
+//! Build with:
+//!   cargo build                        → scalar (CI, ARM, WASM)
+//!   cargo build -C target-cpu=native   → best for this CPU
+//!   cargo build -C target-feature=+avx2,+fma → explicit AVX2
+
+#[cfg(target_feature = "avx512f")]
+pub use crate::simd_avx512::*;
+
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
+pub use crate::simd_avx2::*;
+
+#[cfg(not(any(target_feature = "avx2", target_feature = "avx512f")))]
+pub use crate::scalar_fns::*;
+
+// ─── Functions with RUNTIME dispatch (these need all tiers at once) ───
+// Hamming, popcount, dot_i8 use OnceLock fn pointers because they're
+// called from hot loops where the caller selects the function ONCE
+// and calls it millions of times. For these, keep runtime dispatch.
+
+// Re-export the select_*_fn() functions that return fn pointers.
+// These do is_x86_feature_detected! internally and cache the result.
+// They are NOT affected by target_feature — they always compile all paths.
+
+mod hamming_dispatch;
+pub use hamming_dispatch::{
+    hamming_distance, popcount, dot_i8,
+    select_hamming_fn, select_dot_i8_fn,
+    hamming_batch, hamming_top_k,
+};
+```
+
+---
+
+## STEP 2: Move hamming/popcount/dot_i8 dispatch to hamming_dispatch.rs
+
+These functions are SPECIAL — they use runtime dispatch because callers
+do `let f = select_hamming_fn()` and call `f` millions of times in a loop.
+The `select_*_fn()` pattern requires runtime detection.
+
+Create `rustynum-core/src/hamming_dispatch.rs` containing the existing
+hamming_distance, popcount, dot_i8, hamming_batch, hamming_top_k,
+select_hamming_fn, and select_dot_i8_fn functions UNCHANGED from
+the current simd.rs. Cut and paste. Don't rewrite.
+
+These functions already have correct three-tier dispatch:
+  VPOPCNTDQ → AVX2 vpshufb → scalar count_ones
+
+---
+
+## STEP 3: Ensure scalar_fns.rs has EVERY function that simd.rs exports
+
+The scalar module must be a COMPLETE replacement. Check:
+
+```bash
+# Every pub fn in simd_avx512.rs that simd.rs re-exports:
+grep "^pub fn\|^    pub fn" rustynum-core/src/simd_avx512.rs
+
+# Every pub fn in simd_avx2.rs:
+grep "^pub fn" rustynum-core/src/simd_avx2.rs
+
+# Every pub fn currently in scalar_fns.rs:
+grep "^pub fn" rustynum-core/src/scalar_fns.rs
+```
+
+Any function in simd_avx512 or simd_avx2 that doesn't have a scalar
+equivalent → add it to scalar_fns.rs. Scalar implementations are
+simple loops — one or two lines each.
+
+CRITICAL: the function SIGNATURES must be identical across all three
+modules. Same name, same argument types, same return type. The re-export
+in simd.rs only works if the names match.
+
+Functions that exist in simd_avx512 but NOT simd_avx2:
+- iamax_f32, iamax_f64 → add to simd_avx2.rs OR scalar fallback
+- Element-wise ops (add/sub/mul/div_f32/f64_scalar/vec) → add to simd_avx2.rs OR scalar
+- hdr_cascade_search → add scalar version to scalar_fns.rs
+
+For functions without AVX2 versions: the scalar fallback is fine.
+LLVM auto-vectorizes scalar loops to AVX2 when built with `-C target-cpu=native`.
+You don't need hand-written AVX2 for element-wise add.
+
+---
+
+## STEP 4: Fix lib.rs
+
+```rust
+// BEFORE:
 #[cfg(feature = "avx512")] pub mod simd;
 #[cfg(all(feature = "avx2", not(feature = "avx512")))]
 #[path = "simd_avx2.rs"] pub mod simd;
-```
 
-This means: `cargo build` compiles with `avx512` feature ON. Every function
-using `F32x16` (which IS `__m512` inside) is compiled into the binary.
-On ANY machine without AVX-512 — most laptops, all CI runners, all ARM —
-calling these functions is SIGILL.
-
-CI runs `cargo test --workspace` with no flags on ubuntu-latest and macos-latest.
-Neither guarantees AVX-512. macOS-latest is ARM. This is broken.
-
-The fix is NOT switching the default from `avx512` to `avx2`.
-The fix is removing the choice entirely. One binary. Runtime dispatch.
-The CPU decides, not Cargo.toml.
-
----
-
-## WORKFLOW: READ BEFORE WRITING
-
-```
-1. READ the files you're about to change. Fully. Not grep. READ.
-2. READ the files that IMPORT what you're changing.
-3. PLAN the change in a comment or thinking block.
-4. WRITE the code ONCE, correctly.
-5. THEN compile to verify.
-
-DO NOT:
-× Compile first to "see what's there"
-× Write stub code and iterate on compiler errors
-× Use the compiler as a code explorer
-× Fix errors one at a time in a loop
-
-The compiler is a VERIFIER, not a NAVIGATOR.
+// AFTER:
+#[cfg(target_arch = "x86_64")] pub mod simd_avx512;
+#[cfg(target_arch = "x86_64")] pub mod simd_avx2;
+pub mod scalar_fns;
+pub mod simd;            // re-exports from the right module
+pub mod simd_isa;
+mod hamming_dispatch;    // runtime dispatch for hamming/popcount/dot_i8
 ```
 
 ---
 
-## STEP 0: Understand the existing CORRECT pattern
-
-`simd.rs` is the DISPATCHER. `simd_avx512.rs` has AVX-512 implementations.
-`simd_avx2.rs` has AVX2 implementations. READ ALL THREE:
-
-```bash
-# The dispatch pattern (already correct for hamming/popcount):
-grep -A 15 "pub fn hamming_distance" rustynum-core/src/simd.rs
-grep -A 15 "pub fn popcount" rustynum-core/src/simd.rs
-grep -A 15 "pub fn select_hamming_fn" rustynum-core/src/simd.rs
-
-# AVX-512 implementations (the algorithms you need AVX2 equivalents for):
-grep -n "pub fn\|unsafe fn\|pub unsafe fn" rustynum-core/src/simd_avx512.rs | head -30
-
-# AVX2 implementations (what already exists — DON'T rewrite these):
-grep -n "pub fn\|unsafe fn\|pub unsafe fn" rustynum-core/src/simd_avx2.rs | head -30
-
-# Inline implementations that may be in simd.rs itself (some live here):
-grep -n "unsafe fn.*avx2\|unsafe fn.*vnni\|unsafe fn.*scalar" rustynum-core/src/simd.rs | head -20
-```
-
-The dispatch pattern: `is_x86_feature_detected!` at runtime picks
-simd_avx512 vs simd_avx2 vs scalar. Replicate this for every entry point.
-
-NOTE: some AVX2 implementations live INSIDE simd.rs (hamming_avx2, popcount_avx2).
-Others live in simd_avx2.rs. READ BOTH before assuming where things are.
-The AVX-512 implementations may be in simd.rs OR simd_avx512.rs. READ, don't assume.
-
-Also READ the Isa trait from Session E:
-```bash
-cat rustynum-core/src/simd_isa.rs
-```
-
-The trait provides `dispatch()` for generic kernels. Use it for GEMM.
-
----
-
-## STEP 1: Remove compile-time ISA feature gates
-
-### 1a. rustynum-core/Cargo.toml
+## STEP 5: Fix ALL Cargo.tomls
 
 ```toml
-# BEFORE:
-[features]
-default = ["avx512"]
-avx512 = []
-avx2 = []
-portable_simd = []
-
-# AFTER:
-[features]
+# EVERY crate:
 default = []
-portable_simd = []
-# avx512 and avx2 features: REMOVED. ISA is runtime-detected.
+# Remove avx512 = [] and avx2 = [] features entirely.
+# Remove features = ["avx512"] from dependency declarations.
+# ISA is selected by the COMPILER, not by Cargo features.
 ```
 
-### 1b. rustynum-core/src/lib.rs
-
-```rust
-# BEFORE:
-#[cfg(feature = "avx512")] pub mod simd;
-#[cfg(all(feature = "avx2", not(feature = "avx512")))]
-#[path = "simd_avx2.rs"] pub mod simd;
-
-# AFTER:
-#[cfg(target_arch = "x86_64")] pub mod simd_avx512;  // AVX-512 impls, always compiled on x86
-#[cfg(target_arch = "x86_64")] pub mod simd_avx2;    // AVX2 impls, always compiled on x86
-pub mod simd;      // runtime dispatch: picks best available at runtime
-pub mod simd_isa;  // Isa trait: generic kernels + portable_simd bridge
-```
-
-NOTE: `simd_avx512.rs` and `simd_avx2.rs` use `#[target_feature(enable = "...")]`
-on every function. They compile on any x86_64 regardless of CPU.
-The `unsafe` + `#[target_feature]` is what makes this work — the compiler
-generates the AVX-512 instructions but they're only CALLED after runtime detection.
-
-### 1c. Remove feature gates INSIDE simd.rs
-
-The dispatch functions in `simd.rs` may be behind `#[cfg(feature = "avx512")]`.
-Remove those gates. The functions should be unconditional.
-Their INTERNAL dispatch uses `is_x86_feature_detected!` — that stays.
-
-```bash
-# Find all feature gates in simd.rs:
-grep -n "cfg.*feature.*avx" rustynum-core/src/simd.rs
-```
-
-Remove every `#[cfg(feature = "avx512")]` and `#[cfg(feature = "avx2")]`.
-Replace with `#[cfg(target_arch = "x86_64")]` where the code uses x86 intrinsics.
-
-### 1d. Same for all other Cargo.tomls
-
-```bash
-# Find all avx512/avx2 feature references:
-grep -rn "avx512\|avx2" */Cargo.toml
-grep -rn "avx512\|avx2" Cargo.toml
-```
-
-Remove `features = ["avx512"]` from dependency declarations.
-Remove `default = ["avx512"]` from every crate.
-The `avx512` and `avx2` features cease to exist.
-
-### 1e. Remove all `#[cfg(feature = "avx512")]` / `#[cfg(feature = "avx2")]` in ALL .rs files
-
-```bash
-grep -rn 'cfg.*feature.*avx' --include="*.rs" | grep -v target/
-```
-
-Replace each with the appropriate `#[cfg(target_arch = "x86_64")]`
-or remove entirely if the function is behind a runtime `is_x86_feature_detected!`.
+Keep empty `avx512 = []` and `avx2 = []` ONLY if archive crates reference them.
 
 ---
 
-## STEP 2: Make simd.rs the universal dispatcher
+## STEP 6: Fix consumer files that import simd_compat directly
 
-After Step 1, `simd.rs` is always compiled. It must provide every function
-that consumers need, with runtime dispatch inside each one.
-
-READ what all three files export:
 ```bash
-grep "pub fn" rustynum-core/src/simd.rs          # dispatcher entry points
-grep "pub fn\|pub unsafe fn" rustynum-core/src/simd_avx512.rs  # AVX-512 impls
-grep "pub fn\|pub unsafe fn" rustynum-core/src/simd_avx2.rs    # AVX2 impls
+grep -rn "simd_compat::" --include="*.rs" | grep -v target/
 ```
 
-For each public function in simd.rs, verify it has the three-tier dispatch:
-```rust
-pub fn some_operation(args) -> result {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if is_x86_feature_detected!("avx512f") {
-            return unsafe { simd_avx512::some_operation(args) };  // or inline avx512 fn
-        }
-        if is_x86_feature_detected!("avx2") {
-            return unsafe { simd_avx2::some_operation(args) };    // or inline avx2 fn
-        }
-    }
-    scalar_fallback(args)
-}
-```
+Replace `use rustynum_core::simd_compat::F32x16` with
+`use rustynum_core::simd::F32x16` (which re-exports from the right module).
 
-NOTE: some implementations are inline in simd.rs (e.g. hamming_avx2, popcount_avx2).
-Others delegate to simd_avx512.rs or simd_avx2.rs. Both patterns are fine.
-The important thing is that EVERY pub fn in simd.rs has all three tiers.
+The types F32x16, F64x8, U8x64, etc. exist in simd_avx512.rs.
+On AVX2/scalar builds, these types DON'T EXIST. Consumer files that
+use them directly (level3.rs, bf16_gemm.rs, int8_gemm.rs, fft.rs, vml.rs)
+must be gated with `#[cfg(target_feature = "avx512f")]` or rewritten
+to use the Isa trait from simd_isa.rs.
 
-### Fill the dot_i8 AVX2 gap
-
-READ the existing VNNI implementation — it may be in simd.rs or simd_avx512.rs:
-```bash
-grep -n "unsafe fn dot_i8_vnni" rustynum-core/src/simd.rs rustynum-core/src/simd_avx512.rs
-# Then read the full function wherever it lives
-```
-
-The AVX2 version uses VPMADDUBSW + VPMADDWD with the same XOR-0x80 bias
-correction pattern. Write it using the VNNI version as template but with
-__m256i (32 bytes per iteration instead of 64).
-
-Update dot_i8() and select_dot_i8_fn() to include the AVX2 tier.
-
-### Fill the bf16_hamming AVX2 gap
-
-READ — implementations may be in bf16_hamming.rs or split across files:
-```bash
-grep -n "unsafe fn bf16_hamming" rustynum-core/src/bf16_hamming.rs
-grep -n "fn select_bf16_hamming" rustynum-core/src/bf16_hamming.rs
-# Read the full AVX-512 implementation to understand the algorithm,
-# then write the AVX2 equivalent using __m256i
-```
-
-Same algorithm, __m256i instead of __m512i. Half the lanes per iteration.
-Update select_bf16_hamming_fn() to include AVX2.
+For now: gate with `#[cfg(target_feature = "avx512f")]` and provide
+scalar fallback functions. The Isa trait migration is a future session.
 
 ---
 
-## STEP 3: Consumers that use wrapper types directly
+## STEP 7: Fill the two AVX2 gaps
 
-These files import `simd_compat::{F32x16, f32x16, u8x64, ...}` which ARE
-`__m512` types. After Step 1, these types still exist in `simd_avx512.rs`
-but they can only be used inside `#[target_feature]` functions.
+### dot_i8: VNNI → scalar, no AVX2
 
-The fix for each file depends on what it does:
-
-### 3a. rustyblas/src/level3.rs — GEMM microkernels
-
-```rust
-// Currently:
-use rustynum_core::simd_compat::{F32x16 as F32Simd, F64x8 as F64Simd};
-```
-
-This is the biggest change. The GEMM microkernel must be generic over ISA.
-Use the Isa trait from Session E:
-
-```rust
-use rustynum_core::simd_isa::{self, Isa};
-
-fn sgemm_microkernel<I: Isa>(/* ... */) {
-    let mut acc = [I::f32_zero(); 6];
-    for p in 0..k {
-        let b = I::f32_load(b_panel[p * I::F32_LANES..].as_ptr());
-        // ... same algorithm, I:: instead of F32Simd::
-    }
-}
-
-pub fn sgemm(/* args */) {
-    simd_isa::dispatch(
-        || sgemm_blocked::<simd_isa::Avx512>(/* args */),
-        || sgemm_blocked::<simd_isa::Avx2>(/* args */),
-        || sgemm_blocked::<simd_isa::Scalar>(/* args */),
-    );
-}
-```
-
-NR (number of register-width columns) becomes `I::F32_LANES`.
-Panel packing and cache blocking must use the runtime NR.
-
-READ the FULL level3.rs before rewriting. Understand the panel packing,
-the macrokernel dispatch, the MR/NR constants, the threading model.
-Then rewrite ONCE. Do not iterate on compiler errors.
-
-### 3b. rustyblas/src/bf16_gemm.rs — BF16 conversion + GEMM
-
-The conversion functions (`f32_to_bf16_slice`, `bf16_to_f32_slice`) use F32x16.
-
-Simplest correct fix: dispatch at each entry point.
-```rust
-pub fn f32_to_bf16_slice(src: &[f32], dst: &mut [BF16]) {
-    #[cfg(target_arch = "x86_64")]
-    if is_x86_feature_detected!("avx512f") {
-        return unsafe { f32_to_bf16_slice_avx512(src, dst) };
-    }
-    f32_to_bf16_slice_scalar(src, dst)
-    // Scalar is one line per element: (v.to_bits() >> 16) as u16
-    // LLVM auto-vectorizes this to AVX2 on capable hardware.
-}
-```
-
-The BF16 GEMM itself can dispatch to the scalar GEMM with bf16→f32 conversion
-at the edges. No need for a separate AVX2 BF16 GEMM kernel.
-
-### 3c. rustyblas/src/int8_gemm.rs — quantize functions
-
-`simd_abs_max()`, `quantize_f32_to_u8()`, `quantize_f32_to_i8()` use f32x16.
-
-Replace with dispatch at entry:
-```rust
-fn simd_abs_max(data: &[f32]) -> f32 {
-    #[cfg(target_arch = "x86_64")]
-    if is_x86_feature_detected!("avx512f") {
-        return unsafe { simd_abs_max_avx512(data) };
-    }
-    // Scalar: plain loop. LLVM auto-vectorizes.
-    data.iter().map(|x| x.abs()).fold(0.0f32, f32::max)
-}
-```
-
-The quantize loops: same pattern. Move the f32x16 code into an
-`unsafe fn quantize_avx512(...)` with `#[target_feature(enable = "avx512f")]`,
-add a scalar fallback, dispatch at entry.
-
-Note: int8_gemm.rs already has `int8_gemm_vnni_512` AND `int8_gemm_vnni_256`.
-READ the existing dispatch in `int8_gemm_i32()` — it may already be correct.
-
-### 3d. rustynum-rs/src/num_array/array_struct.rs, simd_ops/mod.rs
+The dot_i8 dispatch in hamming_dispatch.rs goes VNNI → scalar.
+Add an AVX2 tier using VPMADDUBSW + VPMADDWD with the same
+XOR-0x80 bias correction. Read the VNNI version first:
 
 ```bash
-grep -n "simd_compat" rustynum-rs/src/num_array/array_struct.rs
-grep -n "simd_compat" rustynum-rs/src/simd_ops/mod.rs
+grep -A 60 "unsafe fn dot_i8_vnni" rustynum-core/src/hamming_dispatch.rs
 ```
 
-These import the wrapper types for NumArray operations (sum, dot, axpy, etc.).
-CHECK: do these operations go through `simd.rs` functions (which are dispatched)?
-Or do they use the types directly in inline loops?
+Same algorithm, __m256i instead of __m512i, 32 bytes per iteration.
 
-If they go through `simd.rs` → already safe after Step 2.
-If they use types directly → need the same dispatch-at-entry treatment.
+### bf16_hamming: AVX-512 → scalar, no AVX2
 
-### 3e. rustynum-rs/src/num_array/bitwise.rs, hdc.rs
-
-```bash
-grep -n "simd_compat\|HammingSimdOps" rustynum-rs/src/num_array/bitwise.rs
-```
-
-Bitwise ops likely go through `HammingSimdOps` → `simd::hamming_distance()`.
-If so, already safe. VERIFY by reading the trait impl.
-
-### 3f. rustymkl/src/fft.rs, rustymkl/src/vml.rs
-
-```bash
-grep -n "simd_compat" rustymkl/src/fft.rs
-grep -n "simd_compat" rustymkl/src/vml.rs
-```
-
-Same treatment: dispatch at entry or route through simd.rs.
-
-### 3g. rustynum-core/src/prefilter.rs
-
-```bash
-sed -n '50,60p' rustynum-core/src/prefilter.rs
-```
-
-Uses f32x16. Same fix: dispatch at entry or scalar fallback.
+Read the AVX-512 version, write the AVX2 version with __m256i.
+Same bit manipulation, half the lanes.
 
 ---
 
-## STEP 4: Update all `simd_compat::` imports
+## STEP 8: CI workflow
 
-After Step 1, `simd_compat.rs` is a deprecated re-export shim pointing to
-`simd_avx512.rs`. Any file still importing from `simd_compat::` needs updating.
+```yaml
+# .github/workflows/rust.yml
+# Default build: no target-cpu flag → scalar, works everywhere
+cargo test --workspace
 
-```bash
-grep -rn "simd_compat::" --include="*.rs" | grep -v "target/"
+# Optional: AVX2 build on x86 runners
+# RUSTFLAGS="-C target-feature=+avx2,+fma" cargo test --workspace
+
+# The point: default cargo test NEVER needs AVX-512.
+# AVX-512 builds are for production deployment on known hardware.
 ```
 
-For files that need runtime dispatch: replace with `use crate::simd;` or
-`use rustynum_core::simd;` and call the dispatched functions.
-
-For files that use the Isa trait: replace with `use crate::simd_isa::Isa;`.
-
-For files that are INSIDE `#[target_feature(enable = "avx512f")]` functions:
-they can keep using `simd_avx512::F32x16` directly — that's correct, the
-target_feature guard makes it safe.
+Add `rustup component add rustfmt` before the fmt check step.
 
 ---
 
 ## VERIFICATION
 
 ```bash
-# THE definitive test. No flags. No RUSTFLAGS. No features.
-# If this passes, every code path is safe on any x86_64.
+# Scalar (default, CI):
 cargo test --workspace
 
-# Also verify that AVX-512 path still works when available:
+# AVX2 (most x86 hardware):
+RUSTFLAGS="-C target-feature=+avx2,+fma" cargo test --workspace
+
+# AVX-512 (this server):
 RUSTFLAGS="-C target-cpu=native" cargo test --workspace
 
-# Clippy clean:
-cargo clippy --workspace -- -D warnings
-
-# If cross toolchain available, verify ARM compiles:
-cargo check --target aarch64-unknown-linux-gnu
+# All three must pass.
 ```
 
 ---
@@ -403,11 +226,9 @@ cargo check --target aarch64-unknown-linux-gnu
 ## NOT IN SCOPE
 
 ```
-× Don't rewrite simd_avx512.rs internals (it SHOULD use __m512 — it's the AVX-512 impl)
-× Don't rewrite simd_avx2.rs internals (already optimized, don't assume algorithms)
-× Don't touch hdr.rs (Sessions C/D)
-× Don't touch Plane/Node/Mask
-× Don't add new SIMD algorithms — only add dispatch + scalar fallbacks
-× Don't add the portable_simd nightly path (Session E already did the trait)
-× Don't rename files or move code between files (just add dispatch wrappers)
+× Don't add runtime dispatch for BLAS-1 or element-wise ops (compile-time is correct)
+× Don't write a CommandSet struct or dispatch macro
+× Don't rewrite simd_avx512.rs or simd_avx2.rs internals
+× Don't touch hdr.rs
+× Don't add GPU backends
 ```
