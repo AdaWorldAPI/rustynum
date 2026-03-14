@@ -1,4 +1,4 @@
-use rustynum_core::simd_compat::f32x16;
+use rustynum_core::simd_avx512::f32x16;
 use std::time::Instant;
 
 /// Old rustynum-rs approach: transpose B then dot product each row

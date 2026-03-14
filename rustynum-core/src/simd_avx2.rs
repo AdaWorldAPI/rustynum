@@ -6,7 +6,7 @@
 //! Targets: Intel Meteor Lake (U9 185H), Alder Lake, AMD Zen 2+, etc.
 //! These CPUs have AVX2 + AVX-VNNI (256-bit) but no AVX-512.
 
-use crate::simd_compat::{f32x8, f64x4};
+use crate::simd_avx512::{f32x8, f64x4};
 
 // ============================================================================
 // AVX2 lane counts (half of AVX-512)

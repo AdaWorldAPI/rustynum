@@ -32,7 +32,7 @@
 //! so every SIMD path uses full u64x8 vectors with zero scalar tail.
 
 use super::NumArrayU8;
-use rustynum_core::simd_compat::u64x8;
+use rustynum_core::simd_avx512::u64x8;
 
 /// Crossover point: use ripple-carry for n > this, naive per-byte for n ≤ this.
 /// Below this threshold, compiler auto-vectorization of the byte-level loop
@@ -513,13 +513,13 @@ impl NumArrayU8 {
         count: usize,
         threshold: u64,
     ) -> Vec<(usize, u64)> {
-        let results = rustynum_core::simd::hdr_cascade_search(
+        let cascade = rustynum_core::hdr::Cascade::from_threshold(threshold, vec_len);
+        let results = cascade.query(
             &self.data,
             &database.data,
             vec_len,
             count,
-            threshold,
-            rustynum_core::simd::PreciseMode::Off,
+            rustynum_core::hdr::PreciseMode::Off,
         );
         results.iter().map(|r| (r.index, r.hamming)).collect()
     }
@@ -545,13 +545,13 @@ impl NumArrayU8 {
         count: usize,
         threshold: u64,
     ) -> Vec<(usize, u64, f64)> {
-        let results = rustynum_core::simd::hdr_cascade_search(
+        let cascade = rustynum_core::hdr::Cascade::from_threshold(threshold, vec_len);
+        let results = cascade.query(
             &self.data,
             &database.data,
             vec_len,
             count,
-            threshold,
-            rustynum_core::simd::PreciseMode::Vnni,
+            rustynum_core::hdr::PreciseMode::Vnni,
         );
         results
             .iter()
@@ -573,13 +573,13 @@ impl NumArrayU8 {
         scale: f32,
         zero_point: i32,
     ) -> Vec<(usize, u64, f64)> {
-        let results = rustynum_core::simd::hdr_cascade_search(
+        let cascade = rustynum_core::hdr::Cascade::from_threshold(threshold, vec_len);
+        let results = cascade.query(
             &self.data,
             &database.data,
             vec_len,
             count,
-            threshold,
-            rustynum_core::simd::PreciseMode::F32 { scale, zero_point },
+            rustynum_core::hdr::PreciseMode::F32 { scale, zero_point },
         );
         results
             .iter()
@@ -601,13 +601,13 @@ impl NumArrayU8 {
         threshold: u64,
         delta_weight: f32,
     ) -> Vec<(usize, u64, f64)> {
-        let results = rustynum_core::simd::hdr_cascade_search(
+        let cascade = rustynum_core::hdr::Cascade::from_threshold(threshold, vec_len);
+        let results = cascade.query(
             &self.data,
             &database.data,
             vec_len,
             count,
-            threshold,
-            rustynum_core::simd::PreciseMode::DeltaXor { delta_weight },
+            rustynum_core::hdr::PreciseMode::DeltaXor { delta_weight },
         );
         results
             .iter()
@@ -629,13 +629,13 @@ impl NumArrayU8 {
         threshold: u64,
         weights: rustynum_core::bf16_hamming::BF16Weights,
     ) -> Vec<(usize, u64, f64)> {
-        let results = rustynum_core::simd::hdr_cascade_search(
+        let cascade = rustynum_core::hdr::Cascade::from_threshold(threshold, vec_len);
+        let results = cascade.query(
             &self.data,
             &database.data,
             vec_len,
             count,
-            threshold,
-            rustynum_core::simd::PreciseMode::BF16Hamming { weights },
+            rustynum_core::hdr::PreciseMode::BF16Hamming { weights },
         );
         results
             .iter()

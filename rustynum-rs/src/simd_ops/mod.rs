@@ -1,4 +1,4 @@
-use rustynum_core::simd_compat::{f32x16, f64x8, i32x16, i64x8, u8x64};
+use rustynum_core::simd_avx512::{f32x16, f64x8, i32x16, i64x8, u8x64};
 
 const LANES_8: usize = 64;
 const LANES_32: usize = 16;

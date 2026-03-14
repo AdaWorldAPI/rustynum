@@ -10,8 +10,12 @@
 //! - **Parallel execution**: Thread pool utilities for data-parallel SIMD workloads.
 //! - **CBLAS layout types**: Row-major / column-major layout abstractions.
 
-// All SIMD uses stable std::arch via simd_compat — no nightly required.
+// All SIMD uses stable std::arch via simd_avx512 — no nightly required.
 
+pub mod simd_avx512;      // AVX-512 primary (was simd_compat)
+
+// Backward compat shim — remove in next major version
+#[allow(deprecated)]
 pub mod simd_compat;
 
 pub mod backends;
@@ -33,7 +37,9 @@ pub mod tail_backend;
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
 
-// SIMD backend selection: AVX-512 (stable via simd_compat) or AVX2 (stable via simd_compat)
+pub mod hdr;              // HDR cascade search
+
+// SIMD backend selection: AVX-512 (stable via simd_avx512) or AVX2 (stable via simd_avx512)
 #[cfg(feature = "avx512")]
 pub mod simd;
 #[cfg(all(feature = "avx2", not(feature = "avx512")))]

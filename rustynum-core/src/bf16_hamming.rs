@@ -686,7 +686,7 @@ pub fn hydrate_qualia_f32(packed: &PackedQualia) -> [f32; 16] {
 
 #[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
-    use crate::simd_compat::{f32x16, i32x16};
+    use crate::simd_avx512::{f32x16, i32x16};
 
     // Sign-extend i8 → i32 (portable_simd doesn't have i8x16→f32x16 directly)
     let i32_vals = i32x16::from_array(std::array::from_fn(|i| resonance[i] as i32));

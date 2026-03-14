@@ -13,8 +13,8 @@ use rustynum_core::simd::{
     DGEMM_KC, DGEMM_MC, DGEMM_MR, DGEMM_NC, DGEMM_NR, SGEMM_KC, SGEMM_MC, SGEMM_MR, SGEMM_NC,
     SGEMM_NR,
 };
-// SIMD vector types from simd_compat — AVX-512 primary, no nightly needed.
-use rustynum_core::simd_compat::{F32x16 as F32Simd, F64x8 as F64Simd};
+// SIMD vector types from simd_avx512 — AVX-512 primary, no nightly needed.
+use rustynum_core::simd_avx512::{F32x16 as F32Simd, F64x8 as F64Simd};
 
 /// Wrapper to send a raw mutable pointer across thread boundaries.
 /// Safety: The caller must ensure non-overlapping access between threads.

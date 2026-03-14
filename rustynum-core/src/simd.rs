@@ -3,7 +3,7 @@
 //! These are low-level building blocks — the actual BLAS/LAPACK/FFT
 //! implementations in rustyblas and rustymkl compose these primitives.
 
-use crate::simd_compat::{f32x16, f64x8};
+use crate::simd_avx512::{f32x16, f64x8};
 
 // ============================================================================
 // AVX-512 lane counts
@@ -1313,6 +1313,9 @@ pub fn div_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
 // ============================================================================
 
 /// Result from HDR cascade search.
+///
+/// Deprecated: use [`crate::hdr::RankedHit`] instead.
+#[deprecated(since = "0.4.0", note = "use hdr::RankedHit")]
 #[derive(Debug, Clone)]
 pub struct HdrResult {
     /// Index into the database.
@@ -1324,126 +1327,13 @@ pub struct HdrResult {
     pub precise: f64,
 }
 
-/// Precision mode for Stroke 3 of the HDR cascade.
-///
-/// Six data paths through the same cascade engine:
-///
-/// | Case | Source | Tier 1-2 | Tier 3 | Example |
-/// |------|--------|----------|--------|---------|
-/// | Off  | —      | hamming  | none   | reject-only |
-/// | Vnni | native binary 64Kbit | partial popcount | VNNI dot_i8 cosine | SimHash/LSH/HDC |
-/// | F32  | f32 embedding → u8 | hamming on u8 | dequant → f32 dot | Jina embed |
-/// | BF16 | f32 embedding → u8 | hamming on u8 | dequant → bf16 dot | large embed db |
-/// | DeltaXor | 3D + INT8 delta | XOR delta popcount | INT8 residual dot | DeltaLayer |
-/// | BF16Hamming | native BF16 bytes (2B/dim) | weighted XOR popcount | weighted BF16 distance | 6× faster than F32 |
-#[derive(Clone, Copy, Debug)]
-pub enum PreciseMode {
-    /// No precision tier — return Hamming distances only.
-    Off,
+/// Deprecated: use [`crate::hdr::PreciseMode`] instead.
+#[deprecated(since = "0.4.0", note = "use hdr::PreciseMode")]
+pub type PreciseMode = crate::hdr::PreciseMode;
 
-    /// Case 1+2: Native u8 vectors (HDC/SimHash/LSH, including 64Kbit hires).
-    /// Uses VNNI dot_i8 (_mm512_dpbusd_epi32). No type conversion.
-    /// Exact integer arithmetic → f64 cosine.
-    Vnni,
-
-    /// Case 1 (float source): Quantized f32 embeddings → dequantize to f32.
-    /// f32_val = scale * (u8_val - zero_point), then SIMD dot_f32 → cosine.
-    /// Use when embed channel holds quantized Jina/CLIP vectors.
-    F32 { scale: f32, zero_point: i32 },
-
-    /// Case 1 (float source, large DB): Same dequantization but signals BF16 intent.
-    /// Currently falls through to f32 path.
-    /// Future (VDPBF16PS): bf16×bf16→f32 at 2× throughput, halved bandwidth.
-    /// Worth it when finalists > ~500 or database is bandwidth-bound.
-    BF16 { scale: f32, zero_point: i32 },
-
-    /// Case 5: XOR Delta Layer + INT8 residual.
-    /// Tier 1-2 operate on XOR delta popcount (ground ^ delta).
-    /// Tier 3 computes INT8 dot on the raw bytes as signed values,
-    /// treating byte magnitudes as a continuous residual signal.
-    /// `delta_weight` controls blend: distance = hamming * (1-w) + residual_dot * w
-    DeltaXor { delta_weight: f32 },
-
-    /// Case 6: BF16-structured Hamming.
-    /// Primary distance metric on native BF16 byte arrays (2 bytes/dim).
-    /// XOR + per-field weighted popcount: sign(W_s) + exponent(W_e) + mantissa(W_m).
-    /// 3× slower than binary Hamming, 6× faster than FP32 cosine, near-cosine quality.
-    BF16Hamming {
-        weights: crate::bf16_hamming::BF16Weights,
-    },
-}
-
-impl PartialEq for PreciseMode {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Off, Self::Off) => true,
-            (Self::Vnni, Self::Vnni) => true,
-            (
-                Self::F32 {
-                    scale: s1,
-                    zero_point: z1,
-                },
-                Self::F32 {
-                    scale: s2,
-                    zero_point: z2,
-                },
-            ) => s1.to_bits() == s2.to_bits() && z1 == z2,
-            (
-                Self::BF16 {
-                    scale: s1,
-                    zero_point: z1,
-                },
-                Self::BF16 {
-                    scale: s2,
-                    zero_point: z2,
-                },
-            ) => s1.to_bits() == s2.to_bits() && z1 == z2,
-            (Self::DeltaXor { delta_weight: w1 }, Self::DeltaXor { delta_weight: w2 }) => {
-                w1.to_bits() == w2.to_bits()
-            }
-            (Self::BF16Hamming { weights: w1 }, Self::BF16Hamming { weights: w2 }) => w1 == w2,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for PreciseMode {}
-
-/// 3-Stroke Adaptive HDR Cascade Search.
-///
-/// Operates on raw `&[u8]` slices — the HDC/NumArray layer wraps this.
-///
-/// ## Stroke 1 (Belichtungsmesser)
-///
-/// Partial popcount on first `vec_bytes/16` bytes of each vector.
-/// Warmup on first 128 candidates to estimate population μ and σ.
-/// Reject candidates where scaled estimate > threshold + 3σ.
-/// Kills ~98% of candidates.
-///
-/// ## Stroke 2 (Full resolution)
-///
-/// Incremental full Hamming on survivors (remaining bytes only).
-/// Reject candidates where full distance > threshold.
-/// Kills ~90% of Stroke 1 survivors.
-///
-/// ## Stroke 3 (HDR precision)
-///
-/// High-precision distance on finalists. Mode selected by `precise_mode`:
-/// - `Off` — no Stroke 3, return Hamming only
-/// - `Vnni` — VNNI dot_i8 → cosine (native u8 vectors)
-/// - `F32`/`BF16` — dequantize u8 → f32, SIMD dot → cosine
-/// - `DeltaXor` — blended Hamming + INT8 cosine
-///
-/// ## Performance model (100K × 2KB vectors, threshold=500)
-///
-/// | Stroke | Candidates | Ops/candidate | Total ops |
-/// |--------|-----------|---------------|-----------|
-/// | 1      | 100,000   | 2 VPOPCNTDQ  | 200,000   |
-/// | 2      | ~2,000    | 32 VPOPCNTDQ | 64,000    |
-/// | 3      | ~200      | 32 VNNI      | 6,400     |
-/// | **Total** |        |              | **270,400** |
-/// | Brute force |      |              | 3,200,000 |
-/// | **Speedup** |      |              | **~12×**  |
+/// Deprecated: use [`crate::hdr::Cascade::query()`] instead.
+#[deprecated(since = "0.4.0", note = "use hdr::Cascade::query()")]
+#[allow(deprecated)]
 pub fn hdr_cascade_search(
     query: &[u8],
     database: &[u8],
@@ -1452,304 +1342,20 @@ pub fn hdr_cascade_search(
     threshold: u64,
     precise_mode: PreciseMode,
 ) -> Vec<HdrResult> {
-    assert_eq!(query.len(), vec_bytes);
-    assert_eq!(database.len(), vec_bytes * num_vectors);
-
-    let hamming_fn = select_hamming_fn();
-
-    // ─── Configuration ───
-    let s1_bytes = (((vec_bytes / 16).max(64) + 63) & !63).min(vec_bytes); // 64-byte aligned for VPOPCNTDQ
-    let scale1 = (vec_bytes as f64) / (s1_bytes as f64);
-    let warmup_n = 128.min(num_vectors);
-
-    // For small vectors, skip cascade entirely
-    if vec_bytes < 128 {
-        let mut results = Vec::new();
-        for i in 0..num_vectors {
-            let base = i * vec_bytes;
-            let d = hamming_fn(query, &database[base..base + vec_bytes]);
-            if d <= threshold {
-                results.push(HdrResult {
-                    index: i,
-                    hamming: d,
-                    precise: f64::NAN,
-                });
-            }
-        }
-        if precise_mode != PreciseMode::Off && !results.is_empty() {
-            apply_precision_tier(query, database, vec_bytes, &mut results, precise_mode);
-        }
-        return results;
-    }
-
-    // ════════════════════════════════════════════════════════
-    // STROKE 1: Partial popcount with σ warmup
-    // ════════════════════════════════════════════════════════
-
-    // Compute σ_est: the estimation error of partial sampling at the threshold boundary.
-    //
-    // For a true Hamming distance d from N*8 total bits, sampling s bytes gives
-    // d̂ = popcount(xor_prefix) × (N/s). The standard deviation of d̂ is:
-    //   σ(d̂) = N × √(8 × p × (1−p) / s)
-    // where p = d/(N×8) is the bit-flip probability.
-    //
-    // We compute σ at the threshold boundary (p = threshold / total_bits).
-    // Additionally, we use warmup to get the population distribution for a tighter
-    // secondary σ if the population is well-separated from the threshold.
-    let query_prefix = &query[..s1_bytes];
-    let total_bits = (vec_bytes * 8) as f64;
-    let p_thresh = (threshold as f64 / total_bits).clamp(0.001, 0.999);
-    let sigma_est =
-        (vec_bytes as f64) * (8.0 * p_thresh * (1.0 - p_thresh) / s1_bytes as f64).sqrt();
-
-    // Warmup: sample first warmup_n candidates to check if population σ is even wider
-    let mut warmup_dists = Vec::with_capacity(warmup_n);
-    for i in 0..warmup_n {
-        let base = i * vec_bytes;
-        let cand_prefix = &database[base..base + s1_bytes];
-        let d = hamming_fn(query_prefix, cand_prefix);
-        let estimate = (d as f64 * scale1) as u64;
-        warmup_dists.push(estimate);
-    }
-
-    let var: f64 = {
-        let mu: f64 = warmup_dists.iter().map(|&d| d as f64).sum::<f64>() / warmup_n as f64;
-        warmup_dists
-            .iter()
-            .map(|&d| {
-                let diff = d as f64 - mu;
-                diff * diff
-            })
-            .sum::<f64>()
-            / warmup_n as f64
-    };
-    let sigma_pop = var.sqrt();
-
-    // Use the LARGER of estimation error σ and population σ.
-    // σ_est captures the statistical uncertainty of partial sampling.
-    // σ_pop captures the actual spread in the database.
-    let sigma = sigma_est.max(sigma_pop).max(1.0);
-
-    // Reject threshold: threshold + 3σ (Belichtungsmesser: one measurement, applied to all)
-    let s1_reject = threshold as f64 + 3.0 * sigma;
-
-    // Phase 1b: Scan ALL candidates (re-checking warmup is fine — tiny cost)
-    let mut survivors: Vec<(usize, u64)> = Vec::with_capacity(num_vectors / 20);
-
-    for i in 0..num_vectors {
-        let base = i * vec_bytes;
-        let cand_prefix = &database[base..base + s1_bytes];
-        let d = hamming_fn(query_prefix, cand_prefix);
-        let estimate = (d as f64 * scale1) as u64;
-
-        if (estimate as f64) <= s1_reject {
-            survivors.push((i, d)); // carry partial distance for incremental Stroke 2
-        }
-    }
-
-    // ════════════════════════════════════════════════════════
-    // STROKE 2: Full Hamming on survivors (incremental)
-    // ════════════════════════════════════════════════════════
-
-    let mut finalists: Vec<HdrResult> = Vec::with_capacity(survivors.len() / 5 + 1);
-    let query_rest = &query[s1_bytes..];
-
-    for &(idx, d_prefix) in &survivors {
-        let base = idx * vec_bytes;
-        // Incremental: compute remaining bytes only
-        let d_rest = hamming_fn(query_rest, &database[base + s1_bytes..base + vec_bytes]);
-        let d_full = d_prefix + d_rest;
-
-        if d_full <= threshold {
-            finalists.push(HdrResult {
-                index: idx,
-                hamming: d_full,
-                precise: f64::NAN,
-            });
-        }
-    }
-
-    // ════════════════════════════════════════════════════════
-    // STROKE 3: High-precision distance (optional VNNI cosine)
-    // ════════════════════════════════════════════════════════
-
-    if precise_mode != PreciseMode::Off && !finalists.is_empty() {
-        apply_precision_tier(query, database, vec_bytes, &mut finalists, precise_mode);
-    }
-
-    finalists
-}
-
-/// Stroke 3: compute high-precision distance for finalists.
-///
-/// Mode selection:
-/// - `Vnni` — VNNI dot_i8 → cosine (native u8 vectors, no conversion)
-/// - `F32`/`BF16` — dequantize u8 → f32, SIMD dot_f32 → cosine
-/// - `DeltaXor` — blended hamming_norm * (1-w) + INT8 cosine * w
-///
-/// Sorts by precise distance descending (most similar first).
-fn apply_precision_tier(
-    query: &[u8],
-    database: &[u8],
-    vec_bytes: usize,
-    finalists: &mut [HdrResult],
-    precise_mode: PreciseMode,
-) {
-    match precise_mode {
-        PreciseMode::Off => return,
-
-        PreciseMode::Vnni => {
-            let dot_fn = select_dot_i8_fn();
-            let query_norm_sq = dot_fn(query, query);
-            let query_norm = (query_norm_sq as f64).sqrt();
-
-            if query_norm == 0.0 {
-                for r in finalists.iter_mut() {
-                    r.precise = 0.0;
-                }
-                return;
-            }
-
-            for r in finalists.iter_mut() {
-                let base = r.index * vec_bytes;
-                let candidate = &database[base..base + vec_bytes];
-
-                let dot = dot_fn(query, candidate);
-                let cand_norm_sq = dot_fn(candidate, candidate);
-                let cand_norm = (cand_norm_sq as f64).sqrt();
-
-                r.precise = if cand_norm > 0.0 {
-                    dot as f64 / (query_norm * cand_norm)
-                } else {
-                    0.0
-                };
-            }
-        }
-
-        PreciseMode::F32 { scale, zero_point } | PreciseMode::BF16 { scale, zero_point } => {
-            // Dequantize u8 → f32, then SIMD dot_f32 → cosine.
-            //
-            // Both F32 and BF16 modes use the same f32 path for now.
-            // When VDPBF16PS is wired (native bf16×bf16→f32 dot), BF16 mode
-            // should skip the f32 intermediate entirely.
-            //
-            // For ~200 finalists × 2KB = 400KB temporary — fits L2.
-
-            // Scalar dequantize: ~200 finalists × 2048 ops = 400K ops, dominated by dot_f32 that follows.
-            // SIMD widening (VPMOVZXBD + VCVTDQ2PS) would save ~3× here but total search is <1% affected.
-            let mut query_f32 = vec![0.0f32; vec_bytes];
-            for i in 0..vec_bytes {
-                query_f32[i] = scale * (query[i] as i32 - zero_point) as f32;
-            }
-            let query_norm_sq = dot_f32(&query_f32, &query_f32);
-            let query_norm = (query_norm_sq as f64).sqrt();
-
-            if query_norm == 0.0 {
-                for r in finalists.iter_mut() {
-                    r.precise = 0.0;
-                }
-                return;
-            }
-
-            // Reuse buffer for candidates (avoid per-candidate allocation)
-            let mut cand_f32 = vec![0.0f32; vec_bytes];
-
-            for r in finalists.iter_mut() {
-                let base = r.index * vec_bytes;
-                let candidate = &database[base..base + vec_bytes];
-
-                // Dequantize candidate into reused buffer
-                for i in 0..vec_bytes {
-                    cand_f32[i] = scale * (candidate[i] as i32 - zero_point) as f32;
-                }
-
-                let dot = dot_f32(&query_f32, &cand_f32) as f64;
-                let cand_norm = (dot_f32(&cand_f32, &cand_f32) as f64).sqrt();
-
-                r.precise = if cand_norm > 0.0 {
-                    dot / (query_norm * cand_norm)
-                } else {
-                    0.0
-                };
-            }
-        }
-
-        PreciseMode::DeltaXor { delta_weight } => {
-            // XOR Delta Layer + INT8 residual.
-            //
-            // The u8 vectors are XOR deltas (ground ^ layer).
-            // Tier 1-2 already computed Hamming on them.
-            // Tier 3 adds INT8 dot product on the raw bytes as signed values,
-            // treating byte magnitudes as a continuous residual signal.
-            //
-            // Final score blends:
-            //   distance = hamming_norm * (1 - w) + (1 - cosine_i8) * w
-            //   where w = delta_weight, hamming_norm = hamming / total_bits
-
-            let total_bits = (vec_bytes * 8) as f64;
-            let dot_fn = select_dot_i8_fn();
-            let query_norm_sq = dot_fn(query, query);
-            let query_norm = (query_norm_sq as f64).sqrt();
-
-            let w = delta_weight as f64;
-
-            for r in finalists.iter_mut() {
-                let base = r.index * vec_bytes;
-                let candidate = &database[base..base + vec_bytes];
-
-                let hamming_norm = r.hamming as f64 / total_bits;
-
-                let cosine = if query_norm > 0.0 {
-                    let dot = dot_fn(query, candidate);
-                    let cand_norm = (dot_fn(candidate, candidate) as f64).sqrt();
-                    if cand_norm > 0.0 {
-                        dot as f64 / (query_norm * cand_norm)
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
-
-                let blended = hamming_norm * (1.0 - w) + (1.0 - cosine) * w;
-                r.precise = 1.0 - blended; // higher = more similar (cosine convention)
-            }
-        }
-
-        PreciseMode::BF16Hamming { weights } => {
-            // BF16-structured Hamming: weighted XOR with per-field popcount.
-            // The u8 slices are raw BF16 bytes (2 bytes per dimension).
-            // Distance is already semantically meaningful — normalize to [0, 1].
-            let bf16_fn = crate::bf16_hamming::select_bf16_hamming_fn();
-            let max_per_dim =
-                weights.sign as u64 + 8 * weights.exponent as u64 + 7 * weights.mantissa as u64;
-            let n_dims = vec_bytes / 2;
-            let max_total = max_per_dim * n_dims as u64;
-
-            for r in finalists.iter_mut() {
-                let base = r.index * vec_bytes;
-                let candidate = &database[base..base + vec_bytes];
-                let dist = bf16_fn(query, candidate, &weights);
-                // Normalize: 0 = identical, 1 = maximally different
-                let norm = if max_total > 0 {
-                    dist as f64 / max_total as f64
-                } else {
-                    1.0
-                };
-                r.precise = 1.0 - norm; // higher = more similar
-            }
-        }
-    }
-
-    // Sort by precise distance descending (most similar first)
-    finalists.sort_unstable_by(|a, b| {
-        b.precise
-            .partial_cmp(&a.precise)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let cascade = crate::hdr::Cascade::from_threshold(threshold, vec_bytes);
+    let ranked = cascade.query(query, database, vec_bytes, num_vectors, precise_mode);
+    ranked
+        .into_iter()
+        .map(|r| HdrResult {
+            index: r.index,
+            hamming: r.hamming,
+            precise: r.precise,
+        })
+        .collect()
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
