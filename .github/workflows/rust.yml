@@ -20,10 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # rust-toolchain.toml pins the channel; just ensure components are present.
+      - name: Install Rust toolchain with components
+        run: |
+          rustup show
+          rustup component add rustfmt clippy
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -36,12 +37,7 @@ jobs:
           restore-keys: ${{ runner.os }}-lint-
 
       - name: cargo fmt --check
-        run: |
-          rustup component add rustfmt 2>/dev/null || true
-          cargo fmt --all -- --check
-
-      - name: Install clippy
-        run: rustup component add clippy
+        run: cargo fmt --all -- --check
 
       - name: cargo clippy (workspace, excluding qualia_xor)
         run: cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
@@ -57,8 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml pins the channel; rustup show triggers install.
+      - name: Install Rust toolchain
+        run: rustup show
 
       - name: Cache Cargo
         uses: actions/cache@v4
