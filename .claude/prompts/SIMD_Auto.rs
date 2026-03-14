@@ -4,23 +4,32 @@
 //
 // BINARY          HOW                              WHO
 // ─────────────────────────────────────────────────────────────
-// avx512          -C target-cpu=native             Production server (known AVX-512)
-// avx2            -C target-feature=+avx2,+fma     Production laptop (known AVX2)
 // auto            default, no flags                CI, pip install, "just works"
+// avx512          -C target-feature=+avx512f       Production server (known AVX-512)
+// avx2            -C target-feature=+avx2,+fma     Production laptop (known AVX2)
 // arm             --target aarch64-*               Mac, Graviton, RPi
 //
-// The `auto` binary is what PR #102 builds:
-//   simd.rs uses is_x86_feature_detected! per function.
-//   Runtime dispatch: AVX-512 → AVX2 → scalar.
-//   Works everywhere. Zero config.
+// ─── auto binary (PR #102) ───────────────────────────────────────────
 //
-// The other three are just build flags. No code changes needed.
-// The same source compiles all four. When target_feature is set at
-// compile time, LLVM inlines through the is_x86_feature_detected!
-// branch — the check becomes a constant true, the dead branch is
-// eliminated. Zero overhead on the dedicated binaries too.
+// Compiled WITHOUT target flags. ALL branches stay alive.
+// simd.rs uses is_x86_feature_detected! per function call.
+// Runtime dispatch: AVX-512 → AVX2 → scalar.
+// Cost: one cached atomic load per call. Negligible.
+// LLVM does NOT eliminate any branch — they must all stay live
+// so the binary works on any CPU.
 //
-// Architecture:
+// ─── dedicated binaries ──────────────────────────────────────────────
+//
+// Compiled WITH target flags. #[cfg(target_feature)] gates exclude
+// the other modules entirely at compile time. Different mechanism
+// from the auto binary — not LLVM folding runtime checks, but
+// compile-time gates that prevent other ISA code from being emitted.
+//
+//   avx512: -C target-feature=+avx512f → only AVX-512 code
+//   avx2:   -C target-feature=+avx2    → only AVX2 code
+//   arm:    --target aarch64            → only scalar code
+//
+// ─── Architecture ────────────────────────────────────────────────────
 //
 //   simd_avx512.rs  — AVX-512 wrapper types (F32x16, F64x8, U8x64, etc.)
 //                     + inherent methods (splat, from_slice, reduce_sum, etc.)
@@ -39,9 +48,12 @@
 //
 //   simd_isa.rs     — Isa trait: bridge stable simd_avx512 ↔ nightly std::simd
 //
-// Contract:
+// ─── Contract ────────────────────────────────────────────────────────
+//
 //   • cargo test --workspace passes with NO flags (auto binary)
 //   • No Cargo feature flags needed for ISA selection
 //   • avx512=[] and avx2=[] kept as empty no-ops for archive crate compat
 //   • #[cfg(target_arch = "x86_64")] gates all x86 intrinsics
 //   • Scalar fallback compiles on all targets (ARM, WASM, etc.)
+//   • Auto binary: ALL branches live, runtime picks best ISA
+//   • Dedicated binaries: compile-time #[cfg(target_feature)] excludes others
