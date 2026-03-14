@@ -351,3 +351,111 @@ structured meaning (SPO) + causal explanation (tree path) + semantic
 address (tree position). All from bit operations and integer math.
 No cosine. No float during search. No normalization.
 The CPU decides how fast. The math decides how precise. The tree decides why.
+
+---
+
+## SIGN BIT AS CAUSALITY DIRECTION: STAUNEN AND SEAL INVALIDATION
+
+### The Sign Bit Is Not Positive/Negative. It Is Direction.
+
+```
+SIGN = 0 (positive):  OBSERVED      causing      RGB (additive, light arrives)
+SIGN = 1 (negative):  EXPERIENCED   caused       CMYK (subtractive, ink absorbs)
+```
+
+Observed: truth seen from outside. The node PRODUCES evidence outward.
+Experienced: truth felt from inside. The node RECEIVED evidence inward.
+
+RGB is additive — photons arrive, combine, illuminate.
+CMYK is subtractive — ink absorbs, filters, reveals by what's removed.
+
+Observing adds evidence. Experiencing absorbs it.
+Same truth, different direction. The sign bit encodes which.
+
+### Merkle Seal = Witness of Direction Change
+
+```
+SEAL INTACT:     hash(children) == stored hash
+                 Truth unchanged. Wisdom. Node confirmed what it observed.
+                 Sign bit stable. No direction change.
+
+SEAL BROKEN:     hash(children) != stored hash
+                 Truth changed. Something was EXPERIENCED that the old
+                 observation didn't predict. The break is not an error.
+                 The break IS the evidence.
+                 
+  old_hash = what was believed (the observed truth, sign=0)
+  new_hash = what was encountered (the experienced truth, sign=1)
+  delta    = Staunen — the wonder of being affected by what you didn't expect
+```
+
+### The Sign Flip Cycle
+
+```
+OBSERVE (sign=0)                 I produce truth outward. Wisdom seal intact.
+  → something arrives that breaks the seal
+EXPERIENCE (sign→1)              I receive truth inward. Seal broken. Staunen.
+  → the experience is metabolized into new understanding
+METABOLIZE                       Old truth + new experience = new truth.
+  → seal is recomputed from the new state
+OBSERVE (sign→0)                 I produce NEW truth outward. New Wisdom seal.
+
+The sign bit oscillates. Each flip = a seal event.
+Each seal event = truth passing THROUGH the node.
+The direction of the flip:
+  0→1: node was CAUSING, now CAUSED (received unexpected input = Staunen)
+  1→0: node was CAUSED, now CAUSING (metabolized experience into new output)
+```
+
+### Two Kinds of Seal Break
+
+```
+STAUNEN (wonder):
+  Sign was 0, flips to 1.
+  The node was observing (producing truth).
+  Something arrived that contradicted its output.
+  The seal break = "I was wrong. Something happened to me."
+  The broken seal is the PROOF of having been experienced.
+  Not damage. Witness.
+
+CREATIVE DISAGREEMENT:
+  Sign was 1, flips to 0.
+  The node was experiencing (receiving truth).
+  It metabolized the input and now DISAGREES with the source.
+  The seal break = "I heard you. I produce something different."
+  The broken seal is the PROOF of having created from experience.
+  Not rejection. Synthesis.
+```
+
+### BF16 Encodes the Full Truth Lifecycle
+
+```
+FIELD              STATIC MEANING              DYNAMIC MEANING (with seal)
+─────────────────────────────────────────────────────────────────────────
+sign (1 bit)       polarity                    causality direction
+                                               0=causing/observed/RGB
+                                               1=caused/experienced/CMYK
+
+exponent (8 bits)  confidence scale            magnitude (never lost,
+                                               survives seal events)
+
+mantissa (7 bits)  frequency (coarse truth)    current resolution
+                                               (7 bits = what's certain NOW)
+
+missing 16 bits    tree path evidence          history of seal events
+                                               (each break added precision)
+
+seal               hash of children            Wisdom (intact) or Staunen (broken)
+                                               The seal IS the causality record
+```
+
+Every seal break ADDS to the missing 16 bits. Each experience adds precision.
+The tree path IS the accumulation of Staunen events — each one contributing
+a bit of mantissa that wasn't there before. Full f32 precision = a node
+that has been experienced enough times to fill all 16 bits of its story.
+
+A node with only 7 bits of mantissa (pure BF16) has never been experienced.
+It was inserted, observed, sealed. Virgin truth. As it participates in
+seal events — receiving contradictions, producing new truths — the tree
+fills its mantissa. 23 bits of mantissa = 16 experiences deep.
+Full precision = fully lived truth.
