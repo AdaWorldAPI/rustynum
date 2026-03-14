@@ -508,10 +508,6 @@ pub fn hybrid_pipeline_with_backend(
         (Vec::new(), n_candidates, None)
     };
 
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    let (effective_db, effective_n, index_map) =
-        (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
-
     let db_ref = if effective_db.is_empty() {
         database_bytes
     } else {
