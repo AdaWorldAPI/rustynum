@@ -117,14 +117,7 @@ extern "C" fn hamming_trampoline(a: *const u8, b: *const u8, len: usize) -> u64 
     // to valid memory of at least `len` bytes, as documented in the # Safety section.
     let a_slice = unsafe { core::slice::from_raw_parts(a, len) };
     let b_slice = unsafe { core::slice::from_raw_parts(b, len) };
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
-    {
-        crate::simd::hamming_distance(a_slice, b_slice)
-    }
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    {
-        hamming_scalar(a_slice, b_slice)
-    }
+    crate::simd::hamming_distance(a_slice, b_slice)
 }
 
 /// C-ABI trampoline for cosine_i8 similarity.
@@ -171,18 +164,11 @@ extern "C" fn dot_f32_trampoline(a: *const f32, b: *const f32, len: usize) -> f3
     // of at least `len * 4` bytes (len f32 elements), as documented in the # Safety section.
     let a_slice = unsafe { core::slice::from_raw_parts(a, len) };
     let b_slice = unsafe { core::slice::from_raw_parts(b, len) };
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
-    {
-        crate::simd::dot_f32(a_slice, b_slice)
-    }
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    {
-        a_slice.iter().zip(b_slice.iter()).map(|(a, b)| a * b).sum()
-    }
+    crate::simd::dot_f32(a_slice, b_slice)
 }
 
 /// Scalar fallback for hamming distance.
-#[cfg(not(any(feature = "avx512", feature = "avx2")))]
+#[allow(dead_code)]
 fn hamming_scalar(a: &[u8], b: &[u8]) -> u64 {
     a.iter()
         .zip(b.iter())

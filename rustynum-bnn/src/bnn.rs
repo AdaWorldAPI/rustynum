@@ -42,16 +42,12 @@ use rustynum_core::kernels::{
 };
 use rustynum_core::rng::SplitMix64;
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 use std::sync::OnceLock;
 
 /// SIMD Hamming function pointer type.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 type HammingFn = fn(&[u8], &[u8]) -> u64;
 
 /// Cached SIMD Hamming dispatch — resolved once at first call.
-/// Falls back to scalar when SIMD features are not compiled in.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hamming_simd() -> HammingFn {
     static FN: OnceLock<HammingFn> = OnceLock::new();
     *FN.get_or_init(rustynum_core::simd::select_hamming_fn)
@@ -118,18 +114,7 @@ pub fn bnn_dot_3ch(activation: &GraphHV, weight: &GraphHV) -> BnnDotResult {
 /// Internal: XOR + popcount as u32 — dispatches to SIMD when available.
 #[inline]
 fn bnn_hamming_u32(a: &[u8], b: &[u8]) -> u32 {
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
-    {
-        hamming_simd()(a, b) as u32
-    }
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    {
-        // Scalar fallback: XOR + popcount per byte pair
-        a.iter()
-            .zip(b.iter())
-            .map(|(&x, &y)| (x ^ y).count_ones())
-            .sum()
-    }
+    hamming_simd()(a, b) as u32
 }
 
 /// A binary neuron in the graph BNN.
@@ -564,7 +549,6 @@ impl BnnNetwork {
 ///
 /// Returns matches sorted by ascending Hamming distance (closest first),
 /// converted to BnnDotResult.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub fn bnn_hdr_search(
     query: &Fingerprint<256>,
     weights: &[Fingerprint<256>],

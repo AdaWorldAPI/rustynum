@@ -3,6 +3,7 @@
 //! These are low-level building blocks — the actual BLAS/LAPACK/FFT
 //! implementations in rustyblas and rustymkl compose these primitives.
 
+#[cfg(target_arch = "x86_64")]
 use crate::simd_avx512::{f32x16, f64x8};
 
 // ============================================================================
@@ -63,11 +64,25 @@ pub const DGEMM_NC: usize = 2048;
 // SIMD dot product primitives
 // ============================================================================
 
-/// SIMD f32 dot product using f32x16 (AVX-512).
-/// 4x unrolled for maximum ILP.
+/// SIMD f32 dot product. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { dot_f32_avx512(a, b) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::dot_f32(a, b);
+        }
+    }
+    dot_f32_scalar(a, b)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn dot_f32_avx512(a: &[f32], b: &[f32]) -> f32 {
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -114,11 +129,29 @@ pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     sum
 }
 
-/// SIMD f64 dot product using f64x8 (AVX-512).
-/// 4x unrolled.
+fn dot_f32_scalar(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// SIMD f64 dot product. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { dot_f64_avx512(a, b) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::dot_f64(a, b);
+        }
+    }
+    dot_f64_scalar(a, b)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn dot_f64_avx512(a: &[f64], b: &[f64]) -> f64 {
     let len = a.len();
     let chunks = len / F64_LANES;
 
@@ -163,10 +196,31 @@ pub fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
-/// SIMD f32 axpy: y[i] += alpha * x[i]
+fn dot_f64_scalar(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// SIMD f32 axpy: y[i] += alpha * x[i]. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
     assert_eq!(x.len(), y.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { axpy_f32_avx512(alpha, x, y) };
+            return;
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            crate::simd_avx2::axpy_f32(alpha, x, y);
+            return;
+        }
+    }
+    axpy_f32_scalar(alpha, x, y);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn axpy_f32_avx512(alpha: f32, x: &[f32], y: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
     let alpha_v = f32x16::splat(alpha);
@@ -184,10 +238,33 @@ pub fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
     }
 }
 
-/// SIMD f64 axpy: y[i] += alpha * x[i]
+fn axpy_f32_scalar(alpha: f32, x: &[f32], y: &mut [f32]) {
+    for (yi, xi) in y.iter_mut().zip(x.iter()) {
+        *yi += alpha * xi;
+    }
+}
+
+/// SIMD f64 axpy: y[i] += alpha * x[i]. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn axpy_f64(alpha: f64, x: &[f64], y: &mut [f64]) {
     assert_eq!(x.len(), y.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { axpy_f64_avx512(alpha, x, y) };
+            return;
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            crate::simd_avx2::axpy_f64(alpha, x, y);
+            return;
+        }
+    }
+    axpy_f64_scalar(alpha, x, y);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn axpy_f64_avx512(alpha: f64, x: &[f64], y: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
     let alpha_v = f64x8::splat(alpha);
@@ -205,9 +282,32 @@ pub fn axpy_f64(alpha: f64, x: &[f64], y: &mut [f64]) {
     }
 }
 
-/// SIMD f32 scale: x[i] *= alpha
+fn axpy_f64_scalar(alpha: f64, x: &[f64], y: &mut [f64]) {
+    for (yi, xi) in y.iter_mut().zip(x.iter()) {
+        *yi += alpha * xi;
+    }
+}
+
+/// SIMD f32 scale: x[i] *= alpha. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn scal_f32(alpha: f32, x: &mut [f32]) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { scal_f32_avx512(alpha, x) };
+            return;
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            crate::simd_avx2::scal_f32(alpha, x);
+            return;
+        }
+    }
+    scal_f32_scalar(alpha, x);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn scal_f32_avx512(alpha: f32, x: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
     let alpha_v = f32x16::splat(alpha);
@@ -224,9 +324,32 @@ pub fn scal_f32(alpha: f32, x: &mut [f32]) {
     }
 }
 
-/// SIMD f64 scale: x[i] *= alpha
+fn scal_f32_scalar(alpha: f32, x: &mut [f32]) {
+    for xi in x.iter_mut() {
+        *xi *= alpha;
+    }
+}
+
+/// SIMD f64 scale: x[i] *= alpha. Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn scal_f64(alpha: f64, x: &mut [f64]) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { scal_f64_avx512(alpha, x) };
+            return;
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            crate::simd_avx2::scal_f64(alpha, x);
+            return;
+        }
+    }
+    scal_f64_scalar(alpha, x);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn scal_f64_avx512(alpha: f64, x: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
     let alpha_v = f64x8::splat(alpha);
@@ -243,9 +366,30 @@ pub fn scal_f64(alpha: f64, x: &mut [f64]) {
     }
 }
 
-/// SIMD f32 sum of absolute values (asum / L1 norm).
+fn scal_f64_scalar(alpha: f64, x: &mut [f64]) {
+    for xi in x.iter_mut() {
+        *xi *= alpha;
+    }
+}
+
+/// SIMD f32 sum of absolute values (asum / L1 norm). Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn asum_f32(x: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { asum_f32_avx512(x) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::asum_f32(x);
+        }
+    }
+    asum_f32_scalar(x)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn asum_f32_avx512(x: &[f32]) -> f32 {
     let len = x.len();
     let chunks = len / F32_LANES;
     let mut acc = f32x16::splat(0.0);
@@ -263,9 +407,28 @@ pub fn asum_f32(x: &[f32]) -> f32 {
     sum
 }
 
-/// SIMD f64 sum of absolute values (asum / L1 norm).
+fn asum_f32_scalar(x: &[f32]) -> f32 {
+    x.iter().map(|xi| xi.abs()).sum()
+}
+
+/// SIMD f64 sum of absolute values (asum / L1 norm). Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn asum_f64(x: &[f64]) -> f64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { asum_f64_avx512(x) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::asum_f64(x);
+        }
+    }
+    asum_f64_scalar(x)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn asum_f64_avx512(x: &[f64]) -> f64 {
     let len = x.len();
     let chunks = len / F64_LANES;
     let mut acc = f64x8::splat(0.0);
@@ -283,9 +446,28 @@ pub fn asum_f64(x: &[f64]) -> f64 {
     sum
 }
 
-/// SIMD f32 L2 norm (nrm2).
+fn asum_f64_scalar(x: &[f64]) -> f64 {
+    x.iter().map(|xi| xi.abs()).sum()
+}
+
+/// SIMD f32 L2 norm (nrm2). Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn nrm2_f32(x: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { nrm2_f32_avx512(x) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::nrm2_f32(x);
+        }
+    }
+    nrm2_f32_scalar(x)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn nrm2_f32_avx512(x: &[f32]) -> f32 {
     let len = x.len();
     let chunks = len / F32_LANES;
     let mut acc = f32x16::splat(0.0);
@@ -303,9 +485,28 @@ pub fn nrm2_f32(x: &[f32]) -> f32 {
     sum.sqrt()
 }
 
-/// SIMD f64 L2 norm (nrm2).
+fn nrm2_f32_scalar(x: &[f32]) -> f32 {
+    x.iter().map(|xi| xi * xi).sum::<f32>().sqrt()
+}
+
+/// SIMD f64 L2 norm (nrm2). Runtime dispatch: AVX-512 → AVX2 → scalar.
 #[inline]
 pub fn nrm2_f64(x: &[f64]) -> f64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { nrm2_f64_avx512(x) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return crate::simd_avx2::nrm2_f64(x);
+        }
+    }
+    nrm2_f64_scalar(x)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn nrm2_f64_avx512(x: &[f64]) -> f64 {
     let len = x.len();
     let chunks = len / F64_LANES;
     let mut acc = f64x8::splat(0.0);
@@ -321,25 +522,38 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
         sum += xi * xi;
     }
     sum.sqrt()
+}
+
+fn nrm2_f64_scalar(x: &[f64]) -> f64 {
+    x.iter().map(|xi| xi * xi).sum::<f64>().sqrt()
 }
 
 // ============================================================================
 // BLAS Level 1: iamax — index of absolute maximum
 // ============================================================================
 
-/// SIMD index of absolute maximum for f32 slices.
+/// SIMD index of absolute maximum for f32 slices. Runtime dispatch: AVX-512 → scalar.
 ///
 /// Returns `(index, |x[index]|)` — the index of the element with the largest
-/// absolute value, and that absolute value. Uses AVX-512 `abs` + `reduce_max`
-/// for the SIMD path, with scalar fallback for the tail.
-///
+/// absolute value, and that absolute value.
 /// This is the BLAS `isamax` operation, used for pivot search in LAPACK.
 #[inline]
 pub fn iamax_f32(x: &[f32]) -> (usize, f32) {
     if x.is_empty() {
         return (0, 0.0);
     }
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { iamax_f32_avx512(x) };
+        }
+    }
+    iamax_f32_scalar(x)
+}
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn iamax_f32_avx512(x: &[f32]) -> (usize, f32) {
     let len = x.len();
     let chunks = len / F32_LANES;
     let mut global_max = 0.0f32;
@@ -380,16 +594,40 @@ pub fn iamax_f32(x: &[f32]) -> (usize, f32) {
     (global_idx, global_max)
 }
 
-/// SIMD index of absolute maximum for f64 slices.
+fn iamax_f32_scalar(x: &[f32]) -> (usize, f32) {
+    let mut global_max = 0.0f32;
+    let mut global_idx = 0usize;
+    for (i, val) in x.iter().enumerate() {
+        let v = val.abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = i;
+        }
+    }
+    (global_idx, global_max)
+}
+
+/// SIMD index of absolute maximum for f64 slices. Runtime dispatch: AVX-512 → scalar.
 ///
-/// Returns `(index, |x[index]|)`. Uses AVX-512 `abs` + `reduce_max`.
+/// Returns `(index, |x[index]|)`.
 /// BLAS `idamax` operation.
 #[inline]
 pub fn iamax_f64(x: &[f64]) -> (usize, f64) {
     if x.is_empty() {
         return (0, 0.0);
     }
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { iamax_f64_avx512(x) };
+        }
+    }
+    iamax_f64_scalar(x)
+}
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn iamax_f64_avx512(x: &[f64]) -> (usize, f64) {
     let len = x.len();
     let chunks = len / F64_LANES;
     let mut global_max = 0.0f64;
@@ -426,6 +664,19 @@ pub fn iamax_f64(x: &[f64]) -> (usize, f64) {
         }
     }
 
+    (global_idx, global_max)
+}
+
+fn iamax_f64_scalar(x: &[f64]) -> (usize, f64) {
+    let mut global_max = 0.0f64;
+    let mut global_idx = 0usize;
+    for (i, val) in x.iter().enumerate() {
+        let v = val.abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = i;
+        }
+    }
     (global_idx, global_max)
 }
 
@@ -1012,9 +1263,21 @@ fn dot_i8_scalar(a: &[u8], b: &[u8]) -> i64 {
 // SIMD element-wise operations (f32/f64)
 // ============================================================================
 
-/// SIMD f32 element-wise add with scalar: out[i] = a[i] + scalar
+/// SIMD f32 element-wise add with scalar: out[i] = a[i] + scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn add_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { add_f32_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x + scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn add_f32_scalar_avx512(a: &[f32], scalar: f32) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1030,9 +1293,21 @@ pub fn add_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise subtract scalar: out[i] = a[i] - scalar
+/// SIMD f32 element-wise subtract scalar: out[i] = a[i] - scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn sub_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { sub_f32_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x - scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn sub_f32_scalar_avx512(a: &[f32], scalar: f32) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1048,9 +1323,21 @@ pub fn sub_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise multiply with scalar: out[i] = a[i] * scalar
+/// SIMD f32 element-wise multiply with scalar: out[i] = a[i] * scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn mul_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { mul_f32_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x * scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn mul_f32_scalar_avx512(a: &[f32], scalar: f32) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1066,9 +1353,21 @@ pub fn mul_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise divide by scalar: out[i] = a[i] / scalar
+/// SIMD f32 element-wise divide by scalar: out[i] = a[i] / scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn div_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { div_f32_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x / scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn div_f32_scalar_avx512(a: &[f32], scalar: f32) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1084,10 +1383,22 @@ pub fn div_f32_scalar(a: &[f32], scalar: f32) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise vector add: out[i] = a[i] + b[i]
+/// SIMD f32 element-wise vector add: out[i] = a[i] + b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn add_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { add_f32_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn add_f32_vec_avx512(a: &[f32], b: &[f32]) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1103,10 +1414,22 @@ pub fn add_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise vector subtract: out[i] = a[i] - b[i]
+/// SIMD f32 element-wise vector subtract: out[i] = a[i] - b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn sub_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { sub_f32_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x - y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn sub_f32_vec_avx512(a: &[f32], b: &[f32]) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1122,10 +1445,22 @@ pub fn sub_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise vector multiply: out[i] = a[i] * b[i]
+/// SIMD f32 element-wise vector multiply: out[i] = a[i] * b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn mul_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { mul_f32_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn mul_f32_vec_avx512(a: &[f32], b: &[f32]) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1141,10 +1476,22 @@ pub fn mul_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     out
 }
 
-/// SIMD f32 element-wise vector divide: out[i] = a[i] / b[i]
+/// SIMD f32 element-wise vector divide: out[i] = a[i] / b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn div_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { div_f32_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x / y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn div_f32_vec_avx512(a: &[f32], b: &[f32]) -> Vec<f32> {
     let len = a.len();
     let mut out = vec![0.0f32; len];
     let chunks = len / F32_LANES;
@@ -1160,9 +1507,21 @@ pub fn div_f32_vec(a: &[f32], b: &[f32]) -> Vec<f32> {
     out
 }
 
-/// SIMD f64 element-wise add with scalar: out[i] = a[i] + scalar
+/// SIMD f64 element-wise add with scalar: out[i] = a[i] + scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn add_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { add_f64_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x + scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn add_f64_scalar_avx512(a: &[f64], scalar: f64) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1178,9 +1537,21 @@ pub fn add_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise subtract scalar: out[i] = a[i] - scalar
+/// SIMD f64 element-wise subtract scalar: out[i] = a[i] - scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn sub_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { sub_f64_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x - scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn sub_f64_scalar_avx512(a: &[f64], scalar: f64) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1196,9 +1567,21 @@ pub fn sub_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise multiply with scalar: out[i] = a[i] * scalar
+/// SIMD f64 element-wise multiply with scalar: out[i] = a[i] * scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn mul_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { mul_f64_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x * scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn mul_f64_scalar_avx512(a: &[f64], scalar: f64) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1214,9 +1597,21 @@ pub fn mul_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise divide by scalar: out[i] = a[i] / scalar
+/// SIMD f64 element-wise divide by scalar: out[i] = a[i] / scalar. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn div_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { div_f64_scalar_avx512(a, scalar) };
+        }
+    }
+    a.iter().map(|&x| x / scalar).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn div_f64_scalar_avx512(a: &[f64], scalar: f64) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1232,10 +1627,22 @@ pub fn div_f64_scalar(a: &[f64], scalar: f64) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise vector add: out[i] = a[i] + b[i]
+/// SIMD f64 element-wise vector add: out[i] = a[i] + b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn add_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { add_f64_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn add_f64_vec_avx512(a: &[f64], b: &[f64]) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1251,10 +1658,22 @@ pub fn add_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise vector subtract: out[i] = a[i] - b[i]
+/// SIMD f64 element-wise vector subtract: out[i] = a[i] - b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn sub_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { sub_f64_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x - y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn sub_f64_vec_avx512(a: &[f64], b: &[f64]) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1270,10 +1689,22 @@ pub fn sub_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise vector multiply: out[i] = a[i] * b[i]
+/// SIMD f64 element-wise vector multiply: out[i] = a[i] * b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn mul_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { mul_f64_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn mul_f64_vec_avx512(a: &[f64], b: &[f64]) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;
@@ -1289,10 +1720,22 @@ pub fn mul_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     out
 }
 
-/// SIMD f64 element-wise vector divide: out[i] = a[i] / b[i]
+/// SIMD f64 element-wise vector divide: out[i] = a[i] / b[i]. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 pub fn div_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64> {
     assert_eq!(a.len(), b.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { div_f64_vec_avx512(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x / y).collect()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn div_f64_vec_avx512(a: &[f64], b: &[f64]) -> Vec<f64> {
     let len = a.len();
     let mut out = vec![0.0f64; len];
     let chunks = len / F64_LANES;

@@ -684,8 +684,19 @@ pub fn hydrate_qualia_f32(packed: &PackedQualia) -> [f32; 16] {
     hydrate_qualia_f32_inner(&packed.resonance, scalar)
 }
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { hydrate_qualia_f32_avx512(resonance, scalar) };
+        }
+    }
+    hydrate_qualia_f32_scalar(resonance, scalar)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn hydrate_qualia_f32_avx512(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     use crate::simd_avx512::{f32x16, i32x16};
 
     // Sign-extend i8 → i32 (portable_simd doesn't have i8x16→f32x16 directly)
@@ -702,8 +713,7 @@ fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     result.to_array()
 }
 
-#[cfg(not(any(feature = "avx512", feature = "avx2")))]
-fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+fn hydrate_qualia_f32_scalar(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     std::array::from_fn(|i| resonance[i] as f32 * scalar)
 }
 
@@ -758,18 +768,10 @@ pub fn compress_to_qualia(values: &[f32; 16]) -> PackedQualia {
 ///
 /// This is the "resonance" between two phenomenological states:
 /// high positive = aligned, negative = opposing, zero = orthogonal.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
     let va = hydrate_qualia_f32(a);
     let vb = hydrate_qualia_f32(b);
     crate::simd::dot_f32(&va, &vb)
-}
-
-#[cfg(not(any(feature = "avx512", feature = "avx2")))]
-pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
-    let va = hydrate_qualia_f32(a);
-    let vb = hydrate_qualia_f32(b);
-    va.iter().zip(vb.iter()).map(|(x, y)| x * y).sum()
 }
 
 /// Bundle multiple PackedQualia into a superposed state.

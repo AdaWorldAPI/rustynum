@@ -1084,7 +1084,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
     fn test_hamming_top_k_simd() {
         let vec_len = 64;
         let count = 50;

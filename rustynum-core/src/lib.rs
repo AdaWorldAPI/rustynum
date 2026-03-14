@@ -12,10 +12,12 @@
 
 // All SIMD uses stable std::arch via simd_avx512 — no nightly required.
 
-pub mod simd_avx512;      // AVX-512 primary (was simd_compat)
+#[cfg(target_arch = "x86_64")]
+pub mod simd_avx512;      // AVX-512 wrapper types + implementations (x86_64 only)
 pub mod simd_isa;         // ISA trait: bridge stable types ↔ portable_simd
 
 // Backward compat shim — remove in next major version
+#[cfg(target_arch = "x86_64")]
 #[allow(deprecated)]
 pub mod simd_compat;
 
@@ -35,16 +37,15 @@ pub mod parallel;
 pub mod rng;
 pub mod tail_backend;
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub mod prefilter;
 
 pub mod hdr;              // HDR cascade search
 
-// SIMD backend selection: AVX-512 (stable via simd_avx512) or AVX2 (stable via simd_avx512)
-#[cfg(feature = "avx512")]
-pub mod simd;
-#[cfg(all(feature = "avx2", not(feature = "avx512")))]
-#[path = "simd_avx2.rs"]
+// simd_avx2: AVX2 implementations (always compiled on x86_64, used by runtime dispatch)
+#[cfg(target_arch = "x86_64")]
+pub mod simd_avx2;
+
+// simd: runtime dispatch — picks best ISA at runtime (AVX-512 → AVX2 → scalar)
 pub mod simd;
 
 // Intel MKL FFI bindings (only compiled when --features mkl is enabled)

@@ -30,7 +30,6 @@ pub use bnn::{
     BnnLayer, BnnNetwork, BnnNeuron,
 };
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub use bnn::bnn_hdr_search;
 
 // Re-export Belichtungsmesser types (only genuinely new functions)
