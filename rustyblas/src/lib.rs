@@ -6,7 +6,7 @@
 //!
 //! Pure Rust BLAS implementation with AVX-512 SIMD — drop-in OpenBLAS replacement.
 //!
-//! No FFI, no C dependencies. All operations use `simd_compat` (stable `std::arch`)
+//! No FFI, no C dependencies. All operations use `simd_avx512` (stable `std::arch`)
 //! with cache-blocked microkernels for maximum throughput.
 //!
 //! ## BLAS Levels
@@ -48,7 +48,7 @@
 //!               m, n, k, 1.0, a, k, b, n, 0.0, c, n);
 //! ```
 
-// No nightly features required — all SIMD uses rustynum_core::simd_compat.
+// No nightly features required — all SIMD uses rustynum_core::simd_avx512.
 
 pub mod bf16_gemm;
 pub mod int8_gemm;

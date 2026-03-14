@@ -15,7 +15,7 @@
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
-use rustynum_core::simd_compat::f32x16;
+use rustynum_core::simd_avx512::f32x16;
 
 /// f32 SIMD lane count (16 for AVX-512).
 const F32_LANES: usize = 16;

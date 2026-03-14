@@ -7,7 +7,7 @@
 //! `vd` prefix = double-precision vector.
 
 use rustynum_core::simd::{F32_LANES, F64_LANES};
-use rustynum_core::simd_compat::{
+use rustynum_core::simd_avx512::{
     F32x16 as F32Simd, F64x8 as F64Simd, U32x16 as U32Simd, U64x8 as U64Simd,
 };
 

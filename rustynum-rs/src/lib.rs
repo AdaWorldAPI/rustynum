@@ -7,7 +7,7 @@
 //! This crate provides efficient numerical arrays and operations, including basic arithmetic, dot products,
 //! and transformations.
 
-// No nightly features required — all SIMD uses rustynum_core::simd_compat.
+// No nightly features required — all SIMD uses rustynum_core::simd_avx512.
 
 /// Error type for rustynum operations that can fail on invalid input.
 #[derive(Debug, Clone, PartialEq)]
