@@ -59,17 +59,31 @@ The compiler is a VERIFIER, not a NAVIGATOR.
 
 ## STEP 0: Understand the existing CORRECT pattern
 
-`simd.rs` already has runtime dispatch for hamming/popcount. READ IT:
+`simd.rs` is the DISPATCHER. `simd_avx512.rs` has AVX-512 implementations.
+`simd_avx2.rs` has AVX2 implementations. READ ALL THREE:
 
 ```bash
-# The CORRECT pattern (already exists):
+# The dispatch pattern (already correct for hamming/popcount):
 grep -A 15 "pub fn hamming_distance" rustynum-core/src/simd.rs
 grep -A 15 "pub fn popcount" rustynum-core/src/simd.rs
 grep -A 15 "pub fn select_hamming_fn" rustynum-core/src/simd.rs
+
+# AVX-512 implementations (the algorithms you need AVX2 equivalents for):
+grep -n "pub fn\|unsafe fn\|pub unsafe fn" rustynum-core/src/simd_avx512.rs | head -30
+
+# AVX2 implementations (what already exists — DON'T rewrite these):
+grep -n "pub fn\|unsafe fn\|pub unsafe fn" rustynum-core/src/simd_avx2.rs | head -30
+
+# Inline implementations that may be in simd.rs itself (some live here):
+grep -n "unsafe fn.*avx2\|unsafe fn.*vnni\|unsafe fn.*scalar" rustynum-core/src/simd.rs | head -20
 ```
 
-These use `is_x86_feature_detected!` at runtime to pick AVX-512 vs AVX2 vs scalar.
-This is the pattern. Replicate it everywhere.
+The dispatch pattern: `is_x86_feature_detected!` at runtime picks
+simd_avx512 vs simd_avx2 vs scalar. Replicate this for every entry point.
+
+NOTE: some AVX2 implementations live INSIDE simd.rs (hamming_avx2, popcount_avx2).
+Others live in simd_avx2.rs. READ BOTH before assuming where things are.
+The AVX-512 implementations may be in simd.rs OR simd_avx512.rs. READ, don't assume.
 
 Also READ the Isa trait from Session E:
 ```bash
@@ -161,36 +175,39 @@ or remove entirely if the function is behind a runtime `is_x86_feature_detected!
 After Step 1, `simd.rs` is always compiled. It must provide every function
 that consumers need, with runtime dispatch inside each one.
 
-READ what `simd.rs` currently exports:
+READ what all three files export:
 ```bash
-grep "pub fn" rustynum-core/src/simd.rs
+grep "pub fn" rustynum-core/src/simd.rs          # dispatcher entry points
+grep "pub fn\|pub unsafe fn" rustynum-core/src/simd_avx512.rs  # AVX-512 impls
+grep "pub fn\|pub unsafe fn" rustynum-core/src/simd_avx2.rs    # AVX2 impls
 ```
 
-For each function, verify it has the three-tier dispatch:
+For each public function in simd.rs, verify it has the three-tier dispatch:
 ```rust
 pub fn some_operation(args) -> result {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512f") {
-            return unsafe { simd_avx512::some_operation(args) };
+            return unsafe { simd_avx512::some_operation(args) };  // or inline avx512 fn
         }
         if is_x86_feature_detected!("avx2") {
-            return unsafe { simd_avx2::some_operation(args) };
+            return unsafe { simd_avx2::some_operation(args) };    // or inline avx2 fn
         }
     }
     scalar_fallback(args)
 }
 ```
 
-Functions that ALREADY have this pattern: hamming_distance, popcount.
-Functions that are MISSING AVX2: dot_i8 (VNNI → scalar, no AVX2).
-Functions that may be MISSING entirely in simd_avx2.rs: check by reading both files.
+NOTE: some implementations are inline in simd.rs (e.g. hamming_avx2, popcount_avx2).
+Others delegate to simd_avx512.rs or simd_avx2.rs. Both patterns are fine.
+The important thing is that EVERY pub fn in simd.rs has all three tiers.
 
 ### Fill the dot_i8 AVX2 gap
 
-READ the existing VNNI implementation:
+READ the existing VNNI implementation — it may be in simd.rs or simd_avx512.rs:
 ```bash
-grep -A 60 "unsafe fn dot_i8_vnni" rustynum-core/src/simd.rs
+grep -n "unsafe fn dot_i8_vnni" rustynum-core/src/simd.rs rustynum-core/src/simd_avx512.rs
+# Then read the full function wherever it lives
 ```
 
 The AVX2 version uses VPMADDUBSW + VPMADDWD with the same XOR-0x80 bias
@@ -201,10 +218,12 @@ Update dot_i8() and select_dot_i8_fn() to include the AVX2 tier.
 
 ### Fill the bf16_hamming AVX2 gap
 
-READ:
+READ — implementations may be in bf16_hamming.rs or split across files:
 ```bash
-grep -A 80 "unsafe fn bf16_hamming_avx512" rustynum-core/src/bf16_hamming.rs
-grep -A 15 "fn select_bf16_hamming_fn" rustynum-core/src/bf16_hamming.rs
+grep -n "unsafe fn bf16_hamming" rustynum-core/src/bf16_hamming.rs
+grep -n "fn select_bf16_hamming" rustynum-core/src/bf16_hamming.rs
+# Read the full AVX-512 implementation to understand the algorithm,
+# then write the AVX2 equivalent using __m256i
 ```
 
 Same algorithm, __m256i instead of __m512i. Half the lanes per iteration.
