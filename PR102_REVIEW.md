@@ -173,6 +173,7 @@ the popcount bug got through.
 | 6 TODO/FIXME/HACK in source | Low | 6 |
 | simd_compat.rs deprecation shim (should remove after migration) | Low | 4 |
 | No AVX2 path for FFT or BF16 GEMM (scalar fallback only) | Low | - |
+| scalar_fns.rs incomplete (missing add/sub/mul/iamax fallbacks) | Medium | 191 |
 
 ---
 
@@ -209,9 +210,12 @@ back-and-forth churn that should have been squashed.
 1. **P0:** Fix the popcount 64KB regression before any new features
 2. **P0:** Restore CI coverage for rustynum-rs, rustynum-arrow, rustynum
 3. **P1:** Update README benchmarks to match actual measured performance
-4. **P1:** Move `.claude/` session documents to a wiki or delete them
-5. **P2:** Squash commit history for future PRs
-6. **P2:** Add AVX2 fallback for FFT butterfly operations
+4. **P1:** Complete scalar_fns.rs with all missing fallbacks (add/sub/mul/iamax)
+   -- the "works everywhere" promise has gaps on non-x86 targets
+5. **P1:** Move `.claude/` session documents to a wiki or delete them
+6. **P2:** Squash commit history for future PRs
+7. **P2:** Add AVX2 fallback for FFT butterfly operations
+8. **P2:** Rename SIMD_Auto.rs to .md (it's a design doc, not code)
 
 ---
 
