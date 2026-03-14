@@ -10,6 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  simd-police:
+    name: SIMD Police (Isa trait enforcement)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SIMD police (rustynum-core scope)
+        run: bash scripts/simd-police.sh rustynum-core
+
   lint:
     name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
