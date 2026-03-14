@@ -20,6 +20,9 @@ mkl = ["dep:intel-mkl-src"]
 # When enabled, the xsmm backend is compiled and selected at runtime if available.
 # Requires libxsmm to be installed. See backends/xsmm.rs for linking requirements.
 libxsmm = ["dep:libc"]
+# Nightly: use std::simd portable_simd instead of our stable simd_avx512 wrappers.
+# Enables cross-arch (ARM, WASM, RISC-V) via the Isa trait in simd_isa.rs.
+portable_simd = []
 
 [dependencies]
 blake3 = "1"
