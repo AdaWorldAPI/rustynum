@@ -115,10 +115,15 @@ fn quantize_f32_to_u8_scalar(data: &[f32]) -> (Vec<u8>, QuantParams) {
         min_val = min_val.min(v);
         max_val = max_val.max(v);
     }
-    let scale = if max_val == min_val { 1.0 } else { (max_val - min_val) / 255.0 };
+    let scale = if max_val == min_val {
+        1.0
+    } else {
+        (max_val - min_val) / 255.0
+    };
     let zero_point = (-min_val / scale).round() as i32;
     let zero_point = zero_point.clamp(0, 255);
-    let quantized: Vec<u8> = data.iter()
+    let quantized: Vec<u8> = data
+        .iter()
         .map(|&v| ((v / scale).round() as i32 + zero_point).clamp(0, 255) as u8)
         .collect();
     (quantized, QuantParams { scale, zero_point })
@@ -210,10 +215,17 @@ pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
             return unsafe { quantize_f32_to_i8_avx512(data, scale) };
         }
     }
-    let quantized: Vec<i8> = data.iter()
+    let quantized: Vec<i8> = data
+        .iter()
         .map(|&v| (v / scale).round().clamp(-128.0, 127.0) as i8)
         .collect();
-    (quantized, QuantParams { scale, zero_point: 0 })
+    (
+        quantized,
+        QuantParams {
+            scale,
+            zero_point: 0,
+        },
+    )
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -244,7 +256,13 @@ unsafe fn quantize_f32_to_i8_avx512(data: &[f32], scale: f32) -> (Vec<i8>, Quant
         quantized[i] = (data[i] / scale).round().clamp(-128.0, 127.0) as i8;
     }
 
-    (quantized, QuantParams { scale, zero_point: 0 })
+    (
+        quantized,
+        QuantParams {
+            scale,
+            zero_point: 0,
+        },
+    )
 }
 
 /// Per-channel quantization: quantize each row of an MxK matrix to i8.

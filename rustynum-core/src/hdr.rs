@@ -251,8 +251,7 @@ impl Cascade {
         self.sigma = (m2 / self.observations as f64).sqrt();
 
         // Drift detection: significant shift in mean
-        if self.observations > 10 && old_sigma > 0.0 && (self.mu - old_mu).abs() > 2.0 * old_sigma
-        {
+        if self.observations > 10 && old_sigma > 0.0 && (self.mu - old_mu).abs() > 2.0 * old_sigma {
             Some(ShiftAlert {
                 old_mu,
                 new_mu: self.mu,

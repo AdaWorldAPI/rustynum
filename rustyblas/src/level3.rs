@@ -19,6 +19,7 @@ use rustynum_core::simd_avx512::{F32x16 as F32Simd, F64x8 as F64Simd};
 
 /// Wrapper to send a raw mutable pointer across thread boundaries.
 /// Safety: The caller must ensure non-overlapping access between threads.
+#[cfg(target_arch = "x86_64")]
 #[derive(Clone, Copy)]
 struct SendMutPtr<T> {
     ptr: *mut T,
@@ -27,9 +28,12 @@ struct SendMutPtr<T> {
 // SAFETY: SendMutPtr is only used in the blocked GEMM path where each thread
 // writes to disjoint row ranges of C. The work_items partitioning guarantees
 // non-overlapping row ranges, so no data races occur.
+#[cfg(target_arch = "x86_64")]
 unsafe impl<T> Send for SendMutPtr<T> {}
+#[cfg(target_arch = "x86_64")]
 unsafe impl<T> Sync for SendMutPtr<T> {}
 
+#[cfg(target_arch = "x86_64")]
 impl<T> SendMutPtr<T> {
     fn new(slice: &mut [T]) -> Self {
         Self {
@@ -119,17 +123,21 @@ pub fn sgemm(
         return;
     }
 
-    // For small matrices, use simple triple-loop.
+    // For small matrices, use simple triple-loop with runtime-dispatched dot.
     // Threshold: below ~48^3 ≈ 110K flops, the packing overhead isn't worth it.
-    if m * n * k < 110_000 {
-        sgemm_simple(
-            layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
-        );
-        return;
+    #[cfg(target_arch = "x86_64")]
+    {
+        if m * n * k >= 110_000 && is_x86_feature_detected!("avx512f") {
+            // Cache-blocked GEMM with AVX-512 microkernels
+            sgemm_blocked(
+                layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+            );
+            return;
+        }
     }
 
-    // Cache-blocked GEMM with packing
-    sgemm_blocked(
+    // Fallback: simple GEMM using simd::dot_f32 (has AVX-512/AVX2/scalar dispatch)
+    sgemm_simple(
         layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
     );
 }
@@ -209,6 +217,7 @@ fn sgemm_simple(
 /// Threshold for multithreaded GEMM (total elements in C).
 /// Below this, single-threaded blocked is faster due to thread spawn overhead.
 /// Tuned: 256*256=65536 is the crossover where MT overhead pays off.
+#[cfg(target_arch = "x86_64")]
 const SGEMM_PARALLEL_THRESHOLD: usize = 256 * 256;
 
 /// Cache-blocked GEMM using the Goto BLAS algorithm.
@@ -223,6 +232,7 @@ const SGEMM_PARALLEL_THRESHOLD: usize = 256 * 256;
 /// Multithreading: For large matrices (m*n > 4096), the M-loop is
 /// parallelized using scoped threads with `split_at_mut` — each thread
 /// gets exclusive ownership of its C rows. No Arc, no Mutex, no locks.
+#[cfg(target_arch = "x86_64")]
 fn sgemm_blocked(
     layout: Layout,
     trans_a: Transpose,
@@ -364,6 +374,7 @@ fn sgemm_blocked(
 }
 
 /// Pack A panel into MR-row contiguous strips for cache-friendly access.
+#[cfg(target_arch = "x86_64")]
 fn pack_a_f32(
     layout: Layout,
     trans: Transpose,
@@ -399,6 +410,7 @@ fn pack_a_f32(
 }
 
 /// Pack B panel into NR-column contiguous strips.
+#[cfg(target_arch = "x86_64")]
 fn pack_b_f32(
     layout: Layout,
     trans: Transpose,
@@ -434,6 +446,7 @@ fn pack_b_f32(
 }
 
 /// Macro-kernel: dispatch MR x NR microkernels over the packed panels.
+#[cfg(target_arch = "x86_64")]
 fn sgemm_macrokernel(
     alpha: f32,
     packed_a: &[f32],
@@ -486,6 +499,7 @@ fn sgemm_macrokernel(
 /// K-loop is 2x unrolled to keep the FMA pipeline full — while one
 /// FMA is in flight (4-cycle latency), the next one starts. Software
 /// prefetch hints are placed 4 K-steps ahead for both A and B panels.
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn sgemm_microkernel_6x16(
     alpha: f32,
@@ -666,16 +680,19 @@ pub fn dgemm(
         return;
     }
 
-    // Small matrices: simple triple-loop
-    if m * n * k < 110_000 {
-        dgemm_simple(
-            layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
-        );
-        return;
+    // Use cache-blocked GEMM with AVX-512 microkernels when available.
+    #[cfg(target_arch = "x86_64")]
+    {
+        if m * n * k >= 110_000 && is_x86_feature_detected!("avx512f") {
+            dgemm_blocked(
+                layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
+            );
+            return;
+        }
     }
 
-    // Cache-blocked DGEMM with packing + multithreading
-    dgemm_blocked(
+    // Fallback: simple DGEMM using simd::dot_f64 (has AVX-512/AVX2/scalar dispatch)
+    dgemm_simple(
         layout, trans_a, trans_b, m, n, k, alpha, a, lda, b, ldb, c, ldc,
     );
 }
@@ -746,9 +763,11 @@ fn dgemm_simple(
 }
 
 /// Threshold for multithreaded DGEMM.
+#[cfg(target_arch = "x86_64")]
 const DGEMM_PARALLEL_THRESHOLD: usize = 256 * 256;
 
 /// Cache-blocked DGEMM using Goto BLAS algorithm with 6x8 f64 microkernel.
+#[cfg(target_arch = "x86_64")]
 fn dgemm_blocked(
     layout: Layout,
     trans_a: Transpose,
@@ -862,6 +881,7 @@ fn dgemm_blocked(
 }
 
 /// Pack A panel for DGEMM (MR-row strips).
+#[cfg(target_arch = "x86_64")]
 fn pack_a_f64(
     layout: Layout,
     trans: Transpose,
@@ -897,6 +917,7 @@ fn pack_a_f64(
 }
 
 /// Pack B panel for DGEMM (NR-column strips).
+#[cfg(target_arch = "x86_64")]
 fn pack_b_f64(
     layout: Layout,
     trans: Transpose,
@@ -932,6 +953,7 @@ fn pack_b_f64(
 }
 
 /// DGEMM macro-kernel: dispatch 6x8 microkernels.
+#[cfg(target_arch = "x86_64")]
 fn dgemm_macrokernel(
     alpha: f64,
     packed_a: &[f64],
@@ -973,6 +995,7 @@ fn dgemm_macrokernel(
 
 /// DGEMM microkernel: MR rows x NR columns using F64Simd.
 /// AVX-512: 6x8 (f64x8), AVX2: 4x4 (f64x4).
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn dgemm_microkernel_6x8(
     alpha: f64,

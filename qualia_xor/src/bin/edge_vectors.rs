@@ -64,10 +64,7 @@ fn bf16_structural_diff(a: &[u8], b: &[u8]) -> (usize, usize, usize, Vec<usize>)
 
 /// Raw Hamming distance (popcount of XOR). For σ-scoring.
 fn hamming_distance(a: &[u8], b: &[u8]) -> u32 {
-    a.iter()
-        .zip(b)
-        .map(|(x, y)| (x ^ y).count_ones())
-        .sum()
+    a.iter().zip(b).map(|(x, y)| (x ^ y).count_ones()).sum()
 }
 
 /// Random hyperplane projection: 16 f32 dims → 16384 bits (Fingerprint<256> equivalent).
@@ -101,10 +98,7 @@ fn project_to_16k(vals: &[f32], seed: u64) -> Vec<u8> {
 
 /// Hamming distance on u64 words (for 16384-bit vectors).
 fn hamming_u64(a: &[u64], b: &[u64]) -> u32 {
-    a.iter()
-        .zip(b)
-        .map(|(x, y)| (x ^ y).count_ones())
-        .sum()
+    a.iter().zip(b).map(|(x, y)| (x ^ y).count_ones()).sum()
 }
 
 /// Convert byte vec to u64 words for Hamming.
@@ -687,32 +681,50 @@ fn main() {
     // For balanced random BF16 vectors with n_dims dimensions:
     //   μ_dim = 0.5×256 + 4×16 + 3.5×1 = 195.5
     //   σ²_dim = 0.25×(256² + 8×16² + 7×1²) = 16897.75
-    let gate_bf16_axis = SigmaGate::bf16_weighted(16);   // single axis, 16 dims
+    let gate_bf16_axis = SigmaGate::bf16_weighted(16); // single axis, 16 dims
     let gate_bf16_triple = SigmaGate::bf16_weighted(48); // 3 axes × 16 dims
 
     // Also show raw Hamming gate for comparison
     let gate_raw_axis = SigmaGate::new(256);
 
     println!("  σ-gate (BF16 weighted, single axis, 16 dims):");
-    println!("    μ = {}, σ = {}", gate_bf16_axis.mu, gate_bf16_axis.sigma_unit);
-    println!("    Discovery < {}, Strong < {}, Evidence < {}, Hint < {}",
-        gate_bf16_axis.discovery, gate_bf16_axis.strong,
-        gate_bf16_axis.evidence, gate_bf16_axis.hint);
+    println!(
+        "    μ = {}, σ = {}",
+        gate_bf16_axis.mu, gate_bf16_axis.sigma_unit
+    );
+    println!(
+        "    Discovery < {}, Strong < {}, Evidence < {}, Hint < {}",
+        gate_bf16_axis.discovery,
+        gate_bf16_axis.strong,
+        gate_bf16_axis.evidence,
+        gate_bf16_axis.hint
+    );
 
     println!("  σ-gate (BF16 weighted, triple, 48 dims):");
-    println!("    μ = {}, σ = {}", gate_bf16_triple.mu, gate_bf16_triple.sigma_unit);
-    println!("    Discovery < {}, Strong < {}, Evidence < {}, Hint < {}",
-        gate_bf16_triple.discovery, gate_bf16_triple.strong,
-        gate_bf16_triple.evidence, gate_bf16_triple.hint);
+    println!(
+        "    μ = {}, σ = {}",
+        gate_bf16_triple.mu, gate_bf16_triple.sigma_unit
+    );
+    println!(
+        "    Discovery < {}, Strong < {}, Evidence < {}, Hint < {}",
+        gate_bf16_triple.discovery,
+        gate_bf16_triple.strong,
+        gate_bf16_triple.evidence,
+        gate_bf16_triple.hint
+    );
 
     println!("  σ-gate (raw Hamming, 256 bits — for comparison):");
-    println!("    μ = {}, σ = {} (saturates — everything = Discovery)",
-        gate_raw_axis.mu, gate_raw_axis.sigma_unit);
+    println!(
+        "    μ = {}, σ = {} (saturates — everything = Discovery)",
+        gate_raw_axis.mu, gate_raw_axis.sigma_unit
+    );
 
     // Score all pairwise distances with σ-significance
     println!("\n  Per-pair σ-significance (per-axis + combined):\n");
-    println!("  {:>40}  {:>10} {:>10} {:>10}  {:>10}  {:>10}",
-        "Pair", "σ(S⊕P)", "σ(P⊕O)", "σ(S⊕O)", "σ(total)", "Level");
+    println!(
+        "  {:>40}  {:>10} {:>10} {:>10}  {:>10}  {:>10}",
+        "Pair", "σ(S⊕P)", "σ(P⊕O)", "σ(S⊕O)", "σ(total)", "Level"
+    );
 
     let mut sigma_levels: Vec<(String, SignificanceLevel, f32)> = Vec::new();
 
@@ -724,30 +736,59 @@ fn main() {
         // importance (sign > exp > man) and the σ-gate calibrated for BF16
         // weights gives proper statistical significance.
         let score_x = score_sigma(
-            &EnergyConflict { conflict: dx as u32, energy_a: 0, energy_b: 0, agreement: 0 },
+            &EnergyConflict {
+                conflict: dx as u32,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            },
             &gate_bf16_axis,
         );
         let score_y = score_sigma(
-            &EnergyConflict { conflict: dy as u32, energy_a: 0, energy_b: 0, agreement: 0 },
+            &EnergyConflict {
+                conflict: dy as u32,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            },
             &gate_bf16_axis,
         );
         let score_z = score_sigma(
-            &EnergyConflict { conflict: dz as u32, energy_a: 0, energy_b: 0, agreement: 0 },
+            &EnergyConflict {
+                conflict: dz as u32,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            },
             &gate_bf16_axis,
         );
 
         let total_weighted = (dx + dy + dz) as u32;
         let score_total = score_sigma(
-            &EnergyConflict { conflict: total_weighted, energy_a: 0, energy_b: 0, agreement: 0 },
+            &EnergyConflict {
+                conflict: total_weighted,
+                energy_a: 0,
+                energy_b: 0,
+                agreement: 0,
+            },
             &gate_bf16_triple,
         );
 
-        let pair_name = format!("{}↔{}", &result.a_name[..result.a_name.len().min(18)],
-            &result.b_name[..result.b_name.len().min(18)]);
+        let pair_name = format!(
+            "{}↔{}",
+            &result.a_name[..result.a_name.len().min(18)],
+            &result.b_name[..result.b_name.len().min(18)]
+        );
 
-        println!("  {:>40}  {:>10.2} {:>10.2} {:>10.2}  {:>10.2}  {:>10?}",
-            pair_name, score_x.sigma, score_y.sigma, score_z.sigma,
-            score_total.sigma, score_total.level);
+        println!(
+            "  {:>40}  {:>10.2} {:>10.2} {:>10.2}  {:>10.2}  {:>10?}",
+            pair_name,
+            score_x.sigma,
+            score_y.sigma,
+            score_z.sigma,
+            score_total.sigma,
+            score_total.level
+        );
 
         sigma_levels.push((pair_name, score_total.level, score_total.sigma));
     }
@@ -775,17 +816,30 @@ fn main() {
     println!("    BF16 distance: 1 scalar value per axis (sign*256 + exp*16 + man)");
     println!("    σ-scoring:     5 statistical tiers per axis with p-values");
     println!("    Per-axis σ:    separates magnitude from significance");
-    println!("    Per-axis histogram: {} positional sub-distances (free)", 256 / 16);
+    println!(
+        "    Per-axis histogram: {} positional sub-distances (free)",
+        256 / 16
+    );
     println!();
 
     // Show the σ-spread: how many distinct levels are used
-    let distinct_levels: std::collections::HashSet<_> = sigma_levels.iter().map(|(_, l, _)| l).collect();
-    println!("    Distinct σ-levels used: {} / 5 possible", distinct_levels.len());
-    println!("    This means σ-scoring provides {:.0}× more discrimination",
-        distinct_levels.len() as f64 / 1.0); // vs binary "close/far"
+    let distinct_levels: std::collections::HashSet<_> =
+        sigma_levels.iter().map(|(_, l, _)| l).collect();
+    println!(
+        "    Distinct σ-levels used: {} / 5 possible",
+        distinct_levels.len()
+    );
+    println!(
+        "    This means σ-scoring provides {:.0}× more discrimination",
+        distinct_levels.len() as f64 / 1.0
+    ); // vs binary "close/far"
 
     // Compute full corpus pairwise σ-significance for all 219 items
-    println!("\n  Full corpus pairwise analysis ({} items, {} pairs):", n, n * (n - 1) / 2);
+    println!(
+        "\n  Full corpus pairwise analysis ({} items, {} pairs):",
+        n,
+        n * (n - 1) / 2
+    );
 
     let mut corpus_levels = [0u32; 5];
     let mut corpus_sigma_sum = 0.0f64;
@@ -804,7 +858,12 @@ fn main() {
             let total_weighted = triple_a.total_distance(&triple_b);
 
             let score = score_sigma(
-                &EnergyConflict { conflict: total_weighted as u32, energy_a: 0, energy_b: 0, agreement: 0 },
+                &EnergyConflict {
+                    conflict: total_weighted as u32,
+                    energy_a: 0,
+                    energy_b: 0,
+                    agreement: 0,
+                },
                 &gate_bf16_triple,
             );
 
@@ -822,10 +881,19 @@ fn main() {
 
     println!("    Mean σ: {:.3}", corpus_sigma_sum / corpus_count as f64);
     println!("    Distribution:");
-    for (i, &name) in ["Noise", "Hint", "Evidence", "Strong", "Discovery"].iter().enumerate() {
+    for (i, &name) in ["Noise", "Hint", "Evidence", "Strong", "Discovery"]
+        .iter()
+        .enumerate()
+    {
         let pct = 100.0 * corpus_levels[i] as f64 / corpus_count as f64;
         let bar_len = (pct * 0.5) as usize;
-        println!("      {:>10}: {:>6} ({:>5.1}%)  {}", name, corpus_levels[i], pct, "#".repeat(bar_len));
+        println!(
+            "      {:>10}: {:>6} ({:>5.1}%)  {}",
+            name,
+            corpus_levels[i],
+            pct,
+            "#".repeat(bar_len)
+        );
     }
 
     // ========================================================================
@@ -840,7 +908,10 @@ fn main() {
     let gate_16k = SigmaGate::sku_16k();
     let gate_16k_triple = SigmaGate::new(16384 * 3);
 
-    println!("  Projecting {} items from 16 dims → 16384-bit fingerprints...", n);
+    println!(
+        "  Projecting {} items from 16 dims → 16384-bit fingerprints...",
+        n
+    );
     let projection_seed = 0xCAFE_BABE_u64;
     let fps_16k: Vec<Vec<u8>> = vecs_f32
         .iter()
@@ -848,7 +919,11 @@ fn main() {
         .collect();
     let fps_words: Vec<Vec<u64>> = fps_16k.iter().map(|b| bytes_to_words(b)).collect();
 
-    println!("  Done. {} bytes per fingerprint ({} bits)\n", fps_16k[0].len(), fps_16k[0].len() * 8);
+    println!(
+        "  Done. {} bytes per fingerprint ({} bits)\n",
+        fps_16k[0].len(),
+        fps_16k[0].len() * 8
+    );
 
     // Show popcount distribution (should cluster around 8192 for balanced projection)
     let popcounts: Vec<u32> = fps_words
@@ -858,7 +933,10 @@ fn main() {
     let mean_pop: f64 = popcounts.iter().map(|&x| x as f64).sum::<f64>() / n as f64;
     let min_pop = popcounts.iter().min().unwrap();
     let max_pop = popcounts.iter().max().unwrap();
-    println!("  Popcount: mean={:.0}, min={}, max={} (expected ~8192)", mean_pop, min_pop, max_pop);
+    println!(
+        "  Popcount: mean={:.0}, min={}, max={} (expected ~8192)",
+        mean_pop, min_pop, max_pop
+    );
 
     // Pairwise Hamming in SKU-16K space
     println!("\n  Full corpus pairwise σ-significance in SKU-16K:");
@@ -873,7 +951,12 @@ fn main() {
         for j in (i + 1)..n {
             let hd = hamming_u64(&fps_words[i], &fps_words[j]);
             let score = score_sigma(
-                &EnergyConflict { conflict: hd, energy_a: 0, energy_b: 0, agreement: 0 },
+                &EnergyConflict {
+                    conflict: hd,
+                    energy_a: 0,
+                    energy_b: 0,
+                    agreement: 0,
+                },
                 &gate_16k,
             );
             match score.level {
@@ -885,45 +968,93 @@ fn main() {
             }
             sku_sigma_sum += score.sigma as f64;
             sku_count += 1;
-            if (score.sigma as f64) < sku_min_sigma { sku_min_sigma = score.sigma as f64; }
-            if (score.sigma as f64) > sku_max_sigma { sku_max_sigma = score.sigma as f64; }
+            if (score.sigma as f64) < sku_min_sigma {
+                sku_min_sigma = score.sigma as f64;
+            }
+            if (score.sigma as f64) > sku_max_sigma {
+                sku_max_sigma = score.sigma as f64;
+            }
             sku_sigma_pairs.push((i, j, score.sigma));
         }
     }
 
-    println!("    Mean σ: {:.3}  (range: {:.3} – {:.3})", sku_sigma_sum / sku_count as f64, sku_min_sigma, sku_max_sigma);
+    println!(
+        "    Mean σ: {:.3}  (range: {:.3} – {:.3})",
+        sku_sigma_sum / sku_count as f64,
+        sku_min_sigma,
+        sku_max_sigma
+    );
     println!("    Distribution:");
-    for (i, &name) in ["Noise", "Hint", "Evidence", "Strong", "Discovery"].iter().enumerate() {
+    for (i, &name) in ["Noise", "Hint", "Evidence", "Strong", "Discovery"]
+        .iter()
+        .enumerate()
+    {
         let pct = 100.0 * sku_levels[i] as f64 / sku_count as f64;
         let bar_len = (pct * 0.5) as usize;
-        println!("      {:>10}: {:>6} ({:>5.1}%)  {}", name, sku_levels[i], pct, "#".repeat(bar_len));
+        println!(
+            "      {:>10}: {:>6} ({:>5.1}%)  {}",
+            name,
+            sku_levels[i],
+            pct,
+            "#".repeat(bar_len)
+        );
     }
 
     // Show the least similar pairs (lowest σ = closest to noise floor)
     sku_sigma_pairs.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
     println!("\n  Top 15 LEAST similar pairs (lowest σ — closest to noise floor):");
-    println!("  {:>40}  {:>10}  {:>10}  {:>10}", "Pair", "σ", "Level", "Hamming");
+    println!(
+        "  {:>40}  {:>10}  {:>10}  {:>10}",
+        "Pair", "σ", "Level", "Hamming"
+    );
     for (i, j, sigma) in sku_sigma_pairs.iter().take(15) {
         let hd = hamming_u64(&fps_words[*i], &fps_words[*j]);
-        let ec = EnergyConflict { conflict: hd, energy_a: 0, energy_b: 0, agreement: 0 };
+        let ec = EnergyConflict {
+            conflict: hd,
+            energy_a: 0,
+            energy_b: 0,
+            agreement: 0,
+        };
         let level = score_sigma(&ec, &gate_16k).level;
-        println!("  {:>40}  {:>10.3}  {:>10?}  {:>10}",
-            format!("{}↔{}", &items[*i].id[..items[*i].id.len().min(18)],
-                &items[*j].id[..items[*j].id.len().min(18)]),
-            sigma, level, hd);
+        println!(
+            "  {:>40}  {:>10.3}  {:>10?}  {:>10}",
+            format!(
+                "{}↔{}",
+                &items[*i].id[..items[*i].id.len().min(18)],
+                &items[*j].id[..items[*j].id.len().min(18)]
+            ),
+            sigma,
+            level,
+            hd
+        );
     }
 
     // Show the best matches (highest σ = strongest match, lowest Hamming)
     println!("\n  Top 15 BEST matches (highest σ — lowest Hamming distance):");
-    println!("  {:>40}  {:>10}  {:>10}  {:>10}", "Pair", "σ", "Level", "Hamming");
+    println!(
+        "  {:>40}  {:>10}  {:>10}  {:>10}",
+        "Pair", "σ", "Level", "Hamming"
+    );
     for (i, j, sigma) in sku_sigma_pairs.iter().rev().take(15) {
         let hd = hamming_u64(&fps_words[*i], &fps_words[*j]);
-        let ec = EnergyConflict { conflict: hd, energy_a: 0, energy_b: 0, agreement: 0 };
+        let ec = EnergyConflict {
+            conflict: hd,
+            energy_a: 0,
+            energy_b: 0,
+            agreement: 0,
+        };
         let level = score_sigma(&ec, &gate_16k).level;
-        println!("  {:>40}  {:>10.3}  {:>10?}  {:>10}",
-            format!("{}↔{}", &items[*i].id[..items[*i].id.len().min(18)],
-                &items[*j].id[..items[*j].id.len().min(18)]),
-            sigma, level, hd);
+        println!(
+            "  {:>40}  {:>10.3}  {:>10?}  {:>10}",
+            format!(
+                "{}↔{}",
+                &items[*i].id[..items[*i].id.len().min(18)],
+                &items[*j].id[..items[*j].id.len().min(18)]
+            ),
+            sigma,
+            level,
+            hd
+        );
     }
 
     // Comparison: BF16 256-bit vs SKU-16K 16384-bit
@@ -932,11 +1063,23 @@ fn main() {
     println!("  ╠════════════════════════════════════════════════════════════╣");
     println!("  ║                   BF16 (256 bits)   SKU-16K (16384 bits) ║");
     println!("  ║  σ-unit:           8                 64                  ║");
-    println!("  ║  Distinct levels:  1                 {}                   ║",
-        [sku_levels[0] > 0, sku_levels[1] > 0, sku_levels[2] > 0,
-         sku_levels[3] > 0, sku_levels[4] > 0].iter().filter(|&&x| x).count());
-    println!("  ║  σ range:          14–21 (saturated) {:.1}–{:.1}         ║",
-        sku_min_sigma, sku_max_sigma);
+    println!(
+        "  ║  Distinct levels:  1                 {}                   ║",
+        [
+            sku_levels[0] > 0,
+            sku_levels[1] > 0,
+            sku_levels[2] > 0,
+            sku_levels[3] > 0,
+            sku_levels[4] > 0
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count()
+    );
+    println!(
+        "  ║  σ range:          14–21 (saturated) {:.1}–{:.1}         ║",
+        sku_min_sigma, sku_max_sigma
+    );
     println!("  ║  Discrimination:   NONE (all=Disc.)  5-tier graded       ║");
     println!("  ╚════════════════════════════════════════════════════════════╝");
 

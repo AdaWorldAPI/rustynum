@@ -263,8 +263,8 @@ unsafe fn bf16_hamming_avx2(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
     // vpshufb nibble popcount LUT
     let lo_nibble_mask = _mm256_set1_epi8(0x0F);
     let popcnt_lut = _mm256_setr_epi8(
-        0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
-        0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+        0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3,
+        3, 4,
     );
 
     let mut acc_lo = _mm256_setzero_si256();
@@ -284,7 +284,10 @@ unsafe fn bf16_hamming_avx2(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
         let exp_shifted = _mm256_and_si256(_mm256_srli_epi16(xor, 7), mask_0xff);
         // vpshufb popcount: split into nibbles, look up, add
         let exp_lo = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(exp_shifted, lo_nibble_mask));
-        let exp_hi = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(_mm256_srli_epi16(exp_shifted, 4), lo_nibble_mask));
+        let exp_hi = _mm256_shuffle_epi8(
+            popcnt_lut,
+            _mm256_and_si256(_mm256_srli_epi16(exp_shifted, 4), lo_nibble_mask),
+        );
         let exp_popcnt = _mm256_and_si256(_mm256_add_epi8(exp_lo, exp_hi), mask_0xff);
         let exp_weighted = _mm256_mullo_epi16(exp_popcnt, w_exp);
 
@@ -292,7 +295,10 @@ unsafe fn bf16_hamming_avx2(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
         let man_masked = _mm256_and_si256(xor, mask_0x7f);
         // vpshufb popcount
         let man_lo = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(man_masked, lo_nibble_mask));
-        let man_hi = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(_mm256_srli_epi16(man_masked, 4), lo_nibble_mask));
+        let man_hi = _mm256_shuffle_epi8(
+            popcnt_lut,
+            _mm256_and_si256(_mm256_srli_epi16(man_masked, 4), lo_nibble_mask),
+        );
         let man_popcnt = _mm256_and_si256(_mm256_add_epi8(man_lo, man_hi), mask_0xff);
         let man_weighted = _mm256_mullo_epi16(man_popcnt, w_man);
 

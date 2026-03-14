@@ -363,8 +363,12 @@ pub fn rfft_f32(input: &[f32]) -> Vec<f32> {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn fft_f32_butterfly_avx512(
-    data: &mut [f32], n: usize, half: usize, stage_len: usize,
-    cos_tbl: &[f32], sin_tbl: &[f32],
+    data: &mut [f32],
+    n: usize,
+    half: usize,
+    stage_len: usize,
+    cos_tbl: &[f32],
+    sin_tbl: &[f32],
 ) {
     let num_simd_chunks = half / F32_COMPLEX_PER_SIMD;
     let mut wr_vecs: Vec<f32x16> = Vec::with_capacity(num_simd_chunks);
@@ -436,8 +440,12 @@ unsafe fn fft_f32_butterfly_avx512(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn fft_f64_butterfly_avx512(
-    data: &mut [f64], n: usize, half: usize, stage_len: usize,
-    cos_tbl: &[f64], sin_tbl: &[f64],
+    data: &mut [f64],
+    n: usize,
+    half: usize,
+    stage_len: usize,
+    cos_tbl: &[f64],
+    sin_tbl: &[f64],
 ) {
     let num_simd_chunks = half / F64_COMPLEX_PER_SIMD;
     let mut wr_vecs: Vec<f64x8> = Vec::with_capacity(num_simd_chunks);

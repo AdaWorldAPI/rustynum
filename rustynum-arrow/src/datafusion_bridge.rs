@@ -168,11 +168,23 @@ pub mod udfs {
     fn downcast_binary(arr: &ArrayRef) -> Result<Vec<Option<&[u8]>>> {
         if let Some(fsb) = arr.as_any().downcast_ref::<FixedSizeBinaryArray>() {
             Ok((0..fsb.len())
-                .map(|i| if fsb.is_null(i) { None } else { Some(fsb.value(i)) })
+                .map(|i| {
+                    if fsb.is_null(i) {
+                        None
+                    } else {
+                        Some(fsb.value(i))
+                    }
+                })
                 .collect())
         } else if let Some(bin) = arr.as_any().downcast_ref::<BinaryArray>() {
             Ok((0..bin.len())
-                .map(|i| if bin.is_null(i) { None } else { Some(bin.value(i)) })
+                .map(|i| {
+                    if bin.is_null(i) {
+                        None
+                    } else {
+                        Some(bin.value(i))
+                    }
+                })
                 .collect())
         } else {
             Err(datafusion::error::DataFusionError::Execution(format!(
@@ -230,15 +242,25 @@ pub mod udfs {
 
     impl RustyHammingUdf {
         pub fn new() -> Self {
-            Self { signature: binary_pair_signature() }
+            Self {
+                signature: binary_pair_signature(),
+            }
         }
     }
 
     impl ScalarUDFImpl for RustyHammingUdf {
-        fn as_any(&self) -> &dyn Any { self }
-        fn name(&self) -> &str { "rusty_hamming" }
-        fn signature(&self) -> &Signature { &self.signature }
-        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::UInt64) }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn name(&self) -> &str {
+            "rusty_hamming"
+        }
+        fn signature(&self) -> &Signature {
+            &self.signature
+        }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> {
+            Ok(DataType::UInt64)
+        }
         fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
             let (a_arr, b_arr) = expand_to_arrays(&args.args[0], &args.args[1])?;
             let a_vals = downcast_binary(&a_arr)?;
@@ -266,15 +288,25 @@ pub mod udfs {
 
     impl RustySimilarityUdf {
         pub fn new() -> Self {
-            Self { signature: binary_pair_signature() }
+            Self {
+                signature: binary_pair_signature(),
+            }
         }
     }
 
     impl ScalarUDFImpl for RustySimilarityUdf {
-        fn as_any(&self) -> &dyn Any { self }
-        fn name(&self) -> &str { "rusty_similarity" }
-        fn signature(&self) -> &Signature { &self.signature }
-        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::Float32) }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn name(&self) -> &str {
+            "rusty_similarity"
+        }
+        fn signature(&self) -> &Signature {
+            &self.signature
+        }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> {
+            Ok(DataType::Float32)
+        }
         fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
             let (a_arr, b_arr) = expand_to_arrays(&args.args[0], &args.args[1])?;
             let a_vals = downcast_binary(&a_arr)?;
@@ -309,25 +341,32 @@ pub mod udfs {
 
     impl RustyPopcountUdf {
         pub fn new() -> Self {
-            Self { signature: unary_binary_signature() }
+            Self {
+                signature: unary_binary_signature(),
+            }
         }
     }
 
     impl ScalarUDFImpl for RustyPopcountUdf {
-        fn as_any(&self) -> &dyn Any { self }
-        fn name(&self) -> &str { "rusty_popcount" }
-        fn signature(&self) -> &Signature { &self.signature }
-        fn return_type(&self, _: &[DataType]) -> Result<DataType> { Ok(DataType::UInt64) }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn name(&self) -> &str {
+            "rusty_popcount"
+        }
+        fn signature(&self) -> &Signature {
+            &self.signature
+        }
+        fn return_type(&self, _: &[DataType]) -> Result<DataType> {
+            Ok(DataType::UInt64)
+        }
         fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
             let arr = match &args.args[0] {
                 ColumnarValue::Array(a) => a.clone(),
                 ColumnarValue::Scalar(s) => s.to_array_of_size(1)?,
             };
             let vals = downcast_binary(&arr)?;
-            let results: UInt64Array = vals
-                .iter()
-                .map(|v| v.map(popcount))
-                .collect();
+            let results: UInt64Array = vals.iter().map(|v| v.map(popcount)).collect();
             Ok(ColumnarValue::Array(Arc::new(results)))
         }
     }
@@ -343,14 +382,22 @@ pub mod udfs {
 
     impl RustyXorBindUdf {
         pub fn new() -> Self {
-            Self { signature: binary_pair_signature() }
+            Self {
+                signature: binary_pair_signature(),
+            }
         }
     }
 
     impl ScalarUDFImpl for RustyXorBindUdf {
-        fn as_any(&self) -> &dyn Any { self }
-        fn name(&self) -> &str { "rusty_xor_bind" }
-        fn signature(&self) -> &Signature { &self.signature }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn name(&self) -> &str {
+            "rusty_xor_bind"
+        }
+        fn signature(&self) -> &Signature {
+            &self.signature
+        }
         fn return_type(&self, arg_types: &[DataType]) -> Result<DataType> {
             match &arg_types[0] {
                 dt @ DataType::FixedSizeBinary(_) => Ok(dt.clone()),
@@ -578,15 +625,18 @@ mod udf_tests {
     use super::udfs::*;
 
     fn make_fsb_column(data: &[&[u8]], element_size: i32) -> Arc<dyn arrow::array::Array> {
-        let mut builder =
-            FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
+        let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), element_size);
         for row in data {
             builder.append_value(row).unwrap();
         }
         Arc::new(builder.finish())
     }
 
-    fn make_args(args: Vec<ColumnarValue>, num_rows: usize, ret_dt: DataType) -> ScalarFunctionArgs {
+    fn make_args(
+        args: Vec<ColumnarValue>,
+        num_rows: usize,
+        ret_dt: DataType,
+    ) -> ScalarFunctionArgs {
         let arg_fields: Vec<_> = args
             .iter()
             .enumerate()
@@ -690,7 +740,10 @@ mod udf_tests {
         // XOR a and b
         let result = xor_udf
             .invoke_with_args(make_args(
-                vec![ColumnarValue::Array(a.clone()), ColumnarValue::Array(b.clone())],
+                vec![
+                    ColumnarValue::Array(a.clone()),
+                    ColumnarValue::Array(b.clone()),
+                ],
                 1,
                 DataType::Binary,
             ))

@@ -1271,7 +1271,7 @@ unsafe fn dot_i8_avx2(a: &[u8], b: &[u8]) -> i64 {
 
     // Bias mask: XOR with 0x80 per byte to convert signed→unsigned
     let bias = _mm256_set1_epi8(-128i8); // 0x80
-    // Ones vector for computing sum(b) via pmaddubsw(ones, b)
+                                         // Ones vector for computing sum(b) via pmaddubsw(ones, b)
     let ones_u8 = _mm256_set1_epi8(1);
     // Ones vector for horizontal add in pmaddwd
     let ones_i16 = _mm256_set1_epi16(1);

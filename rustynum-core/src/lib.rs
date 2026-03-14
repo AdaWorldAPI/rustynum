@@ -13,8 +13,8 @@
 // All SIMD uses stable std::arch via simd_avx512 — no nightly required.
 
 #[cfg(target_arch = "x86_64")]
-pub mod simd_avx512;      // AVX-512 wrapper types + implementations (x86_64 only)
-pub mod simd_isa;         // ISA trait: bridge stable types ↔ portable_simd
+pub mod simd_avx512; // AVX-512 wrapper types + implementations (x86_64 only)
+pub mod simd_isa; // ISA trait: bridge stable types ↔ portable_simd
 
 // Backward compat shim — remove in next major version
 #[cfg(target_arch = "x86_64")]
@@ -39,7 +39,7 @@ pub mod tail_backend;
 
 pub mod prefilter;
 
-pub mod hdr;              // HDR cascade search
+pub mod hdr; // HDR cascade search
 
 // simd_avx2: AVX2 implementations (always compiled on x86_64, used by runtime dispatch)
 #[cfg(target_arch = "x86_64")]
