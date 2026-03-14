@@ -18,9 +18,12 @@
 //! - BF16 GEMM with f32 accumulation (SIMD dot product microkernel)
 //! - Mixed-precision GEMM: inputs in BF16, output in f32
 
-use rustynum_core::simd::{dot_f32, F32_LANES};
+use rustynum_core::simd::dot_f32;
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{F32x16 as F32Simd, U32x16 as U32Simd};
+
+const F32_LANES: usize = 16;
 
 /// BFloat16 stored as raw u16 bits.
 /// Layout: [1 sign][8 exponent][7 mantissa]
@@ -79,6 +82,21 @@ impl From<BF16> for f32 {
 /// truncates to u16. Processes F32_LANES (16) elements per iteration.
 pub fn f32_to_bf16_slice(src: &[f32], dst: &mut [BF16]) {
     assert!(dst.len() >= src.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { f32_to_bf16_slice_avx512(src, dst) };
+            return;
+        }
+    }
+    for (i, &v) in src.iter().enumerate() {
+        dst[i] = BF16::from_f32_truncate(v);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn f32_to_bf16_slice_avx512(src: &[f32], dst: &mut [BF16]) {
     let len = src.len();
     let chunks = len / F32_LANES;
 
@@ -105,6 +123,21 @@ pub fn f32_to_bf16_slice(src: &[f32], dst: &mut [BF16]) {
 /// (0x7FFF + LSB of bf16), shifts right by 16, truncates to u16.
 pub fn f32_to_bf16_rounded(src: &[f32], dst: &mut [BF16]) {
     assert!(dst.len() >= src.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { f32_to_bf16_rounded_avx512(src, dst) };
+            return;
+        }
+    }
+    for (i, &v) in src.iter().enumerate() {
+        dst[i] = BF16::from_f32(v);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn f32_to_bf16_rounded_avx512(src: &[f32], dst: &mut [BF16]) {
     let len = src.len();
     let chunks = len / F32_LANES;
 
@@ -136,6 +169,7 @@ pub fn f32_to_bf16_rounded(src: &[f32], dst: &mut [BF16]) {
 }
 
 /// SIMD wrapping add for u32 lanes (portable_simd does not expose wrapping_add directly).
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_wrapping_add_u32(a: U32Simd, b: U32Simd) -> U32Simd {
     // For u32x16, the standard + operator wraps in release mode.
@@ -155,6 +189,21 @@ fn simd_wrapping_add_u32(a: U32Simd, b: U32Simd) -> U32Simd {
 /// reinterprets as f32 via `from_bits()`.
 pub fn bf16_to_f32_slice(src: &[BF16], dst: &mut [f32]) {
     assert!(dst.len() >= src.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { bf16_to_f32_slice_avx512(src, dst) };
+            return;
+        }
+    }
+    for (i, &v) in src.iter().enumerate() {
+        dst[i] = v.to_f32();
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn bf16_to_f32_slice_avx512(src: &[BF16], dst: &mut [f32]) {
     let len = src.len();
     let chunks = len / F32_LANES;
 

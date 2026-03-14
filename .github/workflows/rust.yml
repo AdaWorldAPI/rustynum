@@ -36,7 +36,9 @@ jobs:
           restore-keys: ${{ runner.os }}-lint-
 
       - name: cargo fmt --check
-        run: cargo fmt --all -- --check
+        run: |
+          rustup component add rustfmt 2>/dev/null || true
+          cargo fmt --all -- --check
 
       - name: cargo clippy (workspace, excluding qualia_xor)
         run: cargo clippy --workspace ${{ env.EXCLUDED }} --all-targets -- -D warnings
