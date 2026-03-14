@@ -1,3 +1,4 @@
+#![allow(deprecated)] // Benchmarks use legacy APIs pending migration to try_* variants
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use rustynum_rs::NumArrayU8;
 

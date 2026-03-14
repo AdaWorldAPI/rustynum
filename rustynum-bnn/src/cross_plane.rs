@@ -185,12 +185,7 @@ impl CrossPlaneVote {
     /// survived the sigma-gated filter in that plane.
     ///
     /// All operations are bitwise AND/NOT — no branches, no floats.
-    pub fn extract(
-        s_mask: &[u64],
-        p_mask: &[u64],
-        o_mask: &[u64],
-        n_entries: usize,
-    ) -> Self {
+    pub fn extract(s_mask: &[u64], p_mask: &[u64], o_mask: &[u64], n_entries: usize) -> Self {
         let n_words = s_mask.len();
         assert_eq!(p_mask.len(), n_words);
         assert_eq!(o_mask.len(), n_words);
@@ -613,12 +608,7 @@ impl LatticeClimber {
         for pair in &pairs {
             for fv in &fvs {
                 let composed = try_compose_pair_and_free(
-                    pair,
-                    fv,
-                    codebook_s,
-                    codebook_p,
-                    codebook_o,
-                    threshold,
+                    pair, fv, codebook_s, codebook_p, codebook_o, threshold,
                 );
                 if let Some(full) = composed {
                     promoted.push(full);
@@ -690,7 +680,12 @@ pub struct SpoTriple {
 
 impl SpoTriple {
     /// Apply a mutation operator, replacing slot(s) with new fingerprint(s).
-    pub fn mutate(&self, op: MutationOp, replacement: &Fingerprint<256>, rng: &mut SplitMix64) -> Self {
+    pub fn mutate(
+        &self,
+        op: MutationOp,
+        replacement: &Fingerprint<256>,
+        rng: &mut SplitMix64,
+    ) -> Self {
         let random_fp = random_fingerprint(rng);
         match op {
             MutationOp::MutateS => SpoTriple {
@@ -937,16 +932,8 @@ fn try_compose_pair_and_free(
                 entry_index: pair.entry_index,
                 halo_type: HaloType::Core,
                 confidence: pair.confidence + fv.confidence,
-                plane_distances: [
-                    pair.plane_distances[0],
-                    pair.plane_distances[1],
-                    o_dist,
-                ],
-                plane_sigma: [
-                    pair.plane_sigma[0],
-                    pair.plane_sigma[1],
-                    fv.plane_sigma[2],
-                ],
+                plane_distances: [pair.plane_distances[0], pair.plane_distances[1], o_dist],
+                plane_sigma: [pair.plane_sigma[0], pair.plane_sigma[1], fv.plane_sigma[2]],
             });
         }
     }
@@ -958,16 +945,8 @@ fn try_compose_pair_and_free(
                 entry_index: pair.entry_index,
                 halo_type: HaloType::Core,
                 confidence: pair.confidence + fv.confidence,
-                plane_distances: [
-                    pair.plane_distances[0],
-                    p_dist,
-                    pair.plane_distances[2],
-                ],
-                plane_sigma: [
-                    pair.plane_sigma[0],
-                    fv.plane_sigma[1],
-                    pair.plane_sigma[2],
-                ],
+                plane_distances: [pair.plane_distances[0], p_dist, pair.plane_distances[2]],
+                plane_sigma: [pair.plane_sigma[0], fv.plane_sigma[1], pair.plane_sigma[2]],
             });
         }
     }
@@ -979,16 +958,8 @@ fn try_compose_pair_and_free(
                 entry_index: pair.entry_index,
                 halo_type: HaloType::Core,
                 confidence: pair.confidence + fv.confidence,
-                plane_distances: [
-                    s_dist,
-                    pair.plane_distances[1],
-                    pair.plane_distances[2],
-                ],
-                plane_sigma: [
-                    fv.plane_sigma[0],
-                    pair.plane_sigma[1],
-                    pair.plane_sigma[2],
-                ],
+                plane_distances: [s_dist, pair.plane_distances[1], pair.plane_distances[2]],
+                plane_sigma: [fv.plane_sigma[0], pair.plane_sigma[1], pair.plane_sigma[2]],
             });
         }
     }
@@ -1302,9 +1273,9 @@ mod tests {
 
         // Encode SPO triple into crystal
         let crystal = [
-            &s ^ &p,  // crystal[0] = S^P
-            &p ^ &o,  // crystal[1] = P^O
-            &s ^ &o,  // crystal[2] = S^O
+            &s ^ &p, // crystal[0] = S^P
+            &p ^ &o, // crystal[1] = P^O
+            &s ^ &o, // crystal[2] = S^O
         ];
 
         // Codebook contains the original O plus some random entries
@@ -1432,21 +1403,33 @@ mod tests {
                 halo_type: HaloType::S,
                 confidence: 0.8,
                 plane_distances: [1000, u32::MAX, u32::MAX],
-                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Noise, SignificanceLevel::Noise],
+                plane_sigma: [
+                    SignificanceLevel::Discovery,
+                    SignificanceLevel::Noise,
+                    SignificanceLevel::Noise,
+                ],
             },
             PartialBinding {
                 entry_index: 1,
                 halo_type: HaloType::SP,
                 confidence: 1.5,
                 plane_distances: [1000, 2000, u32::MAX],
-                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
+                plane_sigma: [
+                    SignificanceLevel::Discovery,
+                    SignificanceLevel::Discovery,
+                    SignificanceLevel::Noise,
+                ],
             },
             PartialBinding {
                 entry_index: 2,
                 halo_type: HaloType::Core,
                 confidence: 2.5,
                 plane_distances: [1000, 2000, 3000],
-                plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Discovery],
+                plane_sigma: [
+                    SignificanceLevel::Discovery,
+                    SignificanceLevel::Discovery,
+                    SignificanceLevel::Discovery,
+                ],
             },
         ];
 
@@ -1471,7 +1454,11 @@ mod tests {
             halo_type: HaloType::S,
             confidence: 0.5,
             plane_distances: [1000, u32::MAX, u32::MAX],
-            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Noise, SignificanceLevel::Noise],
+            plane_sigma: [
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Noise,
+                SignificanceLevel::Noise,
+            ],
         });
         assert_eq!(climber.gate_decision(), CollapseGate::Hold);
 
@@ -1481,7 +1468,11 @@ mod tests {
             halo_type: HaloType::Core,
             confidence: 2.5,
             plane_distances: [500, 600, 700],
-            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Discovery],
+            plane_sigma: [
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Discovery,
+            ],
         });
         assert_eq!(climber.gate_decision(), CollapseGate::Flow);
     }
@@ -1497,7 +1488,11 @@ mod tests {
                 2000, // P-plane: 2000 / 16384 ≈ 12.2% distance → 87.8% similarity
                 u32::MAX,
             ],
-            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
+            plane_sigma: [
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Noise,
+            ],
         };
 
         let (freq, conf) = binding.nars_truth();
@@ -1565,7 +1560,11 @@ mod tests {
             halo_type: HaloType::SP,
             confidence: 1.5,
             plane_distances: [1000, 1200, u32::MAX],
-            plane_sigma: [SignificanceLevel::Discovery, SignificanceLevel::Discovery, SignificanceLevel::Noise],
+            plane_sigma: [
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Discovery,
+                SignificanceLevel::Noise,
+            ],
         });
 
         // O free var at entry 1
@@ -1574,7 +1573,11 @@ mod tests {
             halo_type: HaloType::O,
             confidence: 0.7,
             plane_distances: [u32::MAX, u32::MAX, 800],
-            plane_sigma: [SignificanceLevel::Noise, SignificanceLevel::Noise, SignificanceLevel::Discovery],
+            plane_sigma: [
+                SignificanceLevel::Noise,
+                SignificanceLevel::Noise,
+                SignificanceLevel::Discovery,
+            ],
         });
 
         // Create dummy codebooks

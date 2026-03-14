@@ -156,9 +156,17 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
     }
 
     /// Fallible slice along one axis. Returns `Err` on out-of-bounds.
-    pub fn try_slice_axis(&self, axis: usize, start: usize, end: usize) -> Result<ArrayView<'a, T>, crate::NumError> {
+    pub fn try_slice_axis(
+        &self,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> Result<ArrayView<'a, T>, crate::NumError> {
         if axis >= self.ndim() {
-            return Err(crate::NumError::AxisOutOfBounds { axis, ndim: self.ndim() });
+            return Err(crate::NumError::AxisOutOfBounds {
+                axis,
+                ndim: self.ndim(),
+            });
         }
         if end > self.shape[axis] {
             return Err(crate::NumError::InvalidParameter(format!(
@@ -168,7 +176,8 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
         }
         if start > end {
             return Err(crate::NumError::InvalidParameter(format!(
-                "slice start ({}) must be <= end ({})", start, end
+                "slice start ({}) must be <= end ({})",
+                start, end
             )));
         }
         Ok(self.slice_axis_inner(axis, start, end))
@@ -205,7 +214,10 @@ impl<'a, T: Copy + Debug> ArrayView<'a, T> {
     /// Fallible flip along axis. Returns `Err` if axis is out of bounds.
     pub fn try_flip_axis(&self, axis: usize) -> Result<ArrayView<'a, T>, crate::NumError> {
         if axis >= self.ndim() {
-            return Err(crate::NumError::AxisOutOfBounds { axis, ndim: self.ndim() });
+            return Err(crate::NumError::AxisOutOfBounds {
+                axis,
+                ndim: self.ndim(),
+            });
         }
         Ok(self.flip_axis_inner(axis))
     }

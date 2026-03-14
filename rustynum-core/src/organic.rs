@@ -91,7 +91,11 @@ pub fn unpack_three(byte: u8) -> (FiveState, FiveState, FiveState) {
     let rem = byte % 25;
     let b = rem / 5;
     let c = rem % 5;
-    (FiveState::from_raw(a), FiveState::from_raw(b), FiveState::from_raw(c))
+    (
+        FiveState::from_raw(a),
+        FiveState::from_raw(b),
+        FiveState::from_raw(c),
+    )
 }
 
 /// Pack a slice of `FiveState` values into bytes (3 values per byte).
@@ -292,11 +296,7 @@ pub fn organic_deposit_batch(states: &mut [SynapseState], evidence: &[i8]) {
 ///
 /// `target_mean`: desired average |efficacy| (typically 30–60).
 /// `scale_rate`: how aggressively to adjust (typically 1–3).
-pub fn homeostatic_scale(
-    states: &mut [SynapseState],
-    target_mean: u8,
-    scale_rate: u8,
-) {
+pub fn homeostatic_scale(states: &mut [SynapseState], target_mean: u8, scale_rate: u8) {
     if states.is_empty() {
         return;
     }
@@ -598,10 +598,26 @@ mod tests {
     #[test]
     fn test_saturation_ratio() {
         let states = vec![
-            SynapseState { efficacy: 120, theta: 50, maturity: 10 },
-            SynapseState { efficacy: -110, theta: 50, maturity: 10 },
-            SynapseState { efficacy: 10, theta: 50, maturity: 10 },
-            SynapseState { efficacy: -5, theta: 50, maturity: 10 },
+            SynapseState {
+                efficacy: 120,
+                theta: 50,
+                maturity: 10,
+            },
+            SynapseState {
+                efficacy: -110,
+                theta: 50,
+                maturity: 10,
+            },
+            SynapseState {
+                efficacy: 10,
+                theta: 50,
+                maturity: 10,
+            },
+            SynapseState {
+                efficacy: -5,
+                theta: 50,
+                maturity: 10,
+            },
         ];
         let ratio = saturation_ratio(&states, 100);
         assert!((ratio - 0.5).abs() < f32::EPSILON); // 2 of 4 above threshold
@@ -610,11 +626,31 @@ mod tests {
     #[test]
     fn test_five_state_histogram() {
         let states = vec![
-            SynapseState { efficacy: 80, theta: 20, maturity: 10 },  // StrongPos
-            SynapseState { efficacy: -80, theta: 20, maturity: 10 }, // StrongNeg
-            SynapseState { efficacy: 0, theta: 20, maturity: 0 },    // Silent
-            SynapseState { efficacy: 15, theta: 20, maturity: 2 },   // WeakPos
-            SynapseState { efficacy: -15, theta: 20, maturity: 2 },  // WeakNeg
+            SynapseState {
+                efficacy: 80,
+                theta: 20,
+                maturity: 10,
+            }, // StrongPos
+            SynapseState {
+                efficacy: -80,
+                theta: 20,
+                maturity: 10,
+            }, // StrongNeg
+            SynapseState {
+                efficacy: 0,
+                theta: 20,
+                maturity: 0,
+            }, // Silent
+            SynapseState {
+                efficacy: 15,
+                theta: 20,
+                maturity: 2,
+            }, // WeakPos
+            SynapseState {
+                efficacy: -15,
+                theta: 20,
+                maturity: 2,
+            }, // WeakNeg
         ];
         let hist = five_state_histogram(&states);
         assert_eq!(hist[FiveState::StrongNeg as usize], 1);
@@ -627,10 +663,26 @@ mod tests {
     #[test]
     fn test_crystallize_basic() {
         let states = vec![
-            SynapseState { efficacy: 50, theta: 20, maturity: 5 },
-            SynapseState { efficacy: -50, theta: 20, maturity: 5 },
-            SynapseState { efficacy: 0, theta: 20, maturity: 0 },
-            SynapseState { efficacy: 100, theta: 20, maturity: 5 },
+            SynapseState {
+                efficacy: 50,
+                theta: 20,
+                maturity: 5,
+            },
+            SynapseState {
+                efficacy: -50,
+                theta: 20,
+                maturity: 5,
+            },
+            SynapseState {
+                efficacy: 0,
+                theta: 20,
+                maturity: 0,
+            },
+            SynapseState {
+                efficacy: 100,
+                theta: 20,
+                maturity: 5,
+            },
         ];
         let fp: Fingerprint<1> = crystallize(&states);
         // Bit 0 = 1 (eff > 0), bit 1 = 0 (eff < 0), bit 2 = 0 (eff == 0), bit 3 = 1 (eff > 0)
@@ -640,10 +692,26 @@ mod tests {
     #[test]
     fn test_crystallize_quantized() {
         let states = vec![
-            SynapseState { efficacy: 80, theta: 20, maturity: 10 },  // StrongPos → 1
-            SynapseState { efficacy: -80, theta: 20, maturity: 10 }, // StrongNeg → 0
-            SynapseState { efficacy: 5, theta: 20, maturity: 0 },    // Silent → 0
-            SynapseState { efficacy: 15, theta: 20, maturity: 2 },   // WeakPos → 1
+            SynapseState {
+                efficacy: 80,
+                theta: 20,
+                maturity: 10,
+            }, // StrongPos → 1
+            SynapseState {
+                efficacy: -80,
+                theta: 20,
+                maturity: 10,
+            }, // StrongNeg → 0
+            SynapseState {
+                efficacy: 5,
+                theta: 20,
+                maturity: 0,
+            }, // Silent → 0
+            SynapseState {
+                efficacy: 15,
+                theta: 20,
+                maturity: 2,
+            }, // WeakPos → 1
         ];
         let fp: Fingerprint<1> = crystallize_quantized(&states);
         assert_eq!(fp.words[0] & 0xF, 0b1001);
@@ -697,12 +765,12 @@ mod tests {
         // Need |eff| > theta/2 for the depression branch.
         let mut s = SynapseState {
             efficacy: 50,
-            theta: 80,   // theta/2 = 40, |50| > 40 and |50| < 80
+            theta: 80, // theta/2 = 40, |50| > 40 and |50| < 80
             maturity: 0,
         };
         let eff_before = s.efficacy;
         organic_deposit(&mut s, 10); // positive evidence, but below threshold
-        // Should depress (move toward zero) since |50| < 80 and |50| > 40
+                                     // Should depress (move toward zero) since |50| < 80 and |50| > 40
         assert!(
             s.efficacy < eff_before,
             "should depress: before={}, after={}",

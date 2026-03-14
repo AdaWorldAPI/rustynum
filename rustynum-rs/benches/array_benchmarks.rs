@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array1, Array2};
+#[allow(deprecated)]
 use rustynum_rs::num_array::linalg::matrix_multiply;
 use rustynum_rs::NumArrayF32;
 
@@ -34,6 +35,7 @@ fn calculate_median(values: &mut [f32]) -> f32 {
 }
 
 // Generic benchmark function for vector operations
+#[allow(deprecated)] // Uses legacy .dot() pending try_dot migration
 fn benchmark_vector_operation(c: &mut Criterion, op: Operation, sizes: &[usize]) {
     let mut group = c.benchmark_group(match op {
         Operation::AddVectors => "Vector Addition",
@@ -153,6 +155,7 @@ fn benchmark_vector_operation(c: &mut Criterion, op: Operation, sizes: &[usize])
 }
 
 // Generic benchmark function for matrix operations
+#[allow(deprecated)] // Uses legacy matrix_multiply pending try_matrix_multiply migration
 fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize]) {
     let mut group = c.benchmark_group(match op {
         Operation::MatrixVectorMultiplication => "Matrix-Vector Multiplication",

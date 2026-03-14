@@ -8,7 +8,7 @@ description: Live benchmark results comparing RustyNum SIMD with NumPy/OpenBLAS/
 Comprehensive benchmark results from a live run on **2026-02-23**.
 
 **Hardware:** 16-core x86-64 with AVX-512F, AVX-512BW, AVX-512VL, AVX-512 VNNI, AVX-512 VPOPCNTDQ, AMX-INT8, AMX-BF16.
-**Software:** Python 3.11.14, NumPy 2.4.2 (OpenBLAS backend), Rust nightly with `portable_simd`, `-C target-cpu=native`.
+**Software:** Python 3.11.14, NumPy 2.4.2 (OpenBLAS backend), Rust 1.94 stable with AVX-512 intrinsics (`std::arch`), `-C target-cpu=native`. No nightly required.
 
 ---
 
@@ -248,7 +248,72 @@ Available functions:
 - `mixed_precision_gemm` — f32 inputs quantized on-the-fly to BF16
 - `f32_to_bf16_slice` / `bf16_to_f32_slice` — bulk SIMD conversion
 
-## 10. Why GEMM and Hamming Are Different Universes
+## 10. Cognitive Substrate: Plane / Node / Mask Distance
+
+**NEW in PR #97.** The i8 accumulator substrate for holographic cognition.
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `Plane` | 16,384-bit i8 accumulator. `sign(acc)`=data, `|acc|>θ`=alpha. NaN impossible. |
+| `Node` | Three Planes (S, P, O). One cognitive atom. |
+| `Mask` | 8 constants (`SPO`, `SP_`, `S_O`, `_PO`, `S__`, `_P_`, `__O`, `___`). Attention + query scope. |
+| `Distance` | enum: `Measured{disagreement,overlap,penalty}` or `Incomparable`. No float. |
+| `Truth` | u16 frequency + u16 confidence. NARS. Integer revision. |
+| `Seal` | Wisdom or Staunen. Blake3 masked by alpha. |
+
+### Plane/Node Distance: Criterion Benchmarks (2026-03-14)
+
+Thread-local 64-byte-aligned scratch buffers. SIMD popcount via VPOPCNTDQ dispatch.
+
+| Operation | Time | Cycles (est. @3.5GHz) | Notes |
+|-----------|------|-----------------------|-------|
+| `Plane.distance()` (single) | **184 ns** | ~644 | Alpha-aware: XOR + AND + 3x popcount on 2048B |
+| `distance_slices()` (raw) | **173 ns** | ~606 | Same kernel, pre-warmed cache |
+| `Fingerprint.popcount()` 2048B | **14.6 ns** | ~51 | Raw VPOPCNTDQ, 32 chunks × 64B |
+| Scalar baseline 2048B | 758 ns | ~2653 | Per-byte count_ones |
+| **SIMD vs scalar** | | | **4.4x speedup** |
+
+### Node Distance: Linear Scaling with Mask
+
+| Query Mask | Planes | Time | Ratio |
+|------------|--------|------|-------|
+| `S__` | 1 (subject only) | **179 ns** | 1.00x |
+| `SP_` | 2 (subj + pred) | **352 ns** | 1.97x |
+| `SPO` | 3 (all planes) | **532 ns** | 2.97x |
+
+Perfect linear scaling. Each additional plane adds ~177 ns.
+
+### Distance Scaling by Data Size
+
+| Size | Time | ns/byte |
+|------|------|---------|
+| 128B | 79 ns | 0.62 |
+| 512B | 90 ns | 0.18 |
+| 1024B | 116 ns | 0.11 |
+| 2048B | 177 ns | 0.09 |
+
+### Batch Node Distance (SPO scan, nearest-neighbor)
+
+| Database | Time | Per-node |
+|----------|------|----------|
+| 10 nodes | 6.1 µs | 610 ns |
+| 100 nodes | 62.7 µs | 627 ns |
+| 1000 nodes | 888 µs | 888 ns |
+
+At 1M candidates with Belichtungsmesser cascade (0.3% reach stage 3):
+3000 × 532 ns = **1.6 ms** for the full-precision SPO pass. Total under 2 ms for 1M candidates.
+
+### How to reproduce
+
+```bash
+RUSTFLAGS="-C target-cpu=native" cargo bench --bench plane_node_benchmarks -p rustynum-core
+```
+
+---
+
+## 11. Why GEMM and Hamming Are Different Universes
 
 GEMM optimization (MKL's domain) and Hamming distance (RustyNum's domain) operate on fundamentally different instruction classes:
 
@@ -281,7 +346,7 @@ This is why RustyNum achieves 17-338x speedups over NumPy for HDC/cascade operat
 | HDC/Bitwise (Hamming, XOR, Popcount) | **17-49x** | NumPy has no SIMD bitwise path |
 | Int8 embeddings (VNNI dot/cosine) | **6-21x** | VNNI vs NumPy type-cast overhead |
 | Adaptive cascade search | **130-338x** | 99.7% early rejection (NumPy has no equivalent) |
-| f32 element-wise (mean, std, add) | **2-11x** | explicit portable_simd vs NumPy C loops |
+| f32 element-wise (mean, std, add) | **2-11x** | explicit SIMD (`std::arch`) vs NumPy C loops |
 | Cosine similarity | **2.4-3.1x** | SIMD fused dot + norm |
 
 ### NumPy/OpenBLAS/MKL leads

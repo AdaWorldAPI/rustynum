@@ -62,12 +62,9 @@ pub use delta::DeltaLayer;
 pub use fingerprint::{Fingerprint, Fingerprint1K, Fingerprint2K, Fingerprint64K};
 
 // Plane/Node/Mask: i8 accumulator substrate, NaN-free distance/truth, SIMD-wired
-pub mod plane;
 pub mod node;
+pub mod plane;
 pub mod seal;
-pub use plane::{Acc16K, Distance, Plane, Truth, PLANE_BITS, PLANE_BYTES};
-pub use node::{Mask, Node, SPO, SP_, S_O, _PO, S__, _P_, __O, ___};
-pub use seal::{MerkleRoot, Seal};
 pub use hybrid::{
     extract_learning_signal, hybrid_pipeline, hybrid_pipeline_with_backend, resonance_decompose,
     update_hybrid_weights, HybridConfig, HybridScore, HybridStats, LearningSignal, ResonanceResult,
@@ -86,8 +83,11 @@ pub use kernels::{
 };
 pub use layer_stack::{CollapseGate, LayerStack};
 pub use layout::{Layout, Transpose};
+pub use node::{Mask, Node, SPO, SP_, S_O, S__, _PO, _P_, __O, ___};
 pub use parallel::parallel_for_chunks;
+pub use plane::{Acc16K, Distance, Plane, Truth, PLANE_BITS, PLANE_BYTES};
 pub use rng::SplitMix64;
+pub use seal::{MerkleRoot, Seal};
 pub use tail_backend::{
     auto_detect as auto_detect_backend, capabilities as backend_capabilities, gemm_backend,
     gemm_backend_with_scale, BatchTailScore, Capabilities, CompactTailScore, TailBackend,
@@ -123,7 +123,7 @@ pub use dn_tree::{DNConfig, DNNode, DNTree, DNTreeStats, TraversalHit};
 // Bridges bf16_hamming (sign flips) → spatial_resonance (SPO predicate) → NARS truth values
 pub mod causality;
 pub use causality::{
-    causality_decompose, causality_mask_bf16, spo_encode_causal, spatial_nars_truth,
+    causality_decompose, causality_mask_bf16, spatial_nars_truth, spo_encode_causal,
     CausalityDecomposition, CausalityDirection, NarsTruthValue,
 };
 

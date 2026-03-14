@@ -1,3 +1,4 @@
+#![allow(deprecated)] // Tests use legacy APIs pending migration to try_* variants
 use rustynum_rs::{NumArrayF32, NumArrayF64, NumError};
 
 #[test]

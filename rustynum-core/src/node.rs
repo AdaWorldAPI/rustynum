@@ -23,14 +23,46 @@ pub struct Mask {
     pub o: bool,
 }
 
-pub const SPO: Mask = Mask { s: true,  p: true,  o: true  };
-pub const SP_: Mask = Mask { s: true,  p: true,  o: false };
-pub const S_O: Mask = Mask { s: true,  p: false, o: true  };
-pub const _PO: Mask = Mask { s: false, p: true,  o: true  };
-pub const S__: Mask = Mask { s: true,  p: false, o: false };
-pub const _P_: Mask = Mask { s: false, p: true,  o: false };
-pub const __O: Mask = Mask { s: false, p: false, o: true  };
-pub const ___: Mask = Mask { s: false, p: false, o: false };
+pub const SPO: Mask = Mask {
+    s: true,
+    p: true,
+    o: true,
+};
+pub const SP_: Mask = Mask {
+    s: true,
+    p: true,
+    o: false,
+};
+pub const S_O: Mask = Mask {
+    s: true,
+    p: false,
+    o: true,
+};
+pub const _PO: Mask = Mask {
+    s: false,
+    p: true,
+    o: true,
+};
+pub const S__: Mask = Mask {
+    s: true,
+    p: false,
+    o: false,
+};
+pub const _P_: Mask = Mask {
+    s: false,
+    p: true,
+    o: false,
+};
+pub const __O: Mask = Mask {
+    s: false,
+    p: false,
+    o: true,
+};
+pub const ___: Mask = Mask {
+    s: false,
+    p: false,
+    o: false,
+};
 
 impl Mask {
     /// Number of active planes.

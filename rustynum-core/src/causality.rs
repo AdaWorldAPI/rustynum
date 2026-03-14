@@ -35,9 +35,9 @@
 //! The NARS truth value on the Y-axis tells you confidence in the causality direction.
 //! High Tensioned% on Y = "uncertain whether causing or experiencing" = low frequency.
 
-use crate::bf16_hamming::{PackedQualia, SuperpositionState};
 #[cfg(test)]
 use crate::bf16_hamming::AwarenessState;
+use crate::bf16_hamming::{PackedQualia, SuperpositionState};
 use crate::spatial_resonance::{CrystalAxis, SpatialCrystal3D};
 
 // ============================================================================
@@ -365,22 +365,22 @@ mod tests {
         // CMYK: warm, social, sacred (all positive on causality dims)
         PackedQualia::new(
             [
-                50,  // brightness
-                60,  // valence
-                40,  // dominance
-                30,  // arousal
-                70,  // warmth (positive = CMYK)
-                80,  // clarity
-                60,  // social (positive = CMYK)
-                20,  // nostalgia
-                50,  // sacredness (positive = CMYK)
-                30,  // desire
-                20,  // tension
-                40,  // awe
-                10,  // grief
-                60,  // hope
-                15,  // edge
-                40,  // resolution_hunger
+                50, // brightness
+                60, // valence
+                40, // dominance
+                30, // arousal
+                70, // warmth (positive = CMYK)
+                80, // clarity
+                60, // social (positive = CMYK)
+                20, // nostalgia
+                50, // sacredness (positive = CMYK)
+                30, // desire
+                20, // tension
+                40, // awe
+                10, // grief
+                60, // hope
+                15, // edge
+                40, // resolution_hunger
             ],
             1.0,
         )
@@ -390,22 +390,22 @@ mod tests {
         // RGB: cold, antisocial, profane (negative on causality dims)
         PackedQualia::new(
             [
-                10,   // brightness
-                30,   // valence (positive — schadenfreude has pleasure)
-                90,   // dominance
-                50,   // arousal
-                -80,  // warmth (negative = RGB)
-                40,   // clarity
-                -60,  // social (negative = RGB)
-                0,    // nostalgia
-                -70,  // sacredness (negative = RGB)
-                60,   // desire
-                20,   // tension
-                0,    // awe
-                0,    // grief
-                0,    // hope
-                85,   // edge
-                50,   // resolution_hunger
+                10,  // brightness
+                30,  // valence (positive — schadenfreude has pleasure)
+                90,  // dominance
+                50,  // arousal
+                -80, // warmth (negative = RGB)
+                40,  // clarity
+                -60, // social (negative = RGB)
+                0,   // nostalgia
+                -70, // sacredness (negative = RGB)
+                60,  // desire
+                20,  // tension
+                0,   // awe
+                0,   // grief
+                0,   // hope
+                85,  // edge
+                50,  // resolution_hunger
             ],
             1.0,
         )
@@ -470,16 +470,16 @@ mod tests {
                 AwarenessState::Noise,
             ],
             packed_states: vec![0b00_00_01_11],
-            crystallized_pct: 0.5,  // 2/4
-            tensioned_pct: 0.25,    // 1/4
+            crystallized_pct: 0.5, // 2/4
+            tensioned_pct: 0.25,   // 1/4
             uncertain_pct: 0.0,
-            noise_pct: 0.25,        // 1/4
+            noise_pct: 0.25, // 1/4
         };
 
         let truth = NarsTruthValue::from_awareness(&awareness);
-        assert!((truth.frequency - 0.5).abs() < 0.01);      // 50% crystallized
-        assert!((truth.confidence - 0.75).abs() < 0.01);     // 75% signal (1 - 25% noise)
-        assert!((truth.expectation() - 0.5).abs() < 0.01);   // 0.5×0.75 + 0.5×0.25 = 0.5
+        assert!((truth.frequency - 0.5).abs() < 0.01); // 50% crystallized
+        assert!((truth.confidence - 0.75).abs() < 0.01); // 75% signal (1 - 25% noise)
+        assert!((truth.expectation() - 0.5).abs() < 0.01); // 0.5×0.75 + 0.5×0.25 = 0.5
     }
 
     #[test]
@@ -514,25 +514,35 @@ mod tests {
 
     #[test]
     fn test_spo_causal_encoding_differs() {
-        let subject = CrystalAxis::from_f32(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]);
+        let subject = CrystalAxis::from_f32(&[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+        ]);
         let predicate = CrystalAxis::from_f32(&[0.5; 16]);
         let object = CrystalAxis::from_f32(&[0.1; 16]);
 
         let experiencing = spo_encode_causal(
-            &subject, &predicate, &object,
+            &subject,
+            &predicate,
+            &object,
             CausalityDirection::Experiencing,
         );
-        let causing = spo_encode_causal(
-            &subject, &predicate, &object,
-            CausalityDirection::Causing,
-        );
+        let causing = spo_encode_causal(&subject, &predicate, &object, CausalityDirection::Causing);
 
         // X and Z axes should be identical (same subject and object)
-        assert_eq!(experiencing.x.data, causing.x.data, "X-axis should not change");
-        assert_eq!(experiencing.z.data, causing.z.data, "Z-axis should not change");
+        assert_eq!(
+            experiencing.x.data, causing.x.data,
+            "X-axis should not change"
+        );
+        assert_eq!(
+            experiencing.z.data, causing.z.data,
+            "Z-axis should not change"
+        );
 
         // Y-axis should differ (causality direction is in predicate)
-        assert_ne!(experiencing.y.data, causing.y.data, "Y-axis should differ for different causality");
+        assert_ne!(
+            experiencing.y.data, causing.y.data,
+            "Y-axis should differ for different causality"
+        );
     }
 
     #[test]
@@ -544,15 +554,16 @@ mod tests {
         let object = CrystalAxis::from_f32(&[1.0; 16]);
 
         let exp = spo_encode_causal(
-            &subject, &predicate, &object,
+            &subject,
+            &predicate,
+            &object,
             CausalityDirection::Experiencing,
         );
-        let cau = spo_encode_causal(
-            &subject, &predicate, &object,
-            CausalityDirection::Causing,
-        );
+        let cau = spo_encode_causal(&subject, &predicate, &object, CausalityDirection::Causing);
 
-        let y_dist = exp.y.distance(&cau.y, &crate::bf16_hamming::BF16Weights::default());
+        let y_dist = exp
+            .y
+            .distance(&cau.y, &crate::bf16_hamming::BF16Weights::default());
 
         // 3 sign flips × 256 weight = 768 minimum
         // Actual may be slightly different due to XOR binding affecting other bits
@@ -564,8 +575,14 @@ mod tests {
 
     #[test]
     fn test_causality_direction_flip() {
-        assert_eq!(CausalityDirection::Causing.flip(), CausalityDirection::Experiencing);
-        assert_eq!(CausalityDirection::Experiencing.flip(), CausalityDirection::Causing);
+        assert_eq!(
+            CausalityDirection::Causing.flip(),
+            CausalityDirection::Experiencing
+        );
+        assert_eq!(
+            CausalityDirection::Experiencing.flip(),
+            CausalityDirection::Causing
+        );
     }
 
     #[test]
@@ -583,8 +600,20 @@ mod tests {
         let (s_truth, p_truth, o_truth) = spatial_nars_truth(&awareness);
 
         // Identical crystals → everything crystallized → high frequency
-        assert!(s_truth.frequency > 0.8, "subject truth should be high: {}", s_truth.frequency);
-        assert!(p_truth.frequency > 0.8, "predicate truth should be high: {}", p_truth.frequency);
-        assert!(o_truth.frequency > 0.8, "object truth should be high: {}", o_truth.frequency);
+        assert!(
+            s_truth.frequency > 0.8,
+            "subject truth should be high: {}",
+            s_truth.frequency
+        );
+        assert!(
+            p_truth.frequency > 0.8,
+            "predicate truth should be high: {}",
+            p_truth.frequency
+        );
+        assert!(
+            o_truth.frequency > 0.8,
+            "object truth should be high: {}",
+            o_truth.frequency
+        );
     }
 }

@@ -748,6 +748,10 @@ mod tests {
         let mut bb = Blackboard::new();
         bb.alloc_i32("aligned", 256);
         let (ptr, _, _) = unsafe { bb.raw_ptr("aligned") }.unwrap();
-        assert_eq!(ptr as usize % ALIGNMENT, 0, "I32 buffer not 64-byte aligned");
+        assert_eq!(
+            ptr as usize % ALIGNMENT,
+            0,
+            "I32 buffer not 64-byte aligned"
+        );
     }
 }

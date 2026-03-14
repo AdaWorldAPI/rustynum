@@ -633,8 +633,7 @@ impl K2Histogram {
         if n == 0 {
             return 0.0;
         }
-        let mean =
-            self.word_conflicts.iter().map(|&v| v as f32).sum::<f32>() / n as f32;
+        let mean = self.word_conflicts.iter().map(|&v| v as f32).sum::<f32>() / n as f32;
         self.word_conflicts
             .iter()
             .map(|&v| {
@@ -653,13 +652,15 @@ impl K2Histogram {
 /// Since this only runs on K2 survivors (~5% of candidates), the
 /// allocation cost is negligible.
 #[inline]
-pub fn k2_exact_histogram(
-    query: &[u64],
-    candidate: &[u64],
-    n_words: usize,
-) -> K2Histogram {
-    assert!(query.len() >= n_words, "k2_exact_histogram: query too short");
-    assert!(candidate.len() >= n_words, "k2_exact_histogram: candidate too short");
+pub fn k2_exact_histogram(query: &[u64], candidate: &[u64], n_words: usize) -> K2Histogram {
+    assert!(
+        query.len() >= n_words,
+        "k2_exact_histogram: query too short"
+    );
+    assert!(
+        candidate.len() >= n_words,
+        "k2_exact_histogram: candidate too short"
+    );
 
     let mut conflict: u32 = 0;
     let mut energy_a: u32 = 0;
@@ -696,10 +697,8 @@ pub fn k2_exact_histogram(
         word_conflicts[base + 3] = pd as u16;
 
         conflict += pa + pb + pc + pd;
-        energy_a +=
-            qa.count_ones() + qb.count_ones() + qc.count_ones() + qd.count_ones();
-        energy_b +=
-            ca.count_ones() + cb.count_ones() + cc.count_ones() + cd.count_ones();
+        energy_a += qa.count_ones() + qb.count_ones() + qc.count_ones() + qd.count_ones();
+        energy_b += ca.count_ones() + cb.count_ones() + cc.count_ones() + cd.count_ones();
         agreement += (qa & ca).count_ones()
             + (qb & cb).count_ones()
             + (qc & cc).count_ones()
@@ -1374,7 +1373,11 @@ mod tests {
         };
         let sigma = score_sigma(&ec, &gate);
         assert_eq!(sigma.level, SignificanceLevel::Noise);
-        assert!(sigma.sigma.abs() < 0.1, "z should be ~0, got {}", sigma.sigma);
+        assert!(
+            sigma.sigma.abs() < 0.1,
+            "z should be ~0, got {}",
+            sigma.sigma
+        );
     }
 
     #[test]
@@ -1576,7 +1579,10 @@ mod tests {
         let (matches, _) = kernel_pipeline(&query, &db, n, SKU_16K_WORDS, &gate);
 
         // The exact match should be Discovery
-        let exact = matches.iter().find(|m| m.index == 0).expect("Exact match missing");
+        let exact = matches
+            .iter()
+            .find(|m| m.index == 0)
+            .expect("Exact match missing");
         assert_eq!(exact.sigma.level, SignificanceLevel::Discovery);
         assert!(exact.sigma.sigma > 100.0);
     }

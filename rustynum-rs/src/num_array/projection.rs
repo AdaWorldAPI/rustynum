@@ -142,7 +142,8 @@ pub fn try_simhash_project(
     container_bits: usize,
     seed: u64,
 ) -> Result<NumArrayU8, crate::NumError> {
-    let mut result = try_simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed)?;
+    let mut result =
+        try_simhash_batch_project(embedding, 1, embedding.len(), container_bits, seed)?;
     result.pop().ok_or_else(|| {
         crate::NumError::InvalidParameter("batch projection returned empty".to_string())
     })
