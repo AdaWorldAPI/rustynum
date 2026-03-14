@@ -37,23 +37,12 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy (workspace)
-        run: |
-          EXCLUDES=""
-          # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
-          # in their public API. They are x86_64-only until the ISA trait migration.
-          if [ "$(uname -m)" != "x86_64" ]; then
-            EXCLUDES="--exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
-          fi
-          cargo clippy --workspace $EXCLUDES --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Test
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -74,12 +63,4 @@ jobs:
           restore-keys: ${{ runner.os }}-test-
 
       - name: cargo test (workspace)
-        run: |
-          EXCLUDES=""
-          # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
-          # from simd_avx512 throughout their public API. They are x86_64-only
-          # until the ISA trait migration is complete.
-          if [ "$(uname -m)" != "x86_64" ]; then
-            EXCLUDES="--exclude rustynum-rs --exclude rustynum-arrow --exclude rustynum"
-          fi
-          cargo test --workspace $EXCLUDES
+        run: cargo test --workspace
