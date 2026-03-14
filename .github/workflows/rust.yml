@@ -63,4 +63,11 @@ jobs:
           restore-keys: ${{ runner.os }}-test-
 
       - name: cargo test (workspace)
-        run: cargo test --workspace
+        run: |
+          # rustynum-rs, rustynum-arrow, and python bindings use AVX-512 types
+          # (f32x16, u8x64) in their public API. Tests SIGILL on CI CPUs without
+          # AVX-512. Clippy still checks compilation; only test execution excluded.
+          cargo test --workspace \
+            --exclude rustynum-rs \
+            --exclude rustynum-arrow \
+            --exclude rustynum
