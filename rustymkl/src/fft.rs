@@ -21,15 +21,19 @@
 //!   where odd_swapped has re/im swapped and wi_sign alternates [-sin, +sin].
 //! - ifft conjugate and scale loops use SIMD sign-mask and broadcast multiply.
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{f32x16, f64x8};
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd::{F32_LANES, F64_LANES};
 
 /// Number of complex values processed per f32 SIMD iteration.
 /// Each complex number occupies 2 f32 lanes (re, im).
+#[cfg(target_arch = "x86_64")]
 const F32_COMPLEX_PER_SIMD: usize = F32_LANES / 2; // 8
 
 /// Number of complex values processed per f64 SIMD iteration.
+#[cfg(target_arch = "x86_64")]
 const F64_COMPLEX_PER_SIMD: usize = F64_LANES / 2; // 4
 
 // ============================================================================
@@ -80,90 +84,16 @@ pub fn fft_f32(data: &mut [f32], n: usize) {
             sin_tbl[j] = theta.sin();
         }
 
-        if half >= F32_COMPLEX_PER_SIMD {
-            // SIMD butterfly path — process F32_COMPLEX_PER_SIMD j-values at once.
-            //
-            // Pre-build interleaved twiddle vectors for each SIMD chunk of j.
-            // For complex multiply on interleaved [re, im, re, im, ...] data:
-            //   wr_dup  = [cos_j, cos_j, cos_{j+1}, cos_{j+1}, ...]
-            //   wi_sign = [-sin_j, sin_j, -sin_{j+1}, sin_{j+1}, ...]
-            // Then: twiddle = wr_dup * odd + wi_sign * odd_swapped
-            // where odd_swapped has re<->im swapped within each complex pair.
-            let num_simd_chunks = half / F32_COMPLEX_PER_SIMD;
-            let mut wr_vecs: Vec<f32x16> = Vec::with_capacity(num_simd_chunks);
-            let mut wi_vecs: Vec<f32x16> = Vec::with_capacity(num_simd_chunks);
+        #[cfg(target_arch = "x86_64")]
+        let use_simd_f32 = half >= F32_COMPLEX_PER_SIMD && is_x86_feature_detected!("avx512f");
+        #[cfg(not(target_arch = "x86_64"))]
+        let use_simd_f32 = false;
 
-            for chunk in 0..num_simd_chunks {
-                let base_j = chunk * F32_COMPLEX_PER_SIMD;
-                let mut wr_arr = [0.0f32; F32_LANES];
-                let mut wi_arr = [0.0f32; F32_LANES];
-                for c in 0..F32_COMPLEX_PER_SIMD {
-                    let cj = cos_tbl[base_j + c];
-                    let sj = sin_tbl[base_j + c];
-                    wr_arr[2 * c] = cj;
-                    wr_arr[2 * c + 1] = cj;
-                    wi_arr[2 * c] = -sj; // -sin for real part
-                    wi_arr[2 * c + 1] = sj; // +sin for imaginary part
-                }
-                wr_vecs.push(f32x16::from_array(wr_arr));
-                wi_vecs.push(f32x16::from_array(wi_arr));
-            }
-
-            let simd_end = num_simd_chunks * F32_COMPLEX_PER_SIMD;
-
-            for k in (0..n).step_by(stage_len) {
-                // SIMD portion
-                for chunk in 0..num_simd_chunks {
-                    let j = chunk * F32_COMPLEX_PER_SIMD;
-                    let even_base = 2 * (k + j);
-                    let odd_base = 2 * (k + j + half);
-
-                    let even_v = f32x16::from_slice(&data[even_base..]);
-                    let odd_v = f32x16::from_slice(&data[odd_base..]);
-
-                    // Build odd_swapped: swap re<->im within each complex pair.
-                    // odd = [re0, im0, re1, im1, ...] -> [im0, re0, im1, re1, ...]
-                    let odd_arr = odd_v.to_array();
-                    let mut swapped_arr = [0.0f32; F32_LANES];
-                    let mut ci = 0;
-                    while ci < F32_LANES {
-                        swapped_arr[ci] = odd_arr[ci + 1];
-                        swapped_arr[ci + 1] = odd_arr[ci];
-                        ci += 2;
-                    }
-                    let odd_swapped = f32x16::from_array(swapped_arr);
-
-                    // Complex twiddle multiply:
-                    //   result[2c]   = cos * odd_re - sin * odd_im
-                    //   result[2c+1] = cos * odd_im + sin * odd_re
-                    // = wr_dup * odd + wi_sign * odd_swapped
-                    let twiddle = wr_vecs[chunk] * odd_v + wi_vecs[chunk] * odd_swapped;
-
-                    let result_even = even_v + twiddle;
-                    let result_odd = even_v - twiddle;
-
-                    result_even.copy_to_slice(&mut data[even_base..even_base + F32_LANES]);
-                    result_odd.copy_to_slice(&mut data[odd_base..odd_base + F32_LANES]);
-                }
-
-                // Scalar tail for remaining j values
-                for j in simd_end..half {
-                    let wr = cos_tbl[j];
-                    let wi = sin_tbl[j];
-
-                    let even_re = data[2 * (k + j)];
-                    let even_im = data[2 * (k + j) + 1];
-                    let odd_re = data[2 * (k + j + half)];
-                    let odd_im = data[2 * (k + j + half) + 1];
-
-                    let tr = wr * odd_re - wi * odd_im;
-                    let ti = wr * odd_im + wi * odd_re;
-
-                    data[2 * (k + j)] = even_re + tr;
-                    data[2 * (k + j) + 1] = even_im + ti;
-                    data[2 * (k + j + half)] = even_re - tr;
-                    data[2 * (k + j + half) + 1] = even_im - ti;
-                }
+        if use_simd_f32 {
+            #[cfg(target_arch = "x86_64")]
+            // SAFETY: AVX-512 detected above.
+            unsafe {
+                fft_f32_butterfly_avx512(data, n, half, stage_len, &cos_tbl, &sin_tbl);
             }
         } else {
             // Scalar butterfly for early stages (half < SIMD width)
@@ -215,57 +145,50 @@ pub fn ifft_f32(data: &mut [f32], n: usize) {
     }
     let len = 2 * n;
 
-    // SIMD conjugate: negate every other element (imaginary parts).
-    // Sign mask: [1, -1, 1, -1, ...] applied via element-wise multiply.
-    let conj_mask = {
-        let mut arr = [0.0f32; F32_LANES];
-        for i in 0..F32_LANES {
-            arr[i] = if i % 2 == 0 { 1.0 } else { -1.0 };
-        }
-        f32x16::from_array(arr)
-    };
-
-    let chunks = len / F32_LANES;
-
     // Conjugate (negate imaginary parts)
-    for i in 0..chunks {
-        let base = i * F32_LANES;
-        let v = f32x16::from_slice(&data[base..]);
-        let result = v * conj_mask;
-        result.copy_to_slice(&mut data[base..base + F32_LANES]);
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { ifft_conjugate_f32_avx512(data, len) };
+        } else {
+            for i in (1..len).step_by(2) {
+                data[i] = -data[i];
+            }
+        }
     }
-    // Scalar tail for conjugate
-    for i in (chunks * F32_LANES)..len {
-        if i % 2 == 1 {
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        for i in (1..len).step_by(2) {
             data[i] = -data[i];
         }
     }
 
     fft_f32(data, n);
 
-    // Conjugate and scale by 1/n.
-    // Combined: real parts *= scale, imaginary parts *= -scale.
+    // Conjugate and scale by 1/n
     let scale = 1.0 / n as f32;
-    let scale_mask = {
-        let mut arr = [0.0f32; F32_LANES];
-        for i in 0..F32_LANES {
-            arr[i] = if i % 2 == 0 { scale } else { -scale };
-        }
-        f32x16::from_array(arr)
-    };
-
-    for i in 0..chunks {
-        let base = i * F32_LANES;
-        let v = f32x16::from_slice(&data[base..]);
-        let result = v * scale_mask;
-        result.copy_to_slice(&mut data[base..base + F32_LANES]);
-    }
-    // Scalar tail for conjugate+scale
-    for i in (chunks * F32_LANES)..len {
-        if i % 2 == 0 {
-            data[i] *= scale;
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { ifft_conj_scale_f32_avx512(data, len, scale) };
         } else {
-            data[i] *= -scale;
+            for i in 0..len {
+                if i % 2 == 0 {
+                    data[i] *= scale;
+                } else {
+                    data[i] *= -scale;
+                }
+            }
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        for i in 0..len {
+            if i % 2 == 0 {
+                data[i] *= scale;
+            } else {
+                data[i] *= -scale;
+            }
         }
     }
 }
@@ -306,77 +229,16 @@ pub fn fft_f64(data: &mut [f64], n: usize) {
             sin_tbl[j] = theta.sin();
         }
 
-        if half >= F64_COMPLEX_PER_SIMD {
-            // SIMD butterfly path — process F64_COMPLEX_PER_SIMD j-values at once.
-            let num_simd_chunks = half / F64_COMPLEX_PER_SIMD;
-            let mut wr_vecs: Vec<f64x8> = Vec::with_capacity(num_simd_chunks);
-            let mut wi_vecs: Vec<f64x8> = Vec::with_capacity(num_simd_chunks);
+        #[cfg(target_arch = "x86_64")]
+        let use_simd_f64 = half >= F64_COMPLEX_PER_SIMD && is_x86_feature_detected!("avx512f");
+        #[cfg(not(target_arch = "x86_64"))]
+        let use_simd_f64 = false;
 
-            for chunk in 0..num_simd_chunks {
-                let base_j = chunk * F64_COMPLEX_PER_SIMD;
-                let mut wr_arr = [0.0f64; F64_LANES];
-                let mut wi_arr = [0.0f64; F64_LANES];
-                for c in 0..F64_COMPLEX_PER_SIMD {
-                    let cj = cos_tbl[base_j + c];
-                    let sj = sin_tbl[base_j + c];
-                    wr_arr[2 * c] = cj;
-                    wr_arr[2 * c + 1] = cj;
-                    wi_arr[2 * c] = -sj;
-                    wi_arr[2 * c + 1] = sj;
-                }
-                wr_vecs.push(f64x8::from_array(wr_arr));
-                wi_vecs.push(f64x8::from_array(wi_arr));
-            }
-
-            let simd_end = num_simd_chunks * F64_COMPLEX_PER_SIMD;
-
-            for k in (0..n).step_by(stage_len) {
-                for chunk in 0..num_simd_chunks {
-                    let j = chunk * F64_COMPLEX_PER_SIMD;
-                    let even_base = 2 * (k + j);
-                    let odd_base = 2 * (k + j + half);
-
-                    let even_v = f64x8::from_slice(&data[even_base..]);
-                    let odd_v = f64x8::from_slice(&data[odd_base..]);
-
-                    // Build odd_swapped: swap re<->im within each complex pair
-                    let odd_arr = odd_v.to_array();
-                    let mut swapped_arr = [0.0f64; F64_LANES];
-                    let mut ci = 0;
-                    while ci < F64_LANES {
-                        swapped_arr[ci] = odd_arr[ci + 1];
-                        swapped_arr[ci + 1] = odd_arr[ci];
-                        ci += 2;
-                    }
-                    let odd_swapped = f64x8::from_array(swapped_arr);
-
-                    let twiddle = wr_vecs[chunk] * odd_v + wi_vecs[chunk] * odd_swapped;
-
-                    let result_even = even_v + twiddle;
-                    let result_odd = even_v - twiddle;
-
-                    result_even.copy_to_slice(&mut data[even_base..even_base + F64_LANES]);
-                    result_odd.copy_to_slice(&mut data[odd_base..odd_base + F64_LANES]);
-                }
-
-                // Scalar tail
-                for j in simd_end..half {
-                    let wr = cos_tbl[j];
-                    let wi = sin_tbl[j];
-
-                    let even_re = data[2 * (k + j)];
-                    let even_im = data[2 * (k + j) + 1];
-                    let odd_re = data[2 * (k + j + half)];
-                    let odd_im = data[2 * (k + j + half) + 1];
-
-                    let tr = wr * odd_re - wi * odd_im;
-                    let ti = wr * odd_im + wi * odd_re;
-
-                    data[2 * (k + j)] = even_re + tr;
-                    data[2 * (k + j) + 1] = even_im + ti;
-                    data[2 * (k + j + half)] = even_re - tr;
-                    data[2 * (k + j + half) + 1] = even_im - ti;
-                }
+        if use_simd_f64 {
+            #[cfg(target_arch = "x86_64")]
+            // SAFETY: AVX-512 detected above.
+            unsafe {
+                fft_f64_butterfly_avx512(data, n, half, stage_len, &cos_tbl, &sin_tbl);
             }
         } else {
             // Scalar butterfly for early stages (half < SIMD width)
@@ -425,26 +287,20 @@ pub fn ifft_f64(data: &mut [f64], n: usize) {
     }
     let len = 2 * n;
 
-    // SIMD conjugate: negate every other element (imaginary parts)
-    let conj_mask = {
-        let mut arr = [0.0f64; F64_LANES];
-        for i in 0..F64_LANES {
-            arr[i] = if i % 2 == 0 { 1.0 } else { -1.0 };
+    // Conjugate (negate imaginary parts)
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { ifft_conjugate_f64_avx512(data, len) };
+        } else {
+            for i in (1..len).step_by(2) {
+                data[i] = -data[i];
+            }
         }
-        f64x8::from_array(arr)
-    };
-
-    let chunks = len / F64_LANES;
-
-    // Conjugate
-    for i in 0..chunks {
-        let base = i * F64_LANES;
-        let v = f64x8::from_slice(&data[base..]);
-        let result = v * conj_mask;
-        result.copy_to_slice(&mut data[base..base + F64_LANES]);
     }
-    for i in (chunks * F64_LANES)..len {
-        if i % 2 == 1 {
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        for i in (1..len).step_by(2) {
             data[i] = -data[i];
         }
     }
@@ -453,25 +309,28 @@ pub fn ifft_f64(data: &mut [f64], n: usize) {
 
     // Conjugate and scale by 1/n
     let scale = 1.0 / n as f64;
-    let scale_mask = {
-        let mut arr = [0.0f64; F64_LANES];
-        for i in 0..F64_LANES {
-            arr[i] = if i % 2 == 0 { scale } else { -scale };
-        }
-        f64x8::from_array(arr)
-    };
-
-    for i in 0..chunks {
-        let base = i * F64_LANES;
-        let v = f64x8::from_slice(&data[base..]);
-        let result = v * scale_mask;
-        result.copy_to_slice(&mut data[base..base + F64_LANES]);
-    }
-    for i in (chunks * F64_LANES)..len {
-        if i % 2 == 0 {
-            data[i] *= scale;
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { ifft_conj_scale_f64_avx512(data, len, scale) };
         } else {
-            data[i] *= -scale;
+            for i in 0..len {
+                if i % 2 == 0 {
+                    data[i] *= scale;
+                } else {
+                    data[i] *= -scale;
+                }
+            }
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        for i in 0..len {
+            if i % 2 == 0 {
+                data[i] *= scale;
+            } else {
+                data[i] *= -scale;
+            }
         }
     }
 }
@@ -498,6 +357,263 @@ pub fn rfft_f32(input: &[f32]) -> Vec<f32> {
 
     // Return only the first n/2 + 1 complex values (positive frequencies)
     complex[..2 * (n / 2 + 1)].to_vec()
+}
+
+// ============================================================================
+// AVX-512 helper functions for FFT/IFFT
+// ============================================================================
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn fft_f32_butterfly_avx512(
+    data: &mut [f32],
+    n: usize,
+    half: usize,
+    stage_len: usize,
+    cos_tbl: &[f32],
+    sin_tbl: &[f32],
+) {
+    let num_simd_chunks = half / F32_COMPLEX_PER_SIMD;
+    let mut wr_vecs: Vec<f32x16> = Vec::with_capacity(num_simd_chunks);
+    let mut wi_vecs: Vec<f32x16> = Vec::with_capacity(num_simd_chunks);
+
+    for chunk in 0..num_simd_chunks {
+        let base_j = chunk * F32_COMPLEX_PER_SIMD;
+        let mut wr_arr = [0.0f32; F32_LANES];
+        let mut wi_arr = [0.0f32; F32_LANES];
+        for c in 0..F32_COMPLEX_PER_SIMD {
+            let cj = cos_tbl[base_j + c];
+            let sj = sin_tbl[base_j + c];
+            wr_arr[2 * c] = cj;
+            wr_arr[2 * c + 1] = cj;
+            wi_arr[2 * c] = -sj;
+            wi_arr[2 * c + 1] = sj;
+        }
+        wr_vecs.push(f32x16::from_array(wr_arr));
+        wi_vecs.push(f32x16::from_array(wi_arr));
+    }
+
+    let simd_end = num_simd_chunks * F32_COMPLEX_PER_SIMD;
+
+    for k in (0..n).step_by(stage_len) {
+        for chunk in 0..num_simd_chunks {
+            let j = chunk * F32_COMPLEX_PER_SIMD;
+            let even_base = 2 * (k + j);
+            let odd_base = 2 * (k + j + half);
+
+            let even_v = f32x16::from_slice(&data[even_base..]);
+            let odd_v = f32x16::from_slice(&data[odd_base..]);
+
+            let odd_arr = odd_v.to_array();
+            let mut swapped_arr = [0.0f32; F32_LANES];
+            let mut ci = 0;
+            while ci < F32_LANES {
+                swapped_arr[ci] = odd_arr[ci + 1];
+                swapped_arr[ci + 1] = odd_arr[ci];
+                ci += 2;
+            }
+            let odd_swapped = f32x16::from_array(swapped_arr);
+
+            let twiddle = wr_vecs[chunk] * odd_v + wi_vecs[chunk] * odd_swapped;
+
+            let result_even = even_v + twiddle;
+            let result_odd = even_v - twiddle;
+
+            result_even.copy_to_slice(&mut data[even_base..even_base + F32_LANES]);
+            result_odd.copy_to_slice(&mut data[odd_base..odd_base + F32_LANES]);
+        }
+
+        for j in simd_end..half {
+            let wr = cos_tbl[j];
+            let wi = sin_tbl[j];
+            let even_re = data[2 * (k + j)];
+            let even_im = data[2 * (k + j) + 1];
+            let odd_re = data[2 * (k + j + half)];
+            let odd_im = data[2 * (k + j + half) + 1];
+            let tr = wr * odd_re - wi * odd_im;
+            let ti = wr * odd_im + wi * odd_re;
+            data[2 * (k + j)] = even_re + tr;
+            data[2 * (k + j) + 1] = even_im + ti;
+            data[2 * (k + j + half)] = even_re - tr;
+            data[2 * (k + j + half) + 1] = even_im - ti;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn fft_f64_butterfly_avx512(
+    data: &mut [f64],
+    n: usize,
+    half: usize,
+    stage_len: usize,
+    cos_tbl: &[f64],
+    sin_tbl: &[f64],
+) {
+    let num_simd_chunks = half / F64_COMPLEX_PER_SIMD;
+    let mut wr_vecs: Vec<f64x8> = Vec::with_capacity(num_simd_chunks);
+    let mut wi_vecs: Vec<f64x8> = Vec::with_capacity(num_simd_chunks);
+
+    for chunk in 0..num_simd_chunks {
+        let base_j = chunk * F64_COMPLEX_PER_SIMD;
+        let mut wr_arr = [0.0f64; F64_LANES];
+        let mut wi_arr = [0.0f64; F64_LANES];
+        for c in 0..F64_COMPLEX_PER_SIMD {
+            let cj = cos_tbl[base_j + c];
+            let sj = sin_tbl[base_j + c];
+            wr_arr[2 * c] = cj;
+            wr_arr[2 * c + 1] = cj;
+            wi_arr[2 * c] = -sj;
+            wi_arr[2 * c + 1] = sj;
+        }
+        wr_vecs.push(f64x8::from_array(wr_arr));
+        wi_vecs.push(f64x8::from_array(wi_arr));
+    }
+
+    let simd_end = num_simd_chunks * F64_COMPLEX_PER_SIMD;
+
+    for k in (0..n).step_by(stage_len) {
+        for chunk in 0..num_simd_chunks {
+            let j = chunk * F64_COMPLEX_PER_SIMD;
+            let even_base = 2 * (k + j);
+            let odd_base = 2 * (k + j + half);
+
+            let even_v = f64x8::from_slice(&data[even_base..]);
+            let odd_v = f64x8::from_slice(&data[odd_base..]);
+
+            let odd_arr = odd_v.to_array();
+            let mut swapped_arr = [0.0f64; F64_LANES];
+            let mut ci = 0;
+            while ci < F64_LANES {
+                swapped_arr[ci] = odd_arr[ci + 1];
+                swapped_arr[ci + 1] = odd_arr[ci];
+                ci += 2;
+            }
+            let odd_swapped = f64x8::from_array(swapped_arr);
+
+            let twiddle = wr_vecs[chunk] * odd_v + wi_vecs[chunk] * odd_swapped;
+            let result_even = even_v + twiddle;
+            let result_odd = even_v - twiddle;
+
+            result_even.copy_to_slice(&mut data[even_base..even_base + F64_LANES]);
+            result_odd.copy_to_slice(&mut data[odd_base..odd_base + F64_LANES]);
+        }
+
+        for j in simd_end..half {
+            let wr = cos_tbl[j];
+            let wi = sin_tbl[j];
+            let even_re = data[2 * (k + j)];
+            let even_im = data[2 * (k + j) + 1];
+            let odd_re = data[2 * (k + j + half)];
+            let odd_im = data[2 * (k + j + half) + 1];
+            let tr = wr * odd_re - wi * odd_im;
+            let ti = wr * odd_im + wi * odd_re;
+            data[2 * (k + j)] = even_re + tr;
+            data[2 * (k + j) + 1] = even_im + ti;
+            data[2 * (k + j + half)] = even_re - tr;
+            data[2 * (k + j + half) + 1] = even_im - ti;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn ifft_conjugate_f32_avx512(data: &mut [f32], len: usize) {
+    let conj_mask = {
+        let mut arr = [0.0f32; F32_LANES];
+        for i in 0..F32_LANES {
+            arr[i] = if i % 2 == 0 { 1.0 } else { -1.0 };
+        }
+        f32x16::from_array(arr)
+    };
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let result = v * conj_mask;
+        result.copy_to_slice(&mut data[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        if i % 2 == 1 {
+            data[i] = -data[i];
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn ifft_conj_scale_f32_avx512(data: &mut [f32], len: usize, scale: f32) {
+    let scale_mask = {
+        let mut arr = [0.0f32; F32_LANES];
+        for i in 0..F32_LANES {
+            arr[i] = if i % 2 == 0 { scale } else { -scale };
+        }
+        f32x16::from_array(arr)
+    };
+    let chunks = len / F32_LANES;
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let result = v * scale_mask;
+        result.copy_to_slice(&mut data[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        if i % 2 == 0 {
+            data[i] *= scale;
+        } else {
+            data[i] *= -scale;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn ifft_conjugate_f64_avx512(data: &mut [f64], len: usize) {
+    let conj_mask = {
+        let mut arr = [0.0f64; F64_LANES];
+        for i in 0..F64_LANES {
+            arr[i] = if i % 2 == 0 { 1.0 } else { -1.0 };
+        }
+        f64x8::from_array(arr)
+    };
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let v = f64x8::from_slice(&data[base..]);
+        let result = v * conj_mask;
+        result.copy_to_slice(&mut data[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        if i % 2 == 1 {
+            data[i] = -data[i];
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn ifft_conj_scale_f64_avx512(data: &mut [f64], len: usize, scale: f64) {
+    let scale_mask = {
+        let mut arr = [0.0f64; F64_LANES];
+        for i in 0..F64_LANES {
+            arr[i] = if i % 2 == 0 { scale } else { -scale };
+        }
+        f64x8::from_array(arr)
+    };
+    let chunks = len / F64_LANES;
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let v = f64x8::from_slice(&data[base..]);
+        let result = v * scale_mask;
+        result.copy_to_slice(&mut data[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        if i % 2 == 0 {
+            data[i] *= scale;
+        } else {
+            data[i] *= -scale;
+        }
+    }
 }
 
 // ============================================================================

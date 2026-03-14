@@ -86,7 +86,7 @@ impl GemmBackend {
 /// Used as the baseline implementation. When SIMD features are compiled,
 /// `simd_dot_f32()` is preferred in the batch path.
 #[inline]
-#[cfg_attr(any(feature = "avx512", feature = "avx2"), allow(dead_code))]
+#[allow(dead_code)]
 fn dot_f32_scalar(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len(), "dot_f32_scalar: length mismatch");
     // 4x manual unroll for ILP
@@ -115,14 +115,7 @@ fn dot_f32_scalar(a: &[f32], b: &[f32]) -> f32 {
 /// Best-available f32 dot product — dispatches to SIMD when compiled.
 #[inline]
 fn dot_f32_dispatch(a: &[f32], b: &[f32]) -> f32 {
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
-    {
-        crate::simd::dot_f32(a, b)
-    }
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    {
-        dot_f32_scalar(a, b)
-    }
+    crate::simd::dot_f32(a, b)
 }
 
 /// Bulk BF16 bytes → f32 conversion optimized for batch processing.

@@ -49,11 +49,7 @@ pub fn bind_nodes_v2_schema() -> ArrowSchema {
         Field::new("addr", DataType::UInt16, false),
         Field::new("label", DataType::Utf8, true),
         // S Plane (Subject)
-        Field::new(
-            "s_binary",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
+        Field::new("s_binary", DataType::FixedSizeBinary(binary_bytes), false),
         Field::new(
             "s_soaking",
             DataType::FixedSizeList(
@@ -63,11 +59,7 @@ pub fn bind_nodes_v2_schema() -> ArrowSchema {
             true, // nullable: only present during active soaking
         ),
         // P Plane (Predicate)
-        Field::new(
-            "p_binary",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
+        Field::new("p_binary", DataType::FixedSizeBinary(binary_bytes), false),
         Field::new(
             "p_soaking",
             DataType::FixedSizeList(
@@ -77,11 +69,7 @@ pub fn bind_nodes_v2_schema() -> ArrowSchema {
             true,
         ),
         // O Plane (Object)
-        Field::new(
-            "o_binary",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
+        Field::new("o_binary", DataType::FixedSizeBinary(binary_bytes), false),
         Field::new(
             "o_soaking",
             DataType::FixedSizeList(
@@ -91,11 +79,7 @@ pub fn bind_nodes_v2_schema() -> ArrowSchema {
             true,
         ),
         // Composite (derived, for backward compat + CAM)
-        Field::new(
-            "spo_binary",
-            DataType::FixedSizeBinary(binary_bytes),
-            true,
-        ),
+        Field::new("spo_binary", DataType::FixedSizeBinary(binary_bytes), true),
         // Sigma mask (per plane)
         Field::new("s_sigma", DataType::UInt8, false),
         Field::new("p_sigma", DataType::UInt8, false),
@@ -153,21 +137,9 @@ pub fn bind_edges_v2_schema() -> ArrowSchema {
         Field::new("to_addr", DataType::UInt16, false),
         Field::new("verb_addr", DataType::UInt16, false),
         // Per-plane edge fingerprints
-        Field::new(
-            "edge_s",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
-        Field::new(
-            "edge_p",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
-        Field::new(
-            "edge_o",
-            DataType::FixedSizeBinary(binary_bytes),
-            false,
-        ),
+        Field::new("edge_s", DataType::FixedSizeBinary(binary_bytes), false),
+        Field::new("edge_p", DataType::FixedSizeBinary(binary_bytes), false),
+        Field::new("edge_o", DataType::FixedSizeBinary(binary_bytes), false),
         // Composite (backward compat)
         Field::new(
             "fingerprint",
@@ -279,7 +251,11 @@ impl SoakingBuffer {
     /// Deposit evidence into a register via saturating add.
     pub fn deposit(&mut self, index: usize, evidence: &[i8], weight: f32) {
         assert!(index < self.len, "index out of bounds");
-        assert_eq!(evidence.len(), self.dim, "evidence dim must match buffer dim");
+        assert_eq!(
+            evidence.len(),
+            self.dim,
+            "evidence dim must match buffer dim"
+        );
         let offset = index * self.dim;
         for i in 0..self.dim {
             let current = self.data[offset + i];
@@ -459,8 +435,15 @@ impl ThreePlaneFingerprintBuffer {
     }
 
     /// Get all three binary fingerprints for an entry.
-    pub fn binary_triple(&self, index: usize) -> (&Fingerprint<256>, &Fingerprint<256>, &Fingerprint<256>) {
-        (self.s.binary(index), self.p.binary(index), self.o.binary(index))
+    pub fn binary_triple(
+        &self,
+        index: usize,
+    ) -> (&Fingerprint<256>, &Fingerprint<256>, &Fingerprint<256>) {
+        (
+            self.s.binary(index),
+            self.p.binary(index),
+            self.o.binary(index),
+        )
     }
 
     /// Compute composite SPO binary via XOR role binding.
@@ -546,7 +529,11 @@ impl OrganicSoakingBuffer {
     /// Organic deposit: BCM-style plasticity update for a register.
     pub fn organic_deposit(&mut self, index: usize, evidence: &[i8]) {
         assert!(index < self.len, "index out of bounds");
-        assert_eq!(evidence.len(), self.dim, "evidence dim must match buffer dim");
+        assert_eq!(
+            evidence.len(),
+            self.dim,
+            "evidence dim must match buffer dim"
+        );
         let offset = index * self.dim;
         let register = &mut self.data[offset..offset + self.dim];
         rustynum_core::organic::organic_deposit_batch(register, evidence);
@@ -653,7 +640,13 @@ mod tests {
     fn test_plane_buffer_with_soaking() {
         let mut plane = PlaneBuffer::new_with_soaking(5, 100);
         assert!(plane.has_soaking());
-        assert!(plane.soaking().unwrap().get(0).unwrap().iter().all(|&v| v == 0));
+        assert!(plane
+            .soaking()
+            .unwrap()
+            .get(0)
+            .unwrap()
+            .iter()
+            .all(|&v| v == 0));
 
         // Deposit and crystallize
         let evidence = vec![50i8; 100];
@@ -663,7 +656,11 @@ mod tests {
         for i in 0..100 {
             let word_idx = i / 64;
             let bit_idx = i % 64;
-            assert_eq!((fp.words[word_idx] >> bit_idx) & 1, 1, "bit {i} should be 1");
+            assert_eq!(
+                (fp.words[word_idx] >> bit_idx) & 1,
+                1,
+                "bit {i} should be 1"
+            );
         }
         // Binary updated
         assert_eq!(*plane.binary(0), fp);
@@ -819,7 +816,8 @@ mod tests {
 
     #[test]
     fn test_role_provenance_flags() {
-        let flags = role_provenance::GRAMMAR | role_provenance::NSM | role_provenance::SIGMA_CONTEXT;
+        let flags =
+            role_provenance::GRAMMAR | role_provenance::NSM | role_provenance::SIGMA_CONTEXT;
         assert_eq!(flags, 0x07);
         assert!(flags & role_provenance::GRAMMAR != 0);
         assert!(flags & role_provenance::USER_EXPLICIT == 0);
@@ -850,6 +848,10 @@ mod tests {
         let hist = buf.five_state_histogram(0).unwrap();
         // Should have non-zero counts across at least 2 states
         let non_zero = hist.iter().filter(|&&c| c > 0).count();
-        assert!(non_zero >= 2, "histogram should have diverse states: {:?}", hist);
+        assert!(
+            non_zero >= 2,
+            "histogram should have diverse states: {:?}",
+            hist
+        );
     }
 }

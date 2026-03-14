@@ -38,7 +38,6 @@ use crate::bf16_hamming::{
 use crate::kernels::{self, EnergyConflict, HdrScore, PipelineStats, SigmaScore, SliceGate};
 use crate::tail_backend::TailBackend;
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 use crate::simd;
 
 // ============================================================================
@@ -251,7 +250,6 @@ pub struct HybridStats {
 ///
 /// When SIMD features are not compiled (no avx512/avx2 features), this is
 /// a no-op that returns all candidates.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub fn tier0_prefilter(
     query_bytes: &[u8],
     database_bytes: &[u8],
@@ -367,7 +365,6 @@ pub fn hybrid_pipeline(
     let mut stats = HybridStats::default();
 
     // Phase 0 (optional): Tier 0 VNNI prefilter
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
     let (effective_db, effective_n, index_map) = if config.tier0.enabled {
         let (survivors, t0_stats) =
             tier0_prefilter(query_bytes, database_bytes, n_candidates, &config.tier0);
@@ -382,10 +379,6 @@ pub fn hybrid_pipeline(
     } else {
         (Vec::new(), n_candidates, None)
     };
-
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    let (effective_db, effective_n, index_map) =
-        (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
 
     // Use compact DB if Tier 0 produced one, otherwise the original
     let db_ref = if effective_db.is_empty() {
@@ -500,7 +493,6 @@ pub fn hybrid_pipeline_with_backend(
     let mut stats = HybridStats::default();
 
     // Phase 0 (optional): Tier 0 VNNI prefilter
-    #[cfg(any(feature = "avx512", feature = "avx2"))]
     let (effective_db, effective_n, index_map) = if config.tier0.enabled {
         let (survivors, t0_stats) =
             tier0_prefilter(query_bytes, database_bytes, n_candidates, &config.tier0);
@@ -515,10 +507,6 @@ pub fn hybrid_pipeline_with_backend(
     } else {
         (Vec::new(), n_candidates, None)
     };
-
-    #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-    let (effective_db, effective_n, index_map) =
-        (Vec::<u8>::new(), n_candidates, None::<Vec<usize>>);
 
     let db_ref = if effective_db.is_empty() {
         database_bytes

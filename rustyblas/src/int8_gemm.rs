@@ -15,20 +15,32 @@
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::f32x16;
 
 /// f32 SIMD lane count (16 for AVX-512).
+#[cfg(target_arch = "x86_64")]
 const F32_LANES: usize = 16;
 
 // ============================================================================
 // SIMD helper: abs_max reduction
 // ============================================================================
 
-/// Compute max(|x|) over a f32 slice using SIMD f32x16.
-///
-/// Used by symmetric quantization (i8, i4) to find the scale factor.
+/// Compute max(|x|) over a f32 slice. Runtime dispatch: AVX-512 → scalar.
 #[inline]
 fn simd_abs_max(data: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { simd_abs_max_avx512(data) };
+        }
+    }
+    data.iter().map(|x| x.abs()).fold(0.0f32, f32::max)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn simd_abs_max_avx512(data: &[f32]) -> f32 {
     let len = data.len();
     let chunks = len / F32_LANES;
     let mut acc = f32x16::splat(0.0);
@@ -88,6 +100,39 @@ pub fn quantize_f32_to_u8(data: &[f32]) -> (Vec<u8>, QuantParams) {
         );
     }
 
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { quantize_f32_to_u8_avx512(data) };
+        }
+    }
+    quantize_f32_to_u8_scalar(data)
+}
+
+fn quantize_f32_to_u8_scalar(data: &[f32]) -> (Vec<u8>, QuantParams) {
+    let mut min_val = f32::INFINITY;
+    let mut max_val = f32::NEG_INFINITY;
+    for &v in data {
+        min_val = min_val.min(v);
+        max_val = max_val.max(v);
+    }
+    let scale = if max_val == min_val {
+        1.0
+    } else {
+        (max_val - min_val) / 255.0
+    };
+    let zero_point = (-min_val / scale).round() as i32;
+    let zero_point = zero_point.clamp(0, 255);
+    let quantized: Vec<u8> = data
+        .iter()
+        .map(|&v| ((v / scale).round() as i32 + zero_point).clamp(0, 255) as u8)
+        .collect();
+    (quantized, QuantParams { scale, zero_point })
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn quantize_f32_to_u8_avx512(data: &[f32]) -> (Vec<u8>, QuantParams) {
     // ---- SIMD min/max reduction ----
     let len = data.len();
     let chunks = len / F32_LANES;
@@ -165,7 +210,28 @@ pub fn quantize_f32_to_i8(data: &[f32]) -> (Vec<i8>, QuantParams) {
     let abs_max = simd_abs_max(data);
     let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 127.0 };
 
-    // ---- SIMD quantization loop ----
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { quantize_f32_to_i8_avx512(data, scale) };
+        }
+    }
+    let quantized: Vec<i8> = data
+        .iter()
+        .map(|&v| (v / scale).round().clamp(-128.0, 127.0) as i8)
+        .collect();
+    (
+        quantized,
+        QuantParams {
+            scale,
+            zero_point: 0,
+        },
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn quantize_f32_to_i8_avx512(data: &[f32], scale: f32) -> (Vec<i8>, QuantParams) {
     let len = data.len();
     let chunks = len / F32_LANES;
     let inv_scale_v = f32x16::splat(1.0 / scale);
@@ -212,38 +278,27 @@ pub fn quantize_per_channel_i8(
     let mut scales = Vec::with_capacity(rows);
     let mut zero_points = Vec::with_capacity(rows);
 
-    let chunks = cols / F32_LANES;
-    let lo_v = f32x16::splat(-128.0);
-    let hi_v = f32x16::splat(127.0);
-
     for r in 0..rows {
         let row = &data[r * cols..(r + 1) * cols];
-
-        // SIMD abs_max for this row
         let abs_max = simd_abs_max(row);
         let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 127.0 };
 
-        // SIMD quantization for this row
-        let inv_scale_v = f32x16::splat(1.0 / scale);
         let out_row = &mut quantized[r * cols..(r + 1) * cols];
 
-        for i in 0..chunks {
-            let base = i * F32_LANES;
-            let v = f32x16::from_slice(&row[base..]);
-            let scaled = (v * inv_scale_v).round();
-            let clamped = scaled.simd_clamp(lo_v, hi_v);
-            let as_i32 = clamped.cast_i32();
-            let arr = as_i32.to_array();
-            for j in 0..F32_LANES {
-                out_row[base + j] = arr[j] as i8;
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx512f") {
+                unsafe { quantize_row_i8_avx512(row, out_row, scale) };
+                scales.push(scale);
+                zero_points.push(0);
+                continue;
             }
         }
 
-        // Scalar tail
-        for c in (chunks * F32_LANES)..cols {
-            out_row[c] = (row[c] / scale).round().clamp(-128.0, 127.0) as i8;
+        // Scalar fallback
+        for (c, &v) in row.iter().enumerate() {
+            out_row[c] = (v / scale).round().clamp(-128.0, 127.0) as i8;
         }
-
         scales.push(scale);
         zero_points.push(0);
     }
@@ -255,6 +310,33 @@ pub fn quantize_per_channel_i8(
             zero_points,
         },
     )
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn quantize_row_i8_avx512(row: &[f32], out: &mut [i8], scale: f32) {
+    let cols = row.len();
+    let chunks = cols / F32_LANES;
+    let inv_scale_v = f32x16::splat(1.0 / scale);
+    let lo_v = f32x16::splat(-128.0);
+    let hi_v = f32x16::splat(127.0);
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&row[base..]);
+        let scaled = (v * inv_scale_v).round();
+        let clamped = scaled.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast_i32();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            out[base + j] = arr[j] as i8;
+        }
+    }
+
+    // Scalar tail
+    for c in (chunks * F32_LANES)..cols {
+        out[c] = (row[c] / scale).round().clamp(-128.0, 127.0) as i8;
+    }
 }
 
 // ============================================================================
@@ -585,35 +667,29 @@ pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
         );
     }
 
-    // SIMD abs_max reduction
+    // SIMD abs_max reduction (already dispatched)
     let abs_max = simd_abs_max(data);
     let scale = if abs_max == 0.0 { 1.0 } else { abs_max / 7.0 };
     let inv_scale = 1.0 / scale;
 
-    // Pre-compute all scaled+clamped values using SIMD, then pack nibbles scalar
     let len = data.len();
-    let chunks = len / F32_LANES;
-    let inv_scale_v = f32x16::splat(inv_scale);
-    let lo_v = f32x16::splat(-8.0);
-    let hi_v = f32x16::splat(7.0);
-
     let mut scaled_vals = vec![0i8; len];
 
-    for i in 0..chunks {
-        let base = i * F32_LANES;
-        let v = f32x16::from_slice(&data[base..]);
-        let s = (v * inv_scale_v).round();
-        let clamped = s.simd_clamp(lo_v, hi_v);
-        let as_i32 = clamped.cast_i32();
-        let arr = as_i32.to_array();
-        for j in 0..F32_LANES {
-            scaled_vals[base + j] = arr[j] as i8;
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe { quantize_i4_simd_pass(data, &mut scaled_vals, inv_scale) };
+        } else {
+            for (i, &v) in data.iter().enumerate() {
+                scaled_vals[i] = (v * inv_scale).round().clamp(-8.0, 7.0) as i8;
+            }
         }
     }
-
-    // Scalar tail for remaining elements
-    for i in (chunks * F32_LANES)..len {
-        scaled_vals[i] = (data[i] * inv_scale).round().clamp(-8.0, 7.0) as i8;
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        for (i, &v) in data.iter().enumerate() {
+            scaled_vals[i] = (v * inv_scale).round().clamp(-8.0, 7.0) as i8;
+        }
     }
 
     // Nibble packing (scalar — inherently byte-level interleave)
@@ -633,6 +709,33 @@ pub fn quantize_f32_to_i4(data: &[f32]) -> (Vec<u8>, QuantParams) {
             zero_point: 0,
         },
     )
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn quantize_i4_simd_pass(data: &[f32], scaled_vals: &mut [i8], inv_scale: f32) {
+    let len = data.len();
+    let chunks = len / F32_LANES;
+    let inv_scale_v = f32x16::splat(inv_scale);
+    let lo_v = f32x16::splat(-8.0);
+    let hi_v = f32x16::splat(7.0);
+
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let v = f32x16::from_slice(&data[base..]);
+        let s = (v * inv_scale_v).round();
+        let clamped = s.simd_clamp(lo_v, hi_v);
+        let as_i32 = clamped.cast_i32();
+        let arr = as_i32.to_array();
+        for j in 0..F32_LANES {
+            scaled_vals[base + j] = arr[j] as i8;
+        }
+    }
+
+    // Scalar tail for remaining elements
+    for i in (chunks * F32_LANES)..len {
+        scaled_vals[i] = (data[i] * inv_scale).round().clamp(-8.0, 7.0) as i8;
+    }
 }
 
 /// Dequantize int4 packed data back to f32.

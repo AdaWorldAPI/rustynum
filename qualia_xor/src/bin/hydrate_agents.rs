@@ -55,6 +55,7 @@ fn xor_bind(a: &[u8], b: &[u8]) -> Vec<u8> {
     a.iter().zip(b).map(|(x, y)| x ^ y).collect()
 }
 
+#[allow(dead_code)]
 fn bf16_distance(a: &[u8], b: &[u8]) -> u64 {
     let mut total: u64 = 0;
     for i in (0..a.len().min(b.len())).step_by(2) {
@@ -148,6 +149,7 @@ struct GraphEdge {
     src: String,
     dst: String,
     rel_type: String,
+    #[allow(dead_code)]
     weight: f64, // dist or bertd
 }
 
@@ -241,9 +243,9 @@ fn extract_prop(s: &str, key: &str) -> Option<String> {
     let pattern = format!("{}: ", key);
     let i = s.find(&pattern)? + pattern.len();
     let rest = &s[i..];
-    if rest.starts_with('\'') {
-        let end = rest[1..].find('\'')?;
-        Some(rest[1..1 + end].to_string())
+    if let Some(stripped) = rest.strip_prefix('\'') {
+        let end = stripped.find('\'')?;
+        Some(stripped[..end].to_string())
     } else {
         let end = rest.find([',', '}', ')'].as_ref())?;
         Some(rest[..end].trim().to_string())
@@ -818,7 +820,7 @@ fn generate_spo_prompt(node: &GraphNode, edges: &[&GraphEdge], style: &ThinkingS
             prompt.push_str("]\n");
         }
         if !as_object.is_empty() {
-            prompt.push_str(&format!("  Passive: ["));
+            prompt.push_str("  Passive: [");
             let sources: Vec<String> = as_object.iter().map(|e| e.src.clone()).collect();
             prompt.push_str(&sources.join(", "));
             prompt.push_str(&format!("] -[:{}]-> {}\n", rel_type, node.alias));
@@ -914,11 +916,10 @@ fn generate_crew(
         tasks.push(TaskConfig {
             name: task_name.clone(),
             description: agent.spo_prompt.clone(),
-            expected_output: format!(
-                "A JSON report with: (1) causal chain analysis, \
+            expected_output: "A JSON report with: (1) causal chain analysis, \
                  (2) new entities/relationships discovered, \
                  (3) confidence scores for each finding"
-            ),
+                .to_string(),
             agent_role: agent.role.clone(),
             context_from: context,
         });

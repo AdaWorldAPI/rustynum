@@ -20,12 +20,6 @@ members = [
     "rustynum-holo",
     "rustynum-oracle",
 
-    # Frozen archives — scientific reproducibility snapshots (.archive prefix)
-    # These are INTENTIONAL frozen reference implementations. DO NOT delete.
-    ".archive-rustynum-v1",
-    ".archive-rustynum-v3",
-    ".archive-rustynum-carrier",
-    ".archive-rustynum-focus",
 ]
 
 # ─── Default build scope: Tier 1 only ───

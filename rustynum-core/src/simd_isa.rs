@@ -45,7 +45,7 @@ pub trait Isa: Copy + 'static {
 // STABLE (default): forward to our simd_avx512.rs wrappers
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(not(feature = "portable_simd"))]
+#[cfg(all(target_arch = "x86_64", not(feature = "portable_simd")))]
 mod stable_impl {
     use super::Isa;
     use crate::simd_avx512::{F32x16, F64x8, U8x64};
@@ -107,19 +107,12 @@ mod stable_impl {
         #[inline(always)]
         fn u8_popcnt_bytes(a: &[u8]) -> u64 {
             // Delegate to the runtime-dispatched popcount in simd.rs
-            #[cfg(feature = "avx512")]
-            {
-                crate::simd::popcount(a)
-            }
-            #[cfg(not(feature = "avx512"))]
-            {
-                a.iter().map(|b| b.count_ones() as u64).sum()
-            }
+            crate::simd::popcount(a)
         }
     }
 }
 
-#[cfg(not(feature = "portable_simd"))]
+#[cfg(all(target_arch = "x86_64", not(feature = "portable_simd")))]
 pub use stable_impl::Native;
 
 // ═══════════════════════════════════════════════════════════════════════════

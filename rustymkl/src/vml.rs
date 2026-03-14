@@ -1,12 +1,14 @@
 //! Vector Math Library (VML) — SIMD-vectorized transcendental functions.
 //!
 //! Pure Rust replacement for Intel MKL VML. All functions process arrays
-//! element-wise using AVX-512 SIMD.
+//! element-wise using AVX-512 SIMD when available, with scalar fallback.
 //!
 //! Naming convention follows MKL: `vs` prefix = single-precision vector,
 //! `vd` prefix = double-precision vector.
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd::{F32_LANES, F64_LANES};
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{
     F32x16 as F32Simd, F64x8 as F64Simd, U32x16 as U32Simd, U64x8 as U64Simd,
 };
@@ -16,8 +18,6 @@ use rustynum_core::simd_avx512::{
 // ============================================================================
 
 /// Vectorized single-precision exp: out[i] = e^(x[i])
-///
-/// Uses polynomial approximation for SIMD lanes, scalar fallback for tail.
 pub fn vsexp(x: &[f32], out: &mut [f32]) {
     #[cfg(feature = "mkl")]
     {
@@ -27,6 +27,16 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsexp_avx512(x, out) };
+    }
+    vsexp_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsexp_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -42,6 +52,12 @@ pub fn vsexp(x: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vsexp_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.exp();
+    }
+}
+
 /// Vectorized double-precision exp: out[i] = e^(x[i])
 pub fn vdexp(x: &[f64], out: &mut [f64]) {
     #[cfg(feature = "mkl")]
@@ -52,6 +68,16 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vdexp_avx512(x, out) };
+    }
+    vdexp_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vdexp_avx512(x: &[f64], out: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -64,6 +90,12 @@ pub fn vdexp(x: &[f64], out: &mut [f64]) {
 
     for i in (chunks * F64_LANES)..len {
         out[i] = x[i].exp();
+    }
+}
+
+fn vdexp_scalar(x: &[f64], out: &mut [f64]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.exp();
     }
 }
 
@@ -81,6 +113,16 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsln_avx512(x, out) };
+    }
+    vsln_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsln_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -96,6 +138,12 @@ pub fn vsln(x: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vsln_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.ln();
+    }
+}
+
 /// Vectorized double-precision natural log: out[i] = ln(x[i])
 pub fn vdln(x: &[f64], out: &mut [f64]) {
     #[cfg(feature = "mkl")]
@@ -106,6 +154,16 @@ pub fn vdln(x: &[f64], out: &mut [f64]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vdln_avx512(x, out) };
+    }
+    vdln_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vdln_avx512(x: &[f64], out: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -118,6 +176,12 @@ pub fn vdln(x: &[f64], out: &mut [f64]) {
 
     for i in (chunks * F64_LANES)..len {
         out[i] = x[i].ln();
+    }
+}
+
+fn vdln_scalar(x: &[f64], out: &mut [f64]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.ln();
     }
 }
 
@@ -135,6 +199,16 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vssqrt_avx512(x, out) };
+    }
+    vssqrt_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vssqrt_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -150,6 +224,12 @@ pub fn vssqrt(x: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vssqrt_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.sqrt();
+    }
+}
+
 /// Vectorized double-precision sqrt.
 pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
     #[cfg(feature = "mkl")]
@@ -160,6 +240,16 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vdsqrt_avx512(x, out) };
+    }
+    vdsqrt_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vdsqrt_avx512(x: &[f64], out: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -172,6 +262,12 @@ pub fn vdsqrt(x: &[f64], out: &mut [f64]) {
 
     for i in (chunks * F64_LANES)..len {
         out[i] = x[i].sqrt();
+    }
+}
+
+fn vdsqrt_scalar(x: &[f64], out: &mut [f64]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.sqrt();
     }
 }
 
@@ -189,6 +285,16 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsabs_avx512(x, out) };
+    }
+    vsabs_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsabs_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -204,6 +310,12 @@ pub fn vsabs(x: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vsabs_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.abs();
+    }
+}
+
 /// Vectorized double-precision abs.
 pub fn vdabs(x: &[f64], out: &mut [f64]) {
     #[cfg(feature = "mkl")]
@@ -214,6 +326,16 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vdabs_avx512(x, out) };
+    }
+    vdabs_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vdabs_avx512(x: &[f64], out: &mut [f64]) {
     let len = x.len();
     let chunks = len / F64_LANES;
 
@@ -229,8 +351,14 @@ pub fn vdabs(x: &[f64], out: &mut [f64]) {
     }
 }
 
+fn vdabs_scalar(x: &[f64], out: &mut [f64]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.abs();
+    }
+}
+
 // ============================================================================
-// ADD / SUB / MUL / DIV: element-wise arithmetic
+// ADD / MUL / DIV: element-wise arithmetic
 // ============================================================================
 
 /// Vectorized single-precision add: out[i] = a[i] + b[i]
@@ -244,6 +372,16 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsadd_avx512(a, b, out) };
+    }
+    vsadd_scalar(a, b, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsadd_avx512(a: &[f32], b: &[f32], out: &mut [f32]) {
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -260,6 +398,12 @@ pub fn vsadd(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vsadd_scalar(a: &[f32], b: &[f32], out: &mut [f32]) {
+    for i in 0..a.len() {
+        out[i] = a[i] + b[i];
+    }
+}
+
 /// Vectorized single-precision multiply: out[i] = a[i] * b[i]
 pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
     #[cfg(feature = "mkl")]
@@ -271,6 +415,16 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsmul_avx512(a, b, out) };
+    }
+    vsmul_scalar(a, b, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsmul_avx512(a: &[f32], b: &[f32], out: &mut [f32]) {
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -287,6 +441,12 @@ pub fn vsmul(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vsmul_scalar(a: &[f32], b: &[f32], out: &mut [f32]) {
+    for i in 0..a.len() {
+        out[i] = a[i] * b[i];
+    }
+}
+
 /// Vectorized single-precision divide: out[i] = a[i] / b[i]
 pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
     #[cfg(feature = "mkl")]
@@ -298,6 +458,16 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vsdiv_avx512(a, b, out) };
+    }
+    vsdiv_scalar(a, b, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vsdiv_avx512(a: &[f32], b: &[f32], out: &mut [f32]) {
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -310,6 +480,12 @@ pub fn vsdiv(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
 
     for i in (chunks * F32_LANES)..len {
+        out[i] = a[i] / b[i];
+    }
+}
+
+fn vsdiv_scalar(a: &[f32], b: &[f32], out: &mut [f32]) {
+    for i in 0..a.len() {
         out[i] = a[i] / b[i];
     }
 }
@@ -331,6 +507,16 @@ pub fn vssin(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vssin_avx512(x, out) };
+    }
+    vssin_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vssin_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
 
@@ -346,9 +532,15 @@ pub fn vssin(x: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vssin_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.sin();
+    }
+}
+
 /// Vectorized single-precision cos: out[i] = cos(x[i])
 ///
-/// cos(x) = sin(x + π/2), reusing the SIMD sin kernel.
+/// cos(x) = sin(x + pi/2), reusing the SIMD sin kernel.
 pub fn vscos(x: &[f32], out: &mut [f32]) {
     #[cfg(feature = "mkl")]
     {
@@ -358,6 +550,16 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
         return;
     }
     assert_eq!(x.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vscos_avx512(x, out) };
+    }
+    vscos_scalar(x, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vscos_avx512(x: &[f32], out: &mut [f32]) {
     let len = x.len();
     let chunks = len / F32_LANES;
     let half_pi = F32Simd::splat(std::f32::consts::FRAC_PI_2);
@@ -371,6 +573,12 @@ pub fn vscos(x: &[f32], out: &mut [f32]) {
 
     for i in (chunks * F32_LANES)..len {
         out[i] = x[i].cos();
+    }
+}
+
+fn vscos_scalar(x: &[f32], out: &mut [f32]) {
+    for (d, r) in x.iter().zip(out.iter_mut()) {
+        *r = d.cos();
     }
 }
 
@@ -388,6 +596,16 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
     assert_eq!(a.len(), b.len());
     assert_eq!(a.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        return unsafe { vspow_avx512(a, b, out) };
+    }
+    vspow_scalar(a, b, out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn vspow_avx512(a: &[f32], b: &[f32], out: &mut [f32]) {
     let len = a.len();
     let chunks = len / F32_LANES;
 
@@ -406,6 +624,12 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
     }
 }
 
+fn vspow_scalar(a: &[f32], b: &[f32], out: &mut [f32]) {
+    for i in 0..a.len() {
+        out[i] = a[i].powf(b[i]);
+    }
+}
+
 // ============================================================================
 // SIMD polynomial approximations for transcendental functions
 // ============================================================================
@@ -417,6 +641,7 @@ pub fn vspow(a: &[f32], b: &[f32], out: &mut [f32]) {
 /// 2. Decompose x = n * ln(2) + r, where n = round(x / ln(2))
 /// 3. Compute exp(r) using degree-6 minimax polynomial
 /// 4. Scale by 2^n via IEEE 754 exponent bit manipulation (ldexp)
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_exp_f32(x: F32Simd) -> F32Simd {
     // IEEE 754 compliance: handle special values before clamping.
@@ -470,6 +695,7 @@ fn simd_exp_f32(x: F32Simd) -> F32Simd {
 ///
 /// Degree-7 Taylor/minimax polynomial with Cody-Waite reduction.
 /// ldexp via IEEE 754 f64 exponent bit manipulation.
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_exp_f64(x: F64Simd) -> F64Simd {
     // IEEE 754 compliance: handle special values before clamping.
@@ -517,9 +743,10 @@ fn simd_exp_f64(x: F64Simd) -> F64Simd {
 /// Fast SIMD ln(x) for F32Simd.
 ///
 /// Algorithm:
-/// 1. Decompose x = 2^e * m, where m ∈ [1, 2) via IEEE 754 bit extraction
+/// 1. Decompose x = 2^e * m, where m in [1, 2) via IEEE 754 bit extraction
 /// 2. ln(x) = e * ln(2) + ln(m)
-/// 3. ln(m) via Padé-like series: u = (m-1)/(m+1), ln(m) = 2u(1 + u²/3 + u⁴/5 + ...)
+/// 3. ln(m) via Pade-like series: u = (m-1)/(m+1), ln(m) = 2u(1 + u^2/3 + u^4/5 + ...)
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_ln_f32(x: F32Simd) -> F32Simd {
     // IEEE 754 compliance: handle special values before bit extraction.
@@ -545,7 +772,7 @@ fn simd_ln_f32(x: F32Simd) -> F32Simd {
     let mantissa_bits = (bits & U32Simd::splat(0x007F_FFFF)) | U32Simd::splat(0x3F80_0000);
     let m = F32Simd::from_bits(mantissa_bits);
 
-    // Padé series: u = (m-1)/(m+1), ln(m) = 2*u*(1 + u²/3 + u⁴/5 + u⁶/7 + u⁸/9)
+    // Pade series: u = (m-1)/(m+1), ln(m) = 2*u*(1 + u^2/3 + u^4/5 + u^6/7 + u^8/9)
     let one = F32Simd::splat(1.0);
     let u = (m - one) / (m + one);
     let u2 = u * u;
@@ -570,7 +797,8 @@ fn simd_ln_f32(x: F32Simd) -> F32Simd {
 /// Fast SIMD ln(x) for F64Simd.
 ///
 /// Same algorithm as simd_ln_f32 but with higher-degree polynomial for f64 precision.
-/// Padé series to degree 15 (u^14 term).
+/// Pade series to degree 15 (u^14 term).
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_ln_f64(x: F64Simd) -> F64Simd {
     // IEEE 754 compliance: handle special values before bit extraction.
@@ -625,26 +853,27 @@ fn simd_ln_f64(x: F64Simd) -> F64Simd {
 /// Fast SIMD sin(x) for F32Simd.
 ///
 /// Algorithm:
-/// 1. Cody-Waite range reduction: n = round(x/π), r = x - n*π
-///    (r ∈ [-π/2, π/2])
+/// 1. Cody-Waite range reduction: n = round(x/pi), r = x - n*pi
+///    (r in [-pi/2, pi/2])
 /// 2. sin(r) via degree-9 minimax polynomial (Horner form)
-/// 3. Sign correction: sin(nπ + r) = (-1)^n * sin(r)
+/// 3. Sign correction: sin(n*pi + r) = (-1)^n * sin(r)
 ///    Applied via XOR on IEEE 754 sign bit — no branching.
+#[cfg(target_arch = "x86_64")]
 #[inline(always)]
 fn simd_sin_f32(x: F32Simd) -> F32Simd {
     let inv_pi = F32Simd::splat(std::f32::consts::FRAC_1_PI);
 
-    // Cody-Waite constants for π (hi + lo = π to ~24 digits)
+    // Cody-Waite constants for pi (hi + lo = pi to ~24 digits)
     let pi_hi = F32Simd::splat(3.140625f32);
     let pi_lo = F32Simd::splat(9.676_536e-4_f32);
 
-    // Range reduction: n = round(x/π)
+    // Range reduction: n = round(x/pi)
     let n = (x * inv_pi + F32Simd::splat(0.5)).floor();
 
-    // r = x - n * π (Cody-Waite for precision)
+    // r = x - n * pi (Cody-Waite for precision)
     let r = x - n * pi_hi - n * pi_lo;
 
-    // sin(r) ≈ r * (1 + r²(-1/6 + r²(1/120 + r²(-1/5040 + r²/362880))))
+    // sin(r) ~ r * (1 + r^2(-1/6 + r^2(1/120 + r^2(-1/5040 + r^2/362880))))
     let r2 = r * r;
     let poly = F32Simd::splat(1.0)
         + r2 * (F32Simd::splat(-1.0 / 6.0)
@@ -851,7 +1080,7 @@ mod tests {
 
     #[test]
     fn test_sin_cos_identity() {
-        // sin²(x) + cos²(x) = 1
+        // sin^2(x) + cos^2(x) = 1
         let x: Vec<f32> = (0..32).map(|i| i as f32 * 0.3 - 5.0).collect();
         let mut sin_out = vec![0.0f32; 32];
         let mut cos_out = vec![0.0f32; 32];
@@ -861,7 +1090,7 @@ mod tests {
             let sum = sin_out[i] * sin_out[i] + cos_out[i] * cos_out[i];
             assert!(
                 (sum - 1.0).abs() < 1e-3,
-                "sin²+cos² = {} at x={}",
+                "sin^2+cos^2 = {} at x={}",
                 sum,
                 x[i]
             );

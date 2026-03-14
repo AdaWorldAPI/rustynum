@@ -7,9 +7,9 @@ edition = "2021"
 mkl = ["rustymkl/mkl"]
 
 [dependencies]
-rustynum-core = { path = "../rustynum-core", features = ["avx512"] }
-rustyblas = { path = "../rustyblas", features = ["avx512"] }
-rustymkl = { path = "../rustymkl", features = ["avx512"] }
+rustynum-core = { path = "../rustynum-core" }
+rustyblas = { path = "../rustyblas" }
+rustymkl = { path = "../rustymkl" }
 
 [dev-dependencies]
 criterion = "0.3"

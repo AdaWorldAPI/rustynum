@@ -50,16 +50,27 @@ pub fn approx_mean_std_f32(data: &[f32]) -> (f32, f32) {
     let len = data.len();
     let chunks = len / 16;
     if chunks > 0 {
-        use crate::simd_avx512::f32x16;
-        let mut vmin = f32x16::splat(f32::INFINITY);
-        let mut vmax = f32x16::splat(f32::NEG_INFINITY);
-        for i in 0..chunks {
-            let v = f32x16::from_slice(&data[i * 16..]);
-            vmin = vmin.simd_min(v);
-            vmax = vmax.simd_max(v);
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: AVX-512 detected above.
+                let (smin, smax) = unsafe { minmax_f32_avx512(data, chunks) };
+                min_val = smin;
+                max_val = smax;
+            } else {
+                for &val in &data[..chunks * 16] {
+                    min_val = min_val.min(val);
+                    max_val = max_val.max(val);
+                }
+            }
         }
-        min_val = vmin.reduce_min();
-        max_val = vmax.reduce_max();
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            for &val in &data[..chunks * 16] {
+                min_val = min_val.min(val);
+                max_val = max_val.max(val);
+            }
+        }
     }
     for &val in &data[chunks * 16..] {
         min_val = min_val.min(val);
@@ -282,6 +293,20 @@ pub fn approx_column_std(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     }
 
     stds
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn minmax_f32_avx512(data: &[f32], chunks: usize) -> (f32, f32) {
+    use crate::simd_avx512::f32x16;
+    let mut vmin = f32x16::splat(f32::INFINITY);
+    let mut vmax = f32x16::splat(f32::NEG_INFINITY);
+    for i in 0..chunks {
+        let v = f32x16::from_slice(&data[i * 16..]);
+        vmin = vmin.simd_min(v);
+        vmax = vmax.simd_max(v);
+    }
+    (vmin.reduce_min(), vmax.reduce_max())
 }
 
 #[cfg(test)]

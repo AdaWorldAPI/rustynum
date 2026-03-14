@@ -5462,22 +5462,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustynum-archive"
-version = "0.1.0"
-dependencies = [
- "rustynum-core",
- "rustynum-rs",
-]
-
-[[package]]
-name = "rustynum-archive-v3"
-version = "0.1.0"
-dependencies = [
- "rustynum-core",
- "rustynum-rs",
-]
-
-[[package]]
 name = "rustynum-arrow"
 version = "0.1.0"
 dependencies = [
@@ -5501,14 +5485,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustynum-carrier"
-version = "0.1.0"
-dependencies = [
- "rustynum-core",
- "rustynum-rs",
-]
-
-[[package]]
 name = "rustynum-clam"
 version = "0.1.0"
 dependencies = [
@@ -5524,14 +5500,6 @@ dependencies = [
  "intel-mkl-src",
  "libc",
  "smallvec",
-]
-
-[[package]]
-name = "rustynum-focus"
-version = "0.1.0"
-dependencies = [
- "rustynum-core",
- "rustynum-rs",
 ]
 
 [[package]]

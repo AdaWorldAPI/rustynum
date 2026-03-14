@@ -171,8 +171,8 @@ pub fn scal_f32(alpha: f32, x: &mut [f32]) {
         let xv = f32x8::from_slice(&x[base..]);
         (alpha_v * xv).copy_to_slice(&mut x[base..base + F32_LANES]);
     }
-    for i in (chunks * F32_LANES)..len {
-        x[i] *= alpha;
+    for v in x[chunks * F32_LANES..].iter_mut() {
+        *v *= alpha;
     }
 }
 
@@ -187,8 +187,8 @@ pub fn scal_f64(alpha: f64, x: &mut [f64]) {
         let xv = f64x4::from_slice(&x[base..]);
         (alpha_v * xv).copy_to_slice(&mut x[base..base + F64_LANES]);
     }
-    for i in (chunks * F64_LANES)..len {
-        x[i] *= alpha;
+    for v in x[chunks * F64_LANES..].iter_mut() {
+        *v *= alpha;
     }
 }
 
@@ -204,8 +204,8 @@ pub fn asum_f32(x: &[f32]) -> f32 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F32_LANES)..len {
-        sum += x[i].abs();
+    for &v in &x[chunks * F32_LANES..] {
+        sum += v.abs();
     }
     sum
 }
@@ -222,8 +222,8 @@ pub fn asum_f64(x: &[f64]) -> f64 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F64_LANES)..len {
-        sum += x[i].abs();
+    for &v in &x[chunks * F64_LANES..] {
+        sum += v.abs();
     }
     sum
 }
@@ -241,8 +241,8 @@ pub fn nrm2_f32(x: &[f32]) -> f32 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F32_LANES)..len {
-        sum += x[i] * x[i];
+    for &v in &x[chunks * F32_LANES..] {
+        sum += v * v;
     }
     sum.sqrt()
 }
@@ -260,8 +260,8 @@ pub fn nrm2_f64(x: &[f64]) -> f64 {
     }
 
     let mut sum = acc.reduce_sum();
-    for i in (chunks * F64_LANES)..len {
-        sum += x[i] * x[i];
+    for &v in &x[chunks * F64_LANES..] {
+        sum += v * v;
     }
     sum.sqrt()
 }
@@ -451,21 +451,11 @@ mod tests {
     fn test_hamming_batch() {
         let query = vec![0xAAu8; 16];
         let mut database = vec![0u8; 16 * 4];
-        for i in 0..16 {
-            database[i] = 0xAA;
-        }
-        for i in 16..32 {
-            database[i] = 0x55;
-        }
-        for i in 32..40 {
-            database[i] = 0xAA;
-        }
-        for i in 40..48 {
-            database[i] = 0x55;
-        }
-        for i in 48..64 {
-            database[i] = 0xAA;
-        }
+        database[0..16].fill(0xAA);
+        database[16..32].fill(0x55);
+        database[32..40].fill(0xAA);
+        database[40..48].fill(0x55);
+        database[48..64].fill(0xAA);
         database[48] = 0x55;
 
         let distances = hamming_batch(&query, &database, 4, 16);

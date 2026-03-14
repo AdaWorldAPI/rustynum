@@ -49,10 +49,9 @@ pub mod horizontal_sweep;
 // ThreePlaneFingerprintBuffer, SoakingBuffer, OrganicSoakingBuffer, PlaneBuffer
 pub mod three_plane;
 pub use three_plane::{
-    bind_nodes_v2_schema, attention_mask_schema, bind_edges_v2_schema,
-    gate_state, role_provenance,
-    OrganicSoakingBuffer, PlaneBuffer, SoakingBuffer, ThreePlaneFingerprintBuffer,
-    BINARY_BYTES, DEFAULT_SOAKING_DIM,
+    attention_mask_schema, bind_edges_v2_schema, bind_nodes_v2_schema, gate_state, role_provenance,
+    OrganicSoakingBuffer, PlaneBuffer, SoakingBuffer, ThreePlaneFingerprintBuffer, BINARY_BYTES,
+    DEFAULT_SOAKING_DIM,
 };
 
 // Re-exports for convenience
@@ -73,9 +72,7 @@ pub use datafusion_bridge::{
 };
 
 #[cfg(feature = "lance")]
-pub use lance_io::{
-    append_cogrecords, read_cogrecord_batches, read_cogrecords, write_cogrecords,
-};
+pub use lance_io::{append_cogrecords, read_cogrecord_batches, read_cogrecords, write_cogrecords};
 
 #[cfg(feature = "arrow")]
 pub use fragment_index::{FragmentIndex, FragmentMeta};
@@ -93,7 +90,7 @@ pub use indexed_cascade::{
 
 #[cfg(feature = "arrow")]
 pub use horizontal_sweep::{
-    gemm_batch_similarity, horizontal_sweep, horizontal_sweep_external,
-    horizontal_sweep_filtered, hybrid_cascade_sweep, ExternalScanFn, GemmBatchResult,
-    HorizontalSweepConfig, HorizontalSweepResult, HorizontalSweepStats, HybridCascadeResult,
+    gemm_batch_similarity, horizontal_sweep, horizontal_sweep_external, horizontal_sweep_filtered,
+    hybrid_cascade_sweep, ExternalScanFn, GemmBatchResult, HorizontalSweepConfig,
+    HorizontalSweepResult, HorizontalSweepStats, HybridCascadeResult,
 };

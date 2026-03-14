@@ -24,6 +24,7 @@
 //! println!("Mean value: {}", mean_value);
 //! ```
 
+#[cfg(target_arch = "x86_64")]
 use rustynum_core::simd_avx512::{f32x16, f64x8, i32x16, i64x8, u8x64};
 use std::fmt::Debug;
 use std::iter::Sum;

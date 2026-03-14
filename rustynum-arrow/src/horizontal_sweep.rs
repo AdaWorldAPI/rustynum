@@ -514,11 +514,7 @@ pub fn gemm_batch_similarity(
         dim * 4,
         "dense column element size must be dim * sizeof(f32)"
     );
-    assert_eq!(
-        query_f32.len(),
-        dim,
-        "query must have {dim} dimensions"
-    );
+    assert_eq!(query_f32.len(), dim, "query must have {dim} dimensions");
 
     let flat = dense_column.value_data();
 
@@ -529,9 +525,7 @@ pub fn gemm_batch_similarity(
         let bytes = &flat[offset..offset + elem_bytes];
         // SAFETY: bytes are aligned f32 values from Arrow FixedSizeBinaryArray.
         // Arrow guarantees 64-byte alignment. Length is exactly dim * 4.
-        let floats = unsafe {
-            std::slice::from_raw_parts(bytes.as_ptr() as *const f32, dim)
-        };
+        let floats = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const f32, dim) };
         a[i * dim..(i + 1) * dim].copy_from_slice(floats);
     }
 
@@ -543,17 +537,17 @@ pub fn gemm_batch_similarity(
         Layout::RowMajor,
         Transpose::NoTrans,
         Transpose::NoTrans,
-        n,         // m: rows of A
-        1,         // n: cols of B (query is a column vector)
-        dim,       // k: inner dimension
-        1.0,       // alpha
+        n,   // m: rows of A
+        1,   // n: cols of B (query is a column vector)
+        dim, // k: inner dimension
+        1.0, // alpha
         &a,
-        dim,       // lda
+        dim, // lda
         query_f32,
-        1,         // ldb (column vector)
-        0.0,       // beta
+        1,   // ldb (column vector)
+        0.0, // beta
         &mut c,
-        1,         // ldc
+        1, // ldc
     );
 
     // Filter by threshold and pair with original row indices.
@@ -576,10 +570,7 @@ pub fn gemm_batch_similarity(
         hits.truncate(top_k);
     }
 
-    GemmBatchResult {
-        hits,
-        evaluated: n,
-    }
+    GemmBatchResult { hits, evaluated: n }
 }
 
 // ---------------------------------------------------------------------------
@@ -994,9 +985,8 @@ mod tests {
         let elem_bytes = data[0].len() * 4;
         let mut builder = FixedSizeBinaryBuilder::with_capacity(data.len(), elem_bytes as i32);
         for row in data {
-            let bytes: &[u8] = unsafe {
-                std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4)
-            };
+            let bytes: &[u8] =
+                unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4) };
             builder.append_value(bytes).unwrap();
         }
         builder.finish()
@@ -1021,13 +1011,8 @@ mod tests {
         let dense_col = make_f32_column(&refs);
 
         // Simulate survivors from HDC sweep
-        let survivors: Vec<(usize, u64)> = vec![
-            (0, 3000),
-            (1, 2000),
-            (2, 1000),
-            (3, 2500),
-            (4, 4000),
-        ];
+        let survivors: Vec<(usize, u64)> =
+            vec![(0, 3000), (1, 2000), (2, 1000), (3, 2500), (4, 4000)];
 
         let result = gemm_batch_similarity(&query, &survivors, &dense_col, dim, 0.4, 0);
 
@@ -1121,9 +1106,7 @@ mod tests {
     #[test]
     fn test_horizontal_sweep_external_with_scan_fn() {
         let query = vec![0u8; CONTAINER_BYTES];
-        let rows: Vec<Vec<u8>> = (0..10)
-            .map(|i| vec![i as u8; CONTAINER_BYTES])
-            .collect();
+        let rows: Vec<Vec<u8>> = (0..10).map(|i| vec![i as u8; CONTAINER_BYTES]).collect();
         let refs: Vec<&[u8]> = rows.iter().map(|r| r.as_slice()).collect();
         let col = make_column(&refs, CONTAINER_BYTES as i32);
 

@@ -232,6 +232,114 @@ unsafe fn bf16_hamming_avx512(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 
 }
 
 // ---------------------------------------------------------------------------
+// AVX2 implementation
+// ---------------------------------------------------------------------------
+
+/// AVX2 BF16-structured Hamming distance.
+///
+/// Processes 16 BF16 pairs (32 bytes) per iteration using:
+/// - VPXOR for XOR
+/// - VPSRLW + VPAND for field extraction
+/// - vpshufb nibble LUT for per-byte popcount (no VPOPCNTB on AVX2)
+/// - VPADDW for accumulation
+///
+/// Requires: AVX2
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn bf16_hamming_avx2(a: &[u8], b: &[u8], weights: &BF16Weights) -> u64 {
+    use std::arch::x86_64::*;
+
+    let len = a.len();
+    assert_eq!(len, b.len());
+    let chunks = len / 32;
+
+    let w_sign = _mm256_set1_epi16(weights.sign as i16);
+    let w_exp = _mm256_set1_epi16(weights.exponent as i16);
+    let w_man = _mm256_set1_epi16(weights.mantissa as i16);
+    let mask_0xff = _mm256_set1_epi16(0x00FF);
+    let mask_0x7f = _mm256_set1_epi16(0x007F);
+    let one = _mm256_set1_epi16(1);
+
+    // vpshufb nibble popcount LUT
+    let lo_nibble_mask = _mm256_set1_epi8(0x0F);
+    let popcnt_lut = _mm256_setr_epi8(
+        0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3,
+        3, 4,
+    );
+
+    let mut acc_lo = _mm256_setzero_si256();
+    let mut acc_hi = _mm256_setzero_si256();
+
+    for c in 0..chunks {
+        let base = c * 32;
+        let va = _mm256_loadu_si256(a.as_ptr().add(base) as *const __m256i);
+        let vb = _mm256_loadu_si256(b.as_ptr().add(base) as *const __m256i);
+        let xor = _mm256_xor_si256(va, vb);
+
+        // Sign extraction: shift right 15, mask to 1, multiply by weight
+        let signs = _mm256_and_si256(_mm256_srli_epi16(xor, 15), one);
+        let sign_weighted = _mm256_mullo_epi16(signs, w_sign);
+
+        // Exponent extraction: shift right 7, mask to 0xFF
+        let exp_shifted = _mm256_and_si256(_mm256_srli_epi16(xor, 7), mask_0xff);
+        // vpshufb popcount: split into nibbles, look up, add
+        let exp_lo = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(exp_shifted, lo_nibble_mask));
+        let exp_hi = _mm256_shuffle_epi8(
+            popcnt_lut,
+            _mm256_and_si256(_mm256_srli_epi16(exp_shifted, 4), lo_nibble_mask),
+        );
+        let exp_popcnt = _mm256_and_si256(_mm256_add_epi8(exp_lo, exp_hi), mask_0xff);
+        let exp_weighted = _mm256_mullo_epi16(exp_popcnt, w_exp);
+
+        // Mantissa extraction: mask to 0x7F
+        let man_masked = _mm256_and_si256(xor, mask_0x7f);
+        // vpshufb popcount
+        let man_lo = _mm256_shuffle_epi8(popcnt_lut, _mm256_and_si256(man_masked, lo_nibble_mask));
+        let man_hi = _mm256_shuffle_epi8(
+            popcnt_lut,
+            _mm256_and_si256(_mm256_srli_epi16(man_masked, 4), lo_nibble_mask),
+        );
+        let man_popcnt = _mm256_and_si256(_mm256_add_epi8(man_lo, man_hi), mask_0xff);
+        let man_weighted = _mm256_mullo_epi16(man_popcnt, w_man);
+
+        // Sum per-element: sign + exp + man
+        let per_elem =
+            _mm256_add_epi16(_mm256_add_epi16(sign_weighted, exp_weighted), man_weighted);
+
+        // Widen u16 lanes to u32 and accumulate in two halves
+        let even = _mm256_and_si256(per_elem, _mm256_set1_epi32(0x0000FFFF));
+        let odd = _mm256_srli_epi32(per_elem, 16);
+        acc_lo = _mm256_add_epi32(acc_lo, even);
+        acc_hi = _mm256_add_epi32(acc_hi, odd);
+    }
+
+    // Horizontal sum — extract 128-bit halves, add, then scalar sum
+    let lo_128 = _mm256_castsi256_si128(acc_lo);
+    let hi_128 = _mm256_extracti128_si256(acc_lo, 1);
+    let sum_lo_128 = _mm_add_epi32(lo_128, hi_128);
+    let mut lo_vals = [0i32; 4];
+    _mm_storeu_si128(lo_vals.as_mut_ptr() as *mut __m128i, sum_lo_128);
+    let sum_lo: u64 = lo_vals.iter().map(|&v| v as u64).sum();
+
+    let lo2_128 = _mm256_castsi256_si128(acc_hi);
+    let hi2_128 = _mm256_extracti128_si256(acc_hi, 1);
+    let sum_hi_128 = _mm_add_epi32(lo2_128, hi2_128);
+    let mut hi_vals = [0i32; 4];
+    _mm_storeu_si128(hi_vals.as_mut_ptr() as *mut __m128i, sum_hi_128);
+    let sum_hi: u64 = hi_vals.iter().map(|&v| v as u64).sum();
+
+    let mut total = sum_lo + sum_hi;
+
+    // Scalar tail for remaining bytes
+    let tail_start = chunks * 32;
+    if tail_start < len {
+        total += bf16_hamming_scalar(&a[tail_start..], &b[tail_start..], weights);
+    }
+
+    total
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -242,15 +350,18 @@ pub type BF16HammingFn = fn(&[u8], &[u8], &BF16Weights) -> u64;
 ///
 /// The result is cached in a `OnceLock` — the CPUID probe runs at most once.
 /// Safe to call in hot loops.
+///
+/// Dispatch chain: AVX-512 (BITALG) → AVX2 (vpshufb LUT) → scalar.
 pub fn select_bf16_hamming_fn() -> BF16HammingFn {
     static FN: OnceLock<BF16HammingFn> = OnceLock::new();
     *FN.get_or_init(|| {
         #[cfg(target_arch = "x86_64")]
         {
             if is_x86_feature_detected!("avx512bw") && is_x86_feature_detected!("avx512bitalg") {
-                // SAFETY: CPU feature detection guarantees AVX-512BW + BITALG are available.
-                // The closure delegates to bf16_hamming_avx512 which requires these features.
                 return |a, b, w| unsafe { bf16_hamming_avx512(a, b, w) };
+            }
+            if is_x86_feature_detected!("avx2") {
+                return |a, b, w| unsafe { bf16_hamming_avx2(a, b, w) };
             }
         }
         bf16_hamming_scalar
@@ -684,8 +795,19 @@ pub fn hydrate_qualia_f32(packed: &PackedQualia) -> [f32; 16] {
     hydrate_qualia_f32_inner(&packed.resonance, scalar)
 }
 
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { hydrate_qualia_f32_avx512(resonance, scalar) };
+        }
+    }
+    hydrate_qualia_f32_scalar(resonance, scalar)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn hydrate_qualia_f32_avx512(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     use crate::simd_avx512::{f32x16, i32x16};
 
     // Sign-extend i8 → i32 (portable_simd doesn't have i8x16→f32x16 directly)
@@ -702,8 +824,7 @@ fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     result.to_array()
 }
 
-#[cfg(not(any(feature = "avx512", feature = "avx2")))]
-fn hydrate_qualia_f32_inner(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
+fn hydrate_qualia_f32_scalar(resonance: &[i8; 16], scalar: f32) -> [f32; 16] {
     std::array::from_fn(|i| resonance[i] as f32 * scalar)
 }
 
@@ -758,18 +879,10 @@ pub fn compress_to_qualia(values: &[f32; 16]) -> PackedQualia {
 ///
 /// This is the "resonance" between two phenomenological states:
 /// high positive = aligned, negative = opposing, zero = orthogonal.
-#[cfg(any(feature = "avx512", feature = "avx2"))]
 pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
     let va = hydrate_qualia_f32(a);
     let vb = hydrate_qualia_f32(b);
     crate::simd::dot_f32(&va, &vb)
-}
-
-#[cfg(not(any(feature = "avx512", feature = "avx2")))]
-pub fn qualia_dot(a: &PackedQualia, b: &PackedQualia) -> f32 {
-    let va = hydrate_qualia_f32(a);
-    let vb = hydrate_qualia_f32(b);
-    va.iter().zip(vb.iter()).map(|(x, y)| x * y).sum()
 }
 
 /// Bundle multiple PackedQualia into a superposed state.
