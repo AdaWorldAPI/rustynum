@@ -239,7 +239,11 @@ impl EwmCorrection {
     }
 
     /// Compute with a specific σ-gate (e.g., for SKU-64K).
-    pub fn compute_with_gate(prev: &ResonatorSnapshot, curr: &ResonatorSnapshot, gate: &SigmaGate) -> Self {
+    pub fn compute_with_gate(
+        prev: &ResonatorSnapshot,
+        curr: &ResonatorSnapshot,
+        gate: &SigmaGate,
+    ) -> Self {
         let s_correction = per_word_popcount(&(&curr.s_est ^ &prev.s_est));
         let p_correction = per_word_popcount(&(&curr.p_est ^ &prev.p_est));
         let o_correction = per_word_popcount(&(&curr.o_est ^ &prev.o_est));
@@ -513,12 +517,9 @@ impl CausalArrow {
         let bprelu = BPReLU::default(); // α_pos=1.0, α_neg=0.25
 
         // Per-plane: compute forward and backward activation sums
-        let (fwd_s, bwd_s) =
-            plane_asymmetry(&prev.s_est, &curr.s_est, &bprelu);
-        let (fwd_p, bwd_p) =
-            plane_asymmetry(&prev.p_est, &curr.p_est, &bprelu);
-        let (fwd_o, bwd_o) =
-            plane_asymmetry(&prev.o_est, &curr.o_est, &bprelu);
+        let (fwd_s, bwd_s) = plane_asymmetry(&prev.s_est, &curr.s_est, &bprelu);
+        let (fwd_p, bwd_p) = plane_asymmetry(&prev.p_est, &curr.p_est, &bprelu);
+        let (fwd_o, bwd_o) = plane_asymmetry(&prev.o_est, &curr.o_est, &bprelu);
 
         let s_dir = classify_asymmetry(fwd_s, bwd_s);
         let p_dir = classify_asymmetry(fwd_p, bwd_p);
@@ -647,12 +648,48 @@ impl CausalChain {
 
             // Generate all cause→effect links
             let pairs: [(bool, DominantPlane, u32, bool, DominantPlane); 6] = [
-                (s_stabilized, DominantPlane::S, early.s_activity, p_responding, DominantPlane::P),
-                (s_stabilized, DominantPlane::S, early.s_activity, o_responding, DominantPlane::O),
-                (p_stabilized, DominantPlane::P, early.p_activity, s_responding, DominantPlane::S),
-                (p_stabilized, DominantPlane::P, early.p_activity, o_responding, DominantPlane::O),
-                (o_stabilized, DominantPlane::O, early.o_activity, s_responding, DominantPlane::S),
-                (o_stabilized, DominantPlane::O, early.o_activity, p_responding, DominantPlane::P),
+                (
+                    s_stabilized,
+                    DominantPlane::S,
+                    early.s_activity,
+                    p_responding,
+                    DominantPlane::P,
+                ),
+                (
+                    s_stabilized,
+                    DominantPlane::S,
+                    early.s_activity,
+                    o_responding,
+                    DominantPlane::O,
+                ),
+                (
+                    p_stabilized,
+                    DominantPlane::P,
+                    early.p_activity,
+                    s_responding,
+                    DominantPlane::S,
+                ),
+                (
+                    p_stabilized,
+                    DominantPlane::P,
+                    early.p_activity,
+                    o_responding,
+                    DominantPlane::O,
+                ),
+                (
+                    o_stabilized,
+                    DominantPlane::O,
+                    early.o_activity,
+                    s_responding,
+                    DominantPlane::S,
+                ),
+                (
+                    o_stabilized,
+                    DominantPlane::O,
+                    early.o_activity,
+                    p_responding,
+                    DominantPlane::P,
+                ),
             ];
 
             for &(cause_stable, cause_plane, cause_activity, effect_resp, effect_plane) in &pairs {
@@ -738,8 +775,7 @@ pub fn detect_halo_transitions(
                     entry_index: entry_idx,
                     from: from_type,
                     to: curr_type,
-                    level_delta: curr_type.lattice_level() as i8
-                        - from_type.lattice_level() as i8,
+                    level_delta: curr_type.lattice_level() as i8 - from_type.lattice_level() as i8,
                 });
             }
         }
@@ -1256,8 +1292,12 @@ impl StripeHistogram {
     /// Total population across all stripes.
     #[inline]
     pub fn total(&self) -> u32 {
-        self.below_1s + self.s1_to_s15 + self.s15_to_s2
-            + self.s2_to_s25 + self.s25_to_s3 + self.above_3s
+        self.below_1s
+            + self.s1_to_s15
+            + self.s15_to_s2
+            + self.s2_to_s25
+            + self.s25_to_s3
+            + self.above_3s
     }
 
     /// Classify a σ-value into the appropriate stripe and increment.
@@ -1281,8 +1321,12 @@ impl StripeHistogram {
     /// Convert to array of 6 bin counts [below_1s, ..., above_3s].
     pub fn as_array(&self) -> [u32; 6] {
         [
-            self.below_1s, self.s1_to_s15, self.s15_to_s2,
-            self.s2_to_s25, self.s25_to_s3, self.above_3s,
+            self.below_1s,
+            self.s1_to_s15,
+            self.s15_to_s2,
+            self.s2_to_s25,
+            self.s25_to_s3,
+            self.above_3s,
         ]
     }
 
@@ -1446,12 +1490,13 @@ impl ShiftDetector {
     /// - Bimodal → HOLD (world is splitting, need more evidence)
     /// - Stable → no bias (use existing gate logic)
     pub fn gate_bias(&self) -> Option<CollapseGate> {
-        self.detect_shift().and_then(|signal| match signal.direction {
-            ShiftDirection::TowardNoise => Some(CollapseGate::Hold),
-            ShiftDirection::TowardFoveal => Some(CollapseGate::Flow),
-            ShiftDirection::Bimodal => Some(CollapseGate::Hold),
-            ShiftDirection::Stable => None,
-        })
+        self.detect_shift()
+            .and_then(|signal| match signal.direction {
+                ShiftDirection::TowardNoise => Some(CollapseGate::Hold),
+                ShiftDirection::TowardFoveal => Some(CollapseGate::Flow),
+                ShiftDirection::Bimodal => Some(CollapseGate::Hold),
+                ShiftDirection::Stable => None,
+            })
     }
 }
 
@@ -1482,12 +1527,8 @@ mod tests {
         Fingerprint::from_words(words)
     }
 
-    fn make_snapshot(
-        rng: &mut SplitMix64,
-        iter: u16,
-        n_entries: usize,
-    ) -> ResonatorSnapshot {
-        let n_words = (n_entries + 63) / 64;
+    fn make_snapshot(rng: &mut SplitMix64, iter: u16, n_entries: usize) -> ResonatorSnapshot {
+        let n_words = n_entries.div_ceil(64);
         ResonatorSnapshot {
             iter,
             s_est: random_fp(rng),
@@ -1545,7 +1586,10 @@ mod tests {
         let mut rng = make_rng();
         let snap = make_snapshot(&mut rng, 0, 100);
         let diff = RifDiff::compute(&snap, &snap);
-        assert_eq!(diff.s_activity, 0, "Identical snapshots should have 0 S activity");
+        assert_eq!(
+            diff.s_activity, 0,
+            "Identical snapshots should have 0 S activity"
+        );
         assert_eq!(diff.total_activity(), 0, "Total activity should be 0");
     }
 
@@ -1555,7 +1599,10 @@ mod tests {
         let snap1 = make_snapshot(&mut rng, 0, 100);
         let snap2 = make_snapshot(&mut rng, 2, 100);
         let diff = RifDiff::compute(&snap1, &snap2);
-        assert!(diff.total_activity() > 0, "Different snapshots should have activity");
+        assert!(
+            diff.total_activity() > 0,
+            "Different snapshots should have activity"
+        );
     }
 
     // --- EWM Correction tests ---
@@ -1576,7 +1623,10 @@ mod tests {
         let snap1 = make_snapshot(&mut rng, 0, 100);
         let snap2 = make_snapshot(&mut rng, 1, 100);
         let corr = EwmCorrection::compute(&snap1, &snap2);
-        assert!(corr.s_total() > 0, "Different snapshots should have nonzero correction");
+        assert!(
+            corr.s_total() > 0,
+            "Different snapshots should have nonzero correction"
+        );
     }
 
     // --- Causal Arrow tests ---
@@ -1799,8 +1849,14 @@ mod tests {
         snap.delta_s = 5;
         snap.delta_p = 3;
         snap.delta_o = 7;
-        assert!(snap.converged(10), "Should be converged when all deltas < threshold");
-        assert!(!snap.converged(5), "Should not converge when delta_o >= threshold");
+        assert!(
+            snap.converged(10),
+            "Should be converged when all deltas < threshold"
+        );
+        assert!(
+            !snap.converged(5),
+            "Should not converge when delta_o >= threshold"
+        );
     }
 
     #[test]
@@ -1841,7 +1897,10 @@ mod tests {
 
     #[test]
     fn test_ewm_tier_from_significance_discovery() {
-        assert_eq!(EwmTier::from(SignificanceLevel::Discovery), EwmTier::Crystallized);
+        assert_eq!(
+            EwmTier::from(SignificanceLevel::Discovery),
+            EwmTier::Crystallized
+        );
     }
 
     #[test]
@@ -1851,12 +1910,18 @@ mod tests {
 
     #[test]
     fn test_ewm_tier_from_significance_evidence() {
-        assert_eq!(EwmTier::from(SignificanceLevel::Evidence), EwmTier::Transitional);
+        assert_eq!(
+            EwmTier::from(SignificanceLevel::Evidence),
+            EwmTier::Transitional
+        );
     }
 
     #[test]
     fn test_ewm_tier_from_significance_hint() {
-        assert_eq!(EwmTier::from(SignificanceLevel::Hint), EwmTier::Transitional);
+        assert_eq!(
+            EwmTier::from(SignificanceLevel::Hint),
+            EwmTier::Transitional
+        );
     }
 
     #[test]
@@ -1869,12 +1934,12 @@ mod tests {
     #[test]
     fn test_stripe_histogram_record() {
         let mut hist = StripeHistogram::default();
-        hist.record(0.5);   // below_1s
-        hist.record(1.2);   // s1_to_s15
-        hist.record(1.7);   // s15_to_s2
-        hist.record(2.3);   // s2_to_s25
-        hist.record(2.7);   // s25_to_s3
-        hist.record(3.5);   // above_3s
+        hist.record(0.5); // below_1s
+        hist.record(1.2); // s1_to_s15
+        hist.record(1.7); // s15_to_s2
+        hist.record(2.3); // s2_to_s25
+        hist.record(2.7); // s25_to_s3
+        hist.record(3.5); // above_3s
 
         assert_eq!(hist.below_1s, 1);
         assert_eq!(hist.s1_to_s15, 1);
@@ -1887,14 +1952,17 @@ mod tests {
 
     #[test]
     fn test_stripe_histogram_center_of_mass() {
-        let mut hist = StripeHistogram::default();
-        // All in foveal
-        hist.above_3s = 100;
+        let hist = StripeHistogram {
+            above_3s: 100,
+            ..Default::default()
+        };
         assert!((hist.center_of_mass() - 3.25).abs() < 0.01);
 
         // All in noise
-        let mut hist2 = StripeHistogram::default();
-        hist2.below_1s = 100;
+        let hist2 = StripeHistogram {
+            below_1s: 100,
+            ..Default::default()
+        };
         assert!((hist2.center_of_mass() - 0.5).abs() < 0.01);
     }
 

@@ -667,7 +667,14 @@ mod tests {
         // Compare compressive search distances to exact distances
         for i in 0..count {
             let exact = crate::tree::hamming_inline(query, &data[i * vec_len..(i + 1) * vec_len]);
-            let comp = compressed.hamming_to_compressed(query, i, &data, vec_len, &mut cache, crate::tree::hamming_inline);
+            let comp = compressed.hamming_to_compressed(
+                query,
+                i,
+                &data,
+                vec_len,
+                &mut cache,
+                crate::tree::hamming_inline,
+            );
             assert_eq!(
                 comp, exact,
                 "Compressive Hamming for point {} should match exact ({} vs {})",

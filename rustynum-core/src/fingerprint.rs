@@ -86,38 +86,17 @@ impl<const N: usize> Fingerprint<N> {
 
     /// Hamming distance (number of differing bits).
     /// Delegates to SIMD arsenal (AVX-512 → AVX2 → scalar) via byte slices.
+    /// simd::hamming_distance handles runtime dispatch internally.
     #[inline]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
-        #[cfg(any(feature = "avx512", feature = "avx2"))]
-        {
-            crate::simd::hamming_distance(self.as_bytes(), other.as_bytes()) as u32
-        }
-        #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-        {
-            let mut dist = 0u32;
-            for i in 0..N {
-                dist += (self.words[i] ^ other.words[i]).count_ones();
-            }
-            dist
-        }
+        crate::simd::hamming_distance(self.as_bytes(), other.as_bytes()) as u32
     }
 
     /// Hamming weight (number of set bits).
-    /// Delegates to SIMD arsenal when available.
+    /// Delegates to SIMD arsenal. Runtime dispatch in simd.rs.
     #[inline]
     pub fn popcount(&self) -> u32 {
-        #[cfg(any(feature = "avx512", feature = "avx2"))]
-        {
-            crate::simd::popcount(self.as_bytes()) as u32
-        }
-        #[cfg(not(any(feature = "avx512", feature = "avx2")))]
-        {
-            let mut count = 0u32;
-            for i in 0..N {
-                count += self.words[i].count_ones();
-            }
-            count
-        }
+        crate::simd::popcount(self.as_bytes()) as u32
     }
 
     /// Returns true if all bits are zero (identity element).
@@ -126,9 +105,20 @@ impl<const N: usize> Fingerprint<N> {
         self.words.iter().all(|&w| w == 0)
     }
 
-    /// Hamming similarity in [0.0, 1.0] = 1 - hamming_distance / total_bits.
+    /// Hamming similarity in [0.0, 1.0]. Returns None on zero-width fingerprint.
+    /// Never NaN.
     #[inline]
-    pub fn similarity(&self, other: &Self) -> f64 {
+    pub fn similarity(&self, other: &Self) -> Option<f32> {
+        if Self::BITS == 0 {
+            return None;
+        }
+        Some(1.0 - self.hamming_distance(other) as f32 / Self::BITS as f32)
+    }
+
+    /// Backward-compatible f64 similarity. Matches old return type.
+    /// Use `similarity()` for new code.
+    #[inline]
+    pub fn similarity_f64(&self, other: &Self) -> f64 {
         1.0 - self.hamming_distance(other) as f64 / Self::BITS as f64
     }
 
@@ -371,10 +361,10 @@ mod tests {
     fn test_similarity() {
         let a = Fingerprint::<2>::zero();
         let b = Fingerprint::<2>::zero();
-        assert!((a.similarity(&b) - 1.0).abs() < f64::EPSILON);
+        assert!((a.similarity(&b).unwrap() - 1.0).abs() < f32::EPSILON);
 
         let c = Fingerprint::<2>::ones();
-        assert!((a.similarity(&c) - 0.0).abs() < f64::EPSILON);
+        assert!((a.similarity(&c).unwrap() - 0.0).abs() < f32::EPSILON);
     }
 
     #[test]

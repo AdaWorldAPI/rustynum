@@ -47,13 +47,12 @@ pub use qualia_cam::{
 };
 pub use search::{KnnResult, RhoNnResult, SearchConfig};
 pub use semantic_protocol::{
-    parse_command, command_to_query, AnalysisResult, AnalysisType, AncestryResult, ArrivalResult,
-    ClusterProfile, CommandResult, CounterfactualResult, DataFusionQuery, EtResult,
-    ExplicitResult, GetResult, HaloType, ResolvedResult, ScanResult, SemanticCommand,
-    SemanticEngine, ShiftDirection,
+    command_to_query, parse_command, AnalysisResult, AnalysisType, AncestryResult, ArrivalResult,
+    ClusterProfile, CommandResult, CounterfactualResult, DataFusionQuery, EtResult, ExplicitResult,
+    GetResult, HaloType, ResolvedResult, ScanResult, SemanticCommand, SemanticEngine,
+    ShiftDirection,
 };
 pub use tree::{hamming_batch_simd, hamming_top_k_simd};
 pub use tree::{
-    ClamTree, Cluster, ClusterDistribution, Distance, DistanceFn, HammingDistance, HammingSIMD,
-    Lfd,
+    ClamTree, Cluster, ClusterDistribution, Distance, DistanceFn, HammingDistance, HammingSIMD, Lfd,
 };

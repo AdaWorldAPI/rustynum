@@ -68,7 +68,10 @@ where
     /// println!("Mean array: {:?}", mean_array.get_data());
     /// ```
     /// Fallible mean along the specified axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_mean_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_mean_axis(
+        &self,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         match axis {
             Some(axes) => {
                 validate_axes(axes, self.shape.len())?;
@@ -172,7 +175,10 @@ where
     /// println!("Median array: {:?}", median_array.get_data());
     /// ```
     /// Fallible median along the specified axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_median_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_median_axis(
+        &self,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         if let Some(axes) = axis {
             validate_axes(axes, self.shape.len())?;
         }
@@ -289,7 +295,10 @@ where
     /// let var = array.var_axis(Some(&[1]));
     /// ```
     /// Fallible variance along the specified axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_var_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_var_axis(
+        &self,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         if let Some(axes) = axis {
             validate_axes(axes, self.shape.len())?;
         }
@@ -444,7 +453,11 @@ where
     /// let p50 = array.percentile_axis(50.0, Some(&[1]));
     /// ```
     /// Fallible percentile along axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_percentile_axis(&self, p: T, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_percentile_axis(
+        &self,
+        p: T,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         if let Some(axes) = axis {
             validate_axes(axes, self.shape.len())?;
         }

@@ -30,7 +30,11 @@ pub const SOAKING_DIM: usize = 10_000;
 /// well within i64 range.
 #[inline]
 pub fn dot_i8_scalar(a: &[i8], b: &[i8]) -> i64 {
-    assert_eq!(a.len(), b.len(), "dot product requires equal-length vectors");
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "dot product requires equal-length vectors"
+    );
     let mut acc: i64 = 0;
     for i in 0..a.len() {
         acc += a[i] as i64 * b[i] as i64;
@@ -198,7 +202,11 @@ impl AttentionMask {
     /// `concept` is the int8 vector of the concept (from soaking or expanded binary).
     /// `weight` scales the contribution (typically NARS confidence × recency).
     pub fn add_concept(&mut self, concept: &[i8], weight: f32) {
-        assert_eq!(concept.len(), self.mask.len(), "concept dim must match mask dim");
+        assert_eq!(
+            concept.len(),
+            self.mask.len(),
+            "concept dim must match mask dim"
+        );
         for (m, &c) in self.mask.iter_mut().zip(concept.iter()) {
             let contribution = (c as f32 * weight).round() as i16;
             let new_val = (*m as i16 + contribution).clamp(-128, 127);
@@ -215,7 +223,11 @@ impl AttentionMask {
     /// - Near zero → novel (orthogonal to known)
     /// - Negative → conflict (contradicts known)
     pub fn project(&self, concept: &[i8]) -> f32 {
-        assert_eq!(concept.len(), self.mask.len(), "concept dim must match mask dim");
+        assert_eq!(
+            concept.len(),
+            self.mask.len(),
+            "concept dim must match mask dim"
+        );
         dot_i8_normalized(concept, &self.mask)
     }
 
@@ -281,7 +293,7 @@ mod tests {
         // bit 0 = 0, bit 1 = 0, ..., bit 7 = 0
         // bit 8 = 1, bit 9 = 1, ..., bit 15 = 1
         assert_eq!(int8_vec[0], -1); // bit 0 = 0 → -1
-        assert_eq!(int8_vec[8], 1);  // bit 8 = 1 → +1
+        assert_eq!(int8_vec[8], 1); // bit 8 = 1 → +1
 
         // Crystallize back
         let fp2: Fingerprint<2> = int8_to_binary(&int8_vec);
@@ -309,16 +321,16 @@ mod tests {
         let int8_vec = binary_to_int8_dim(&fp, 100);
         assert_eq!(int8_vec.len(), 100);
         // First 8 bits are 1 → +1
-        for i in 0..8 {
-            assert_eq!(int8_vec[i], 1, "bit {i} should be +1");
+        for (i, &v) in int8_vec[..8].iter().enumerate() {
+            assert_eq!(v, 1, "bit {i} should be +1");
         }
         // Bits 8-63 are 0 → -1
-        for i in 8..64 {
-            assert_eq!(int8_vec[i], -1, "bit {i} should be -1");
+        for (i, &v) in int8_vec[8..64].iter().enumerate() {
+            assert_eq!(v, -1, "bit {} should be -1", i + 8);
         }
         // Beyond 64: filled with 0 (unknown)
-        for i in 64..100 {
-            assert_eq!(int8_vec[i], 0, "beyond-range bit {i} should be 0");
+        for (i, &v) in int8_vec[64..100].iter().enumerate() {
+            assert_eq!(v, 0, "beyond-range bit {} should be 0", i + 64);
         }
     }
 
@@ -347,7 +359,10 @@ mod tests {
         // Project opposite concept → should be negative
         let opposite = vec![-1i8; 10];
         let proj_neg = mask.project(&opposite);
-        assert!(proj_neg < 0.0, "opposite concept should have negative projection");
+        assert!(
+            proj_neg < 0.0,
+            "opposite concept should have negative projection"
+        );
     }
 
     #[test]
@@ -361,7 +376,7 @@ mod tests {
     #[test]
     fn test_attention_mask_clear() {
         let mut mask = AttentionMask::new(10, 2);
-        mask.add_concept(&vec![1i8; 10], 1.0);
+        mask.add_concept(&[1i8; 10], 1.0);
         assert_eq!(mask.concept_count, 1);
         mask.clear();
         assert_eq!(mask.concept_count, 0);

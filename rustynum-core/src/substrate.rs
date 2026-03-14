@@ -129,7 +129,12 @@ impl SubstrateRoute {
 
     /// Create a dual-substrate route.
     #[inline]
-    pub fn dual(primary: Substrate, secondary: Substrate, primary_weight: f32, parallel: bool) -> Self {
+    pub fn dual(
+        primary: Substrate,
+        secondary: Substrate,
+        primary_weight: f32,
+        parallel: bool,
+    ) -> Self {
         Self {
             primary,
             secondary: Some(secondary),
@@ -452,7 +457,6 @@ pub struct SubstrateSnapshot {
     pub birth_coherence: Coherence,
 
     // === Per-substrate snapshots ===
-
     /// NARS truth at crystallization (if evidential substrate was involved).
     /// (frequency, confidence).
     pub nars_truth: Option<(f32, f32)>,
@@ -474,23 +478,20 @@ pub struct SubstrateSnapshot {
 
 impl SubstrateSnapshot {
     /// Create a snapshot from current state.
-    pub fn capture(
-        primary: Substrate,
-        route: &SubstrateRoute,
-        signals: &SubstrateSignals,
-    ) -> Self {
+    pub fn capture(primary: Substrate, route: &SubstrateRoute, signals: &SubstrateSignals) -> Self {
         let coh = coherence(signals);
 
         // Capture soaking state if soaking was active
-        let (theta, maturity, saturation) = if route.uses(Substrate::Soaking) && signals.has_soaking() {
-            (
-                Some(signals.theta_average),
-                Some(signals.maturity_average as u8),
-                Some(signals.soaking_saturation),
-            )
-        } else {
-            (None, None, None)
-        };
+        let (theta, maturity, saturation) =
+            if route.uses(Substrate::Soaking) && signals.has_soaking() {
+                (
+                    Some(signals.theta_average),
+                    Some(signals.maturity_average as u8),
+                    Some(signals.soaking_saturation),
+                )
+            } else {
+                (None, None, None)
+            };
 
         // Capture NARS state if evidential was active
         let nars = if route.uses(Substrate::Evidential) && signals.has_evidential() {
@@ -610,12 +611,7 @@ mod tests {
 
     #[test]
     fn test_substrate_route_dual() {
-        let route = SubstrateRoute::dual(
-            Substrate::Semantic,
-            Substrate::Soaking,
-            0.7,
-            true,
-        );
+        let route = SubstrateRoute::dual(Substrate::Semantic, Substrate::Soaking, 0.7, true);
         assert_eq!(route.depth(), 2);
         assert!(route.uses(Substrate::Semantic));
         assert!(route.uses(Substrate::Soaking));
@@ -877,10 +873,26 @@ mod tests {
     #[test]
     fn test_soaking_signals_from_register() {
         let register = vec![
-            SynapseState { efficacy: 120, theta: 80, maturity: 10 },
-            SynapseState { efficacy: -110, theta: 60, maturity: 8 },
-            SynapseState { efficacy: 5, theta: 20, maturity: 1 },
-            SynapseState { efficacy: 50, theta: 40, maturity: 5 },
+            SynapseState {
+                efficacy: 120,
+                theta: 80,
+                maturity: 10,
+            },
+            SynapseState {
+                efficacy: -110,
+                theta: 60,
+                maturity: 8,
+            },
+            SynapseState {
+                efficacy: 5,
+                theta: 20,
+                maturity: 1,
+            },
+            SynapseState {
+                efficacy: 50,
+                theta: 40,
+                maturity: 5,
+            },
         ];
         let (sat, theta_avg, mat_avg) = soaking_signals(&register);
         // 2 of 4 above threshold 100 → 0.5
@@ -894,8 +906,16 @@ mod tests {
     #[test]
     fn test_fill_soaking_signals() {
         let register = vec![
-            SynapseState { efficacy: 120, theta: 80, maturity: 10 },
-            SynapseState { efficacy: -110, theta: 60, maturity: 8 },
+            SynapseState {
+                efficacy: 120,
+                theta: 80,
+                maturity: 10,
+            },
+            SynapseState {
+                efficacy: -110,
+                theta: 60,
+                maturity: 8,
+            },
         ];
         let mut sig = SubstrateSignals::new();
         fill_soaking_signals(&mut sig, &register);

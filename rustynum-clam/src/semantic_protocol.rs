@@ -874,7 +874,9 @@ impl<'a> SemanticEngine<'a> {
         let parent_path = path.parent();
 
         // PHASE 2: MEET THE FAMILY
-        let (_real_depth, node_idx) = self.tree.deepest_real_cluster(parent_path.bits, parent_path.depth);
+        let (_real_depth, node_idx) = self
+            .tree
+            .deepest_real_cluster(parent_path.bits, parent_path.depth);
         let cluster = &self.tree.nodes[node_idx];
         let center_data = self.tree.center_data(cluster, self.data, self.vec_len);
         let siblings_count = cluster.cardinality;
@@ -964,7 +966,8 @@ impl<'a> SemanticEngine<'a> {
         // Find nearest sibling
         let nearest_sibling = if cluster.cardinality > 0 && new_data.len() == self.vec_len {
             let mut best: Option<(usize, u64)> = None;
-            for (orig_idx, point_data) in self.tree.cluster_points(cluster, self.data, self.vec_len) {
+            for (orig_idx, point_data) in self.tree.cluster_points(cluster, self.data, self.vec_len)
+            {
                 let d = self.tree.dist(new_data, point_data);
                 if best.is_none() || d < best.unwrap().1 {
                     best = Some((orig_idx, d));
@@ -1023,7 +1026,9 @@ impl<'a> SemanticEngine<'a> {
 
         for depth in 0..=path.depth {
             let truncated = path.truncate_to(depth);
-            let (real_depth, node_idx) = self.tree.deepest_real_cluster(truncated.bits, truncated.depth);
+            let (real_depth, node_idx) = self
+                .tree
+                .deepest_real_cluster(truncated.bits, truncated.depth);
 
             if real_depth == depth || depth == 0 {
                 let cluster = &self.tree.nodes[node_idx];
@@ -1040,8 +1045,7 @@ impl<'a> SemanticEngine<'a> {
                     dominant_halo: None,
                     nars: NarsTruthValue::new(
                         1.0,
-                        (cluster.cardinality as f32
-                            / self.tree.root().cardinality.max(1) as f32)
+                        (cluster.cardinality as f32 / self.tree.root().cardinality.max(1) as f32)
                             .min(1.0),
                     ),
                     family_name: None,
@@ -1205,9 +1209,7 @@ impl<'a> SemanticEngine<'a> {
                 CommandResult::Get(result)
             }
             SemanticCommand::Scan { prefix } => CommandResult::Scan(self.scan(prefix)),
-            SemanticCommand::Ancestors { path } => {
-                CommandResult::Ancestry(self.ancestors(path))
-            }
+            SemanticCommand::Ancestors { path } => CommandResult::Ancestry(self.ancestors(path)),
             SemanticCommand::Counterfactual { path } => {
                 CommandResult::Counterfactual(self.counterfactual(path))
             }
@@ -1227,9 +1229,7 @@ impl<'a> SemanticEngine<'a> {
                 CommandResult::Analysis(self.analyze(path, AnalysisType::Anomaly))
             }
             SemanticCommand::Mget { paths } => CommandResult::MultiGet(self.mget(paths)),
-            SemanticCommand::Mscan { prefixes } => {
-                CommandResult::MultiScan(self.mscan(prefixes))
-            }
+            SemanticCommand::Mscan { prefixes } => CommandResult::MultiScan(self.mscan(prefixes)),
             SemanticCommand::Unknown { raw } => CommandResult::Unknown(raw.clone()),
         }
     }
@@ -1272,10 +1272,7 @@ impl<'a> SemanticEngine<'a> {
             // At or beyond prefix depth — collect this cluster
             let distribution = self.tree.cluster_crp(cluster, self.data, self.vec_len);
             let profile = ClusterProfile {
-                path: ClamPath::new(
-                    prefix.bits,
-                    current_depth.max(prefix.depth),
-                ),
+                path: ClamPath::new(prefix.bits, current_depth.max(prefix.depth)),
                 node_idx,
                 population: cluster.cardinality,
                 radius: cluster.radius,
@@ -1590,7 +1587,7 @@ mod tests {
 
     #[test]
     fn test_command_to_query_explicit_get() {
-        let (data, tree) = make_test_tree(100, 64);
+        let (_data, tree) = make_test_tree(100, 64);
         let cmd = SemanticCommand::Get {
             path: ClamPath::new(0xABCD, 16),
         };
@@ -1605,13 +1602,13 @@ mod tests {
 
     #[test]
     fn test_command_to_query_implicit_get() {
-        let (data, tree) = make_test_tree(100, 64);
+        let (_data, tree) = make_test_tree(100, 64);
         let cmd = SemanticCommand::Get {
             path: ClamPath::new(0xAB00, 8),
         };
         let query = command_to_query(&cmd, &tree);
         match query {
-            DataFusionQuery::EtResolve { path, node_idx } => {
+            DataFusionQuery::EtResolve { path, node_idx: _ } => {
                 assert_eq!(path.depth, 8);
             }
             _ => panic!("Expected EtResolve query"),
@@ -1620,7 +1617,7 @@ mod tests {
 
     #[test]
     fn test_command_to_query_scan() {
-        let (data, tree) = make_test_tree(100, 64);
+        let (_data, tree) = make_test_tree(100, 64);
         let cmd = SemanticCommand::Scan {
             prefix: ClamPath::new(0xA000, 4),
         };
@@ -1636,7 +1633,7 @@ mod tests {
 
     #[test]
     fn test_command_to_query_ancestry() {
-        let (data, tree) = make_test_tree(100, 64);
+        let (_data, tree) = make_test_tree(100, 64);
         let cmd = SemanticCommand::Ancestors {
             path: ClamPath::new(0xABC0, 12),
         };
@@ -1694,7 +1691,7 @@ mod tests {
 
         // Should get a valid arrival result
         assert!(result.anomaly >= 0.0 && result.anomaly <= 1.0);
-        assert!(result.siblings > 0 || result.siblings == 0); // any count is valid
+        // any sibling count is valid (usize is always >= 0)
         assert!(!result.inference.is_empty());
     }
 
@@ -1737,9 +1734,8 @@ mod tests {
         let result = engine.counterfactual(&path);
 
         assert_eq!(result.mirrors.len(), 3);
-        for mirror in &result.mirrors {
-            assert!(mirror.population > 0 || mirror.population == 0);
-        }
+        // population is usize, any value is valid
+        let _ = &result.mirrors;
     }
 
     #[test]

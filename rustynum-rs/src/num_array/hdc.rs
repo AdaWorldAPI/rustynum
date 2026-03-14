@@ -135,7 +135,9 @@ impl NumArrayU8 {
             if v.data.len() != len {
                 return Err(crate::NumError::DimensionMismatch(format!(
                     "Vector {} has length {} but expected {}",
-                    i, v.data.len(), len
+                    i,
+                    v.data.len(),
+                    len
                 )));
             }
         }
@@ -245,7 +247,9 @@ impl NumArrayU8 {
             if s.len() != len {
                 return Err(crate::NumError::DimensionMismatch(format!(
                     "Slice {} has length {} but expected {}",
-                    i, s.len(), len
+                    i,
+                    s.len(),
+                    len
                 )));
             }
         }
@@ -261,7 +265,6 @@ impl NumArrayU8 {
     }
 
     fn bundle_byte_slices_unchecked(slices: &[&[u8]], len: usize) -> Vec<u8> {
-
         let n = slices.len();
         let threshold = n / 2;
         let mut out = vec![0u8; len];

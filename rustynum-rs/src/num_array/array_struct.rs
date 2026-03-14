@@ -471,11 +471,17 @@ where
     /// println!("Min array: {:?}", min_array.get_data());
     /// ```
     /// Fallible min along axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_min_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_min_axis(
+        &self,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         if let Some(axes) = axis {
             for &ax in axes {
                 if ax >= self.shape.len() {
-                    return Err(crate::NumError::AxisOutOfBounds { axis: ax, ndim: self.shape.len() });
+                    return Err(crate::NumError::AxisOutOfBounds {
+                        axis: ax,
+                        ndim: self.shape.len(),
+                    });
                 }
             }
         }
@@ -789,7 +795,9 @@ where
     pub fn try_top_k(&self, k: usize) -> Result<(Vec<usize>, Vec<T>), crate::NumError> {
         if k > self.data.len() {
             return Err(crate::NumError::InvalidParameter(format!(
-                "k ({}) must be <= array length ({})", k, self.data.len()
+                "k ({}) must be <= array length ({})",
+                k,
+                self.data.len()
             )));
         }
         Ok(self.top_k_unchecked(k))
@@ -1017,7 +1025,9 @@ where
             Self::try_new_with_shape(result, self.shape.clone())
         } else {
             let last_dim = *self.shape.last().ok_or_else(|| {
-                crate::NumError::InvalidParameter("log_softmax requires non-empty shape".to_string())
+                crate::NumError::InvalidParameter(
+                    "log_softmax requires non-empty shape".to_string(),
+                )
             })?;
             let num_rows = self.data.len() / last_dim;
             let mut result = vec![T::from_u32(0); self.data.len()];
@@ -1058,11 +1068,17 @@ where
     /// println!("Max array: {:?}", max_array.get_data());
     /// ```
     /// Fallible max along axis. Returns `Err` if any axis is out of bounds.
-    pub fn try_max_axis(&self, axis: Option<&[usize]>) -> Result<NumArray<T, Ops>, crate::NumError> {
+    pub fn try_max_axis(
+        &self,
+        axis: Option<&[usize]>,
+    ) -> Result<NumArray<T, Ops>, crate::NumError> {
         if let Some(axes) = axis {
             for &ax in axes {
                 if ax >= self.shape.len() {
-                    return Err(crate::NumError::AxisOutOfBounds { axis: ax, ndim: self.shape.len() });
+                    return Err(crate::NumError::AxisOutOfBounds {
+                        axis: ax,
+                        ndim: self.shape.len(),
+                    });
                 }
             }
         }

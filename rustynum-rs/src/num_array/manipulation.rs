@@ -132,7 +132,10 @@ where
         match self.try_flip_axis(axis) {
             Ok(result) => result,
             Err(crate::NumError::AxisOutOfBounds { axis, ndim }) => {
-                panic!("Axis {} is out of bounds for an array with {} dimensions.", axis, ndim)
+                panic!(
+                    "Axis {} is out of bounds for an array with {} dimensions.",
+                    axis, ndim
+                )
             }
             Err(e) => panic!("{}", e),
         }
@@ -385,7 +388,9 @@ where
                 if end > array.data.len() {
                     return Err(crate::NumError::InvalidParameter(format!(
                         "Slice indices {}..{} out of bounds for array with length {}",
-                        start, end, array.data.len()
+                        start,
+                        end,
+                        array.data.len()
                     )));
                 }
 

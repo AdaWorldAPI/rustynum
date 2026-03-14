@@ -335,11 +335,8 @@ impl RifCaBlock {
         let winner_act = self.layer.neurons[best_idx].activation().clone();
 
         // 5. Pre-EWM signal quality
-        let pre_hv = GraphHV::from_channels(
-            winner_act.clone(),
-            Fingerprint::zero(),
-            Fingerprint::zero(),
-        );
+        let pre_hv =
+            GraphHV::from_channels(winner_act.clone(), Fingerprint::zero(), Fingerprint::zero());
         let pre_sq = signal_quality(&pre_hv);
 
         // 6. Awareness decomposition: compare input vs WEIGHT pattern
@@ -348,8 +345,7 @@ impl RifCaBlock {
         //    2048 bytes = 1024 BF16 dims = 4 dims per u64 word
         let thresholds = AwarenessThresholds::default();
         let weight_bytes = self.layer.neurons[best_idx].weights().as_bytes();
-        let awareness =
-            superposition_decompose(&[input.as_bytes(), weight_bytes], &thresholds);
+        let awareness = superposition_decompose(&[input.as_bytes(), weight_bytes], &thresholds);
 
         if learn {
             self.ewm[best_idx].update_from_awareness(&awareness, lr);
@@ -370,11 +366,8 @@ impl RifCaBlock {
         };
 
         // 9. Post-EWM signal quality + metrics
-        let post_hv = GraphHV::from_channels(
-            output.clone(),
-            Fingerprint::zero(),
-            Fingerprint::zero(),
-        );
+        let post_hv =
+            GraphHV::from_channels(output.clone(), Fingerprint::zero(), Fingerprint::zero());
         let post_sq = signal_quality(&post_hv);
         let ewm_str = self.ewm[best_idx].correction_strength();
 
@@ -466,8 +459,7 @@ impl RifNet {
                 current.clone()
             };
 
-            let (winner, output, metrics) =
-                block.forward(&block_input, learn, learning_rate, rng);
+            let (winner, output, metrics) = block.forward(&block_input, learn, learning_rate, rng);
             prev_outputs.push(output.clone());
             all_metrics.push(metrics);
             current = output;

@@ -11,6 +11,7 @@
 
 use crate::fingerprint::Fingerprint;
 use crate::simd;
+use std::cell::RefCell;
 
 // ============================================================================
 // Accumulator — 64-byte aligned for AVX-512
@@ -24,7 +25,9 @@ pub struct Acc16K {
 
 impl Default for Acc16K {
     fn default() -> Self {
-        Self { values: [0i8; 16384] }
+        Self {
+            values: [0i8; 16384],
+        }
     }
 }
 
@@ -133,6 +136,7 @@ impl Plane {
 
     /// Feed raw bit evidence into the accumulator.
     /// Each bit position: acc\[k\] += if bit_k set { +1 } else { -1 }, saturating.
+    #[allow(clippy::needless_range_loop)] // k indexes both acc[] and bit_bytes[k/8]
     pub fn encounter_bits(&mut self, evidence: &Fingerprint<256>) {
         let bit_bytes = evidence.as_bytes();
         let acc = &mut self.acc.values;
@@ -181,6 +185,7 @@ impl Plane {
     // ========================================================================
 
     /// Recompute bits and alpha from the accumulator.
+    #[allow(clippy::needless_range_loop)] // k indexes acc[], bits.words[k/64], alpha.words[k/64]
     pub(crate) fn ensure_cache(&mut self) {
         if !self.dirty {
             return;
@@ -429,14 +434,36 @@ impl Truth {
 // Free functions
 // ============================================================================
 
+/// Pre-allocated scratch buffers for distance computation. 64-byte aligned for AVX-512.
+/// One per thread. Allocated once, reused every distance call. No zeroing needed
+/// because every byte is overwritten before popcount.
+#[repr(C, align(64))]
+pub struct DistanceScratch {
+    masked_xor: [u8; PLANE_BYTES],
+    shared_alpha: [u8; PLANE_BYTES],
+    not_alpha: [u8; PLANE_BYTES],
+}
+
+impl DistanceScratch {
+    fn new() -> Self {
+        Self {
+            masked_xor: [0u8; PLANE_BYTES],
+            shared_alpha: [0u8; PLANE_BYTES],
+            not_alpha: [0u8; PLANE_BYTES],
+        }
+    }
+}
+
+thread_local! {
+    static SCRATCH: RefCell<DistanceScratch> = RefCell::new(DistanceScratch::new());
+}
+
 /// Core distance computation on raw byte slices. Handles any width.
 /// Used by Plane::distance and Node::distance.
-pub fn distance_slices(
-    a_bits: &[u8],
-    a_alpha: &[u8],
-    b_bits: &[u8],
-    b_alpha: &[u8],
-) -> Distance {
+///
+/// Zero-allocation: uses thread-local 64-byte-aligned scratch buffers.
+/// XOR+AND+NOT into pre-warmed cache lines, then SIMD popcount via VPOPCNTDQ.
+pub fn distance_slices(a_bits: &[u8], a_alpha: &[u8], b_bits: &[u8], b_alpha: &[u8]) -> Distance {
     let shared_len = a_bits
         .len()
         .min(b_bits.len())
@@ -452,23 +479,45 @@ pub fn distance_slices(
     let aa = &a_alpha[..shared_len];
     let ba = &b_alpha[..shared_len];
 
-    // Bulk SIMD-friendly operations: AND, XOR, mask, NOT.
-    // LLVM auto-vectorizes these tight loops at -O2.
-    let mut shared_alpha_buf = vec![0u8; shared_len];
-    let mut masked_xor_buf = vec![0u8; shared_len];
-    let mut not_alpha_buf = vec![0u8; shared_len];
+    let (disagreement, overlap, penalty) = if shared_len <= PLANE_BYTES {
+        // Fast path: thread-local scratch. No allocation. No zeroing.
+        // Buffers are 64-byte aligned and cache-hot from the last call.
+        SCRATCH.with(|cell| {
+            let scratch = &mut *cell.borrow_mut();
 
-    for i in 0..shared_len {
-        let xor = a[i] ^ b[i];
-        shared_alpha_buf[i] = aa[i] & ba[i];
-        masked_xor_buf[i] = xor & shared_alpha_buf[i];
-        not_alpha_buf[i] = !aa[i];
-    }
+            for i in 0..shared_len {
+                let xor = a[i] ^ b[i];
+                scratch.shared_alpha[i] = aa[i] & ba[i];
+                scratch.masked_xor[i] = xor & scratch.shared_alpha[i];
+                scratch.not_alpha[i] = !aa[i];
+            }
 
-    // SIMD popcount from simd.rs — AVX-512 → AVX2 → scalar.
-    let disagreement = simd::popcount(&masked_xor_buf) as u32;
-    let overlap = simd::popcount(&shared_alpha_buf) as u32;
-    let penalty = simd::popcount(&not_alpha_buf) as u32;
+            // SIMD popcount via simd.rs — AVX-512 VPOPCNTDQ → AVX2 → scalar.
+            (
+                simd::popcount(&scratch.masked_xor[..shared_len]) as u32,
+                simd::popcount(&scratch.shared_alpha[..shared_len]) as u32,
+                simd::popcount(&scratch.not_alpha[..shared_len]) as u32,
+            )
+        })
+    } else {
+        // Fallback for oversized slices: heap allocation.
+        let mut shared_alpha_buf = vec![0u8; shared_len];
+        let mut masked_xor_buf = vec![0u8; shared_len];
+        let mut not_alpha_buf = vec![0u8; shared_len];
+
+        for i in 0..shared_len {
+            let xor = a[i] ^ b[i];
+            shared_alpha_buf[i] = aa[i] & ba[i];
+            masked_xor_buf[i] = xor & shared_alpha_buf[i];
+            not_alpha_buf[i] = !aa[i];
+        }
+
+        (
+            simd::popcount(&masked_xor_buf) as u32,
+            simd::popcount(&shared_alpha_buf) as u32,
+            simd::popcount(&not_alpha_buf) as u32,
+        )
+    };
 
     // Penalty for width mismatch region (wider plane's extra bits).
     let extra_bits = (a_bits.len().max(b_bits.len()) - shared_len) * 8;
@@ -492,7 +541,7 @@ fn integer_sqrt(n: u32) -> u32 {
         return 0;
     }
     let mut x = n;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
     while y < x {
         x = y;
         y = (x + n / x) / 2;
@@ -565,7 +614,11 @@ mod tests {
 
         let d = a.distance(&mut b);
         match d {
-            Distance::Measured { disagreement, overlap, .. } => {
+            Distance::Measured {
+                disagreement,
+                overlap,
+                ..
+            } => {
                 assert!(overlap > 0);
                 assert_eq!(disagreement, 0); // same input → identical
             }

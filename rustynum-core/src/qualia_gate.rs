@@ -194,7 +194,10 @@ impl ResonanzZirkel {
 
     /// Get all coordinates in the dark arc (Hold or Block).
     pub fn dark_arc(&self) -> Vec<&GatedQualia> {
-        self.coordinates.iter().filter(|c| c.gate.is_gated()).collect()
+        self.coordinates
+            .iter()
+            .filter(|c| c.gate.is_gated())
+            .collect()
     }
 
     /// Get all coordinates in the prosocial arc (Flow only).
@@ -228,7 +231,10 @@ mod tests {
     fn test_gate_level_from_str() {
         assert_eq!(QualiaGateLevel::parse("flow"), Some(QualiaGateLevel::Flow));
         assert_eq!(QualiaGateLevel::parse("hold"), Some(QualiaGateLevel::Hold));
-        assert_eq!(QualiaGateLevel::parse("block"), Some(QualiaGateLevel::Block));
+        assert_eq!(
+            QualiaGateLevel::parse("block"),
+            Some(QualiaGateLevel::Block)
+        );
         assert_eq!(QualiaGateLevel::parse("invalid"), None);
     }
 

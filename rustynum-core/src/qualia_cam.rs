@@ -296,9 +296,9 @@ mod tests {
         GatedQualia {
             qualia: PackedQualia::new(
                 [
-                    brightness, valence, 40, 30,
-                    70, 80, 60, 20,      // warmth=70(+), social=60(+), sacredness below
-                    50, 30, 20, 40,      // sacredness=50(+)
+                    brightness, valence, 40, 30, 70, 80, 60,
+                    20, // warmth=70(+), social=60(+), sacredness below
+                    50, 30, 20, 40, // sacredness=50(+)
                     10, 60, 15, 40,
                 ],
                 1.0,
@@ -312,9 +312,8 @@ mod tests {
         GatedQualia {
             qualia: PackedQualia::new(
                 [
-                    10, 30, 90, 50,
-                    -80, 40, -60, 0,     // warmth=-80, social=-60
-                    -70, 60, 20, 0,      // sacredness=-70
+                    10, 30, 90, 50, -80, 40, -60, 0, // warmth=-80, social=-60
+                    -70, 60, 20, 0, // sacredness=-70
                     0, 0, 85, 50,
                 ],
                 1.0,
@@ -326,11 +325,11 @@ mod tests {
 
     fn build_test_cam() -> QualiaCAM {
         let coords = vec![
-            make_prosocial_coord(0, 50, 60),  // devotion
-            make_prosocial_coord(0, 55, 65),  // devotion variant
-            make_prosocial_coord(1, 70, 40),  // communion
-            make_prosocial_coord(2, 30, 20),  // grief
-            make_dark_coord(3),               // cruelty
+            make_prosocial_coord(0, 50, 60), // devotion
+            make_prosocial_coord(0, 55, 65), // devotion variant
+            make_prosocial_coord(1, 70, 40), // communion
+            make_prosocial_coord(2, 30, 20), // grief
+            make_dark_coord(3),              // cruelty
         ];
         QualiaCAM::from_coordinates(coords)
     }
@@ -362,7 +361,9 @@ mod tests {
 
         // Query close to first devotion but not exact
         let query = PackedQualia::new(
-            [52, 62, 40, 30, 70, 80, 60, 20, 50, 30, 20, 40, 10, 60, 15, 40],
+            [
+                52, 62, 40, 30, 70, 80, 60, 20, 50, 30, 20, 40, 10, 60, 15, 40,
+            ],
             1.0,
         );
         let hits = cam.locate(&query, 2);
@@ -383,7 +384,7 @@ mod tests {
 
         assert_eq!(hits[0].index, 4);
         assert_eq!(hits[0].gate, QualiaGateLevel::Block);
-        assert!(hits[0].causality.reversed || !hits[0].causality.reversed);
+        let _ = hits[0].causality.reversed; // validate field is accessible
     }
 
     #[test]
@@ -392,7 +393,7 @@ mod tests {
 
         // Query far from dark coordinate — should not trigger
         let prosocial_query = cam.get(0).unwrap().qualia;
-        let gated = cam.nearest_gated(&prosocial_query, 100);
+        let _gated = cam.nearest_gated(&prosocial_query, 100);
         // Distance from prosocial to dark is large, might or might not be within 100
         // depending on exact vectors
 
@@ -474,8 +475,12 @@ mod tests {
 
     #[test]
     fn test_l1_distance_symmetry() {
-        let a: [i8; 16] = [1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12, 13, -14, 15, -16];
-        let b: [i8; 16] = [-1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11, 12, -13, 14, -15, 16];
+        let a: [i8; 16] = [
+            1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12, 13, -14, 15, -16,
+        ];
+        let b: [i8; 16] = [
+            -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11, 12, -13, 14, -15, 16,
+        ];
 
         assert_eq!(l1_i8(&a, &b), l1_i8(&b, &a));
     }

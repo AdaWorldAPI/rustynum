@@ -219,12 +219,7 @@ impl ClamQualiaCAM {
             ClamTree::build_with_fn(&[], 16, 0, &BuildConfig::default(), l1_i8_distance)
         };
 
-        let max_depth = clam_tree
-            .nodes
-            .iter()
-            .map(|c| c.depth)
-            .max()
-            .unwrap_or(0);
+        let max_depth = clam_tree.nodes.iter().map(|c| c.depth).max().unwrap_or(0);
 
         Self {
             coordinates,
@@ -311,11 +306,7 @@ impl ClamQualiaCAM {
     ///
     /// Uses CAKES ρ-NN (Algorithms 2+3): tree traversal with triangle
     /// inequality pruning, then leaf scan. Exact for metric distances.
-    pub fn locate_within(
-        &self,
-        query: &PackedQualia,
-        threshold: u64,
-    ) -> Vec<ClamQualiaHit> {
+    pub fn locate_within(&self, query: &PackedQualia, threshold: u64) -> Vec<ClamQualiaHit> {
         if self.is_empty() {
             return Vec::new();
         }
@@ -431,18 +422,16 @@ impl ClamQualiaCAM {
     ///
     /// Combines the triangle inequality (d_min, d_max) with sigma
     /// significance scoring. Returns whether to prune, scan, or accept.
-    pub fn cluster_significance(
-        &self,
-        query: &PackedQualia,
-        cluster_idx: usize,
-    ) -> ClusterVerdict {
+    pub fn cluster_significance(&self, query: &PackedQualia, cluster_idx: usize) -> ClusterVerdict {
         if cluster_idx >= self.clam_tree.nodes.len() {
             return ClusterVerdict::Prune;
         }
 
         let query_bytes = resonance_to_bytes(query);
         let cluster = &self.clam_tree.nodes[cluster_idx];
-        let center = self.clam_tree.center_data(cluster, &self.resonance_bytes, 16);
+        let center = self
+            .clam_tree
+            .center_data(cluster, &self.resonance_bytes, 16);
         let d_to_center = self.clam_tree.dist(&query_bytes, center);
 
         let d_min = cluster.delta_minus(d_to_center);
@@ -482,10 +471,7 @@ impl ClamQualiaCAM {
             lfds.iter().sum::<f64>() / lfds.len() as f64
         };
 
-        let max_lfd = lfds
-            .iter()
-            .cloned()
-            .fold(0.0f64, f64::max);
+        let max_lfd = lfds.iter().cloned().fold(0.0f64, f64::max);
 
         let n = self.coordinates.len() as f64;
         let theoretical_speedup = if mean_lfd > 0.0 && n > 1.0 {
@@ -532,7 +518,9 @@ impl ClamQualiaCAM {
 
         loop {
             let cluster = &self.clam_tree.nodes[node_idx];
-            let center = self.clam_tree.center_data(cluster, &self.resonance_bytes, 16);
+            let center = self
+                .clam_tree
+                .center_data(cluster, &self.resonance_bytes, 16);
             dist_to_center = self.clam_tree.dist(query_bytes, center);
 
             if cluster.is_leaf() {
@@ -542,12 +530,16 @@ impl ClamQualiaCAM {
             // Descend to the child whose center is closer
             match (cluster.left, cluster.right) {
                 (Some(left), Some(right)) => {
-                    let left_center =
-                        self.clam_tree
-                            .center_data(&self.clam_tree.nodes[left], &self.resonance_bytes, 16);
-                    let right_center =
-                        self.clam_tree
-                            .center_data(&self.clam_tree.nodes[right], &self.resonance_bytes, 16);
+                    let left_center = self.clam_tree.center_data(
+                        &self.clam_tree.nodes[left],
+                        &self.resonance_bytes,
+                        16,
+                    );
+                    let right_center = self.clam_tree.center_data(
+                        &self.clam_tree.nodes[right],
+                        &self.resonance_bytes,
+                        16,
+                    );
                     let dl = self.clam_tree.dist(query_bytes, left_center);
                     let dr = self.clam_tree.dist(query_bytes, right_center);
                     node_idx = if dl <= dr { left } else { right };
@@ -928,12 +920,16 @@ impl ClamQualiaCAM {
 
             match (cluster.left, cluster.right) {
                 (Some(left), Some(right)) => {
-                    let left_center = self
-                        .clam_tree
-                        .center_data(&self.clam_tree.nodes[left], &self.resonance_bytes, 16);
-                    let right_center = self
-                        .clam_tree
-                        .center_data(&self.clam_tree.nodes[right], &self.resonance_bytes, 16);
+                    let left_center = self.clam_tree.center_data(
+                        &self.clam_tree.nodes[left],
+                        &self.resonance_bytes,
+                        16,
+                    );
+                    let right_center = self.clam_tree.center_data(
+                        &self.clam_tree.nodes[right],
+                        &self.resonance_bytes,
+                        16,
+                    );
                     let dl = self.clam_tree.dist(&query_bytes, left_center);
                     let dr = self.clam_tree.dist(&query_bytes, right_center);
                     if dl <= dr {
@@ -1041,7 +1037,9 @@ mod tests {
         coords.push(make_dark(3));
         coords.push(GatedQualia {
             qualia: PackedQualia::new(
-                [15, 25, 85, 45, -75, 35, -55, 5, -65, 55, 25, 5, 5, 5, 80, 45],
+                [
+                    15, 25, 85, 45, -75, 35, -55, 5, -65, 55, 25, 5, 5, 5, 80, 45,
+                ],
                 1.0,
             ),
             gate: QualiaGateLevel::Hold,
@@ -1050,7 +1048,9 @@ mod tests {
         coords.push(make_dark(4));
         coords.push(GatedQualia {
             qualia: PackedQualia::new(
-                [20, 35, 95, 55, -85, 45, -65, 10, -75, 65, 15, 10, 10, 10, 90, 55],
+                [
+                    20, 35, 95, 55, -85, 45, -65, 10, -75, 65, 15, 10, 10, 10, 90, 55,
+                ],
                 1.0,
             ),
             gate: QualiaGateLevel::Block,
@@ -1061,8 +1061,12 @@ mod tests {
 
     #[test]
     fn test_l1_i8_distance_symmetric() {
-        let a: [u8; 16] = [1, 254, 3, 252, 5, 250, 7, 248, 9, 246, 11, 244, 13, 242, 15, 240];
-        let b: [u8; 16] = [255, 2, 253, 4, 251, 6, 249, 8, 247, 10, 245, 12, 243, 14, 241, 16];
+        let a: [u8; 16] = [
+            1, 254, 3, 252, 5, 250, 7, 248, 9, 246, 11, 244, 13, 242, 15, 240,
+        ];
+        let b: [u8; 16] = [
+            255, 2, 253, 4, 251, 6, 249, 8, 247, 10, 245, 12, 243, 14, 241, 16,
+        ];
         assert_eq!(l1_i8_distance(&a, &b), l1_i8_distance(&b, &a));
     }
 
@@ -1077,7 +1081,7 @@ mod tests {
         // 127 and -127 as u8: 127 and 129
         let a: [u8; 16] = [127; 16]; // +127 as i8
         let b: [u8; 16] = [129; 16]; // -127 as i8
-        // |127 - (-127)| = 254 per dim, 16 dims = 4064
+                                     // |127 - (-127)| = 254 per dim, 16 dims = 4064
         assert_eq!(l1_i8_distance(&a, &b), 4064);
     }
 
@@ -1157,7 +1161,11 @@ mod tests {
 
         // Large threshold should find everything
         let all = cam.locate_within(&query, 10000);
-        assert_eq!(all.len(), cam.len(), "large threshold should find all items");
+        assert_eq!(
+            all.len(),
+            cam.len(),
+            "large threshold should find all items"
+        );
     }
 
     #[test]
@@ -1187,7 +1195,13 @@ mod tests {
         );
 
         // Score for a far-out query (should be higher anomaly)
-        let outlier = PackedQualia::new([127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127], 1.0);
+        let outlier = PackedQualia::new(
+            [
+                127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127,
+                -127,
+            ],
+            1.0,
+        );
         let anomaly_outlier = cam.anomaly_score(&outlier);
         // Outlier might or might not score higher — depends on tree structure
         // Just verify it returns a valid score
@@ -1220,7 +1234,10 @@ mod tests {
             cluster_cardinality: 3,
         };
         match cam.gate_bias(&shift) {
-            CollapseGateBias::FlowWithCaution { confidence_multiplier, .. } => {
+            CollapseGateBias::FlowWithCaution {
+                confidence_multiplier,
+                ..
+            } => {
                 assert!((confidence_multiplier - 0.8).abs() < 0.01);
             }
             other => panic!("expected FlowWithCaution, got {:?}", other),
@@ -1288,7 +1305,7 @@ mod tests {
 
         let query = cam.get(0).unwrap().qualia;
         let verdict = cam.cluster_significance(&query, 0); // root cluster
-        // Root cluster contains everything, so should not be pruned
+                                                           // Root cluster contains everything, so should not be pruned
         assert_ne!(verdict, ClusterVerdict::Prune);
     }
 
@@ -1396,7 +1413,7 @@ mod tests {
         // than coordinates from different families (statistically)
         let same_family_0 = cam.get(0).unwrap().qualia; // family 0, item 0
         let same_family_1 = cam.get(1).unwrap().qualia; // family 0, item 1
-        let diff_family = cam.get(15).unwrap().qualia;   // dark family
+        let diff_family = cam.get(15).unwrap().qualia; // dark family
 
         let path_0 = cam.query_path(&same_family_0);
         let path_1 = cam.query_path(&same_family_1);
@@ -1410,7 +1427,8 @@ mod tests {
         assert!(
             same_ancestor >= diff_ancestor || diff_ancestor <= 2,
             "same-family ancestor depth ({}) should generally >= diff-family ({})",
-            same_ancestor, diff_ancestor
+            same_ancestor,
+            diff_ancestor
         );
     }
 }
