@@ -13,6 +13,7 @@
 // All SIMD uses stable std::arch via simd_avx512 — no nightly required.
 
 pub mod simd_avx512;      // AVX-512 primary (was simd_compat)
+pub mod simd_isa;         // ISA trait: bridge stable types ↔ portable_simd
 
 // Backward compat shim — remove in next major version
 #[allow(deprecated)]
