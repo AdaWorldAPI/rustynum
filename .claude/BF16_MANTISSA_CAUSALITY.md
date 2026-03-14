@@ -102,6 +102,88 @@ Full f32 = reconstructible on demand from BF16 + tree path.
 
 ---
 
+## BF16 IS A TRUTH ENCODING, NOT A STORAGE FORMAT
+
+BF16 = 1 sign + 8 exponent + 7 mantissa. This is not "compressed float."
+Each field carries semantic meaning:
+
+```
+SIGN (1 bit):       POLARITY — confirms or denies the observation
+EXPONENT (8 bits):  MAGNITUDE — same range as f32, NO precision lost
+MANTISSA (7 bits):  RESOLUTION — coarse truth, refinable via tree path
+
+The exponent being IDENTICAL to f32 is the critical insight.
+You never lose RANGE. You only lose RESOLUTION.
+Resolution is recoverable from the tree. Range is not.
+```
+
+### NARS Truth Mapping
+
+Every BF16 value IS a NARS truth value in IEEE 754 clothing:
+
+```
+BF16 FIELD        NARS EQUIVALENT           MEANING
+───────────────────────────────────────────────────────────────
+sign (1 bit)      polarity                  positive/negative evidence
+exponent (8 bits) confidence.scale          HOW BIG the truth is (range)
+mantissa (7 bits) frequency.coarse          HOW PRECISE the truth is
+missing 16 bits   evidence.accumulated      tree path restores full precision
+```
+
+### Plane Alpha Channel = Mantissa Confidence
+
+Each mantissa bit maps to the Plane alpha channel:
+
+```
+mantissa bit k = 1  →  alpha[k] = 1  →  this bit has enough evidence to commit
+mantissa bit k = 0  →  alpha[k] = 0  →  this bit needs more encounters to resolve
+```
+
+The 7 defined mantissa bits in BF16 = the 7 highest-confidence positions.
+The 16 missing bits = positions where the tree path provides the evidence.
+The alpha channel is the SAME concept at the bit-vector scale (16K positions
+instead of 23 mantissa positions, but the same defined/undefined semantics).
+
+### Hamming on BF16 IS Truth Comparison
+
+`bf16_hamming.rs` is not "format conversion with SIMD." The Hamming distance
+on two BF16 values IS a truth comparison:
+
+```
+SIGN BITS DISAGREE:      contradictory evidence (one confirms, one denies)
+EXPONENT BITS DISAGREE:  different magnitude of confidence
+MANTISSA BITS DISAGREE:  different resolution of the same observation
+```
+
+Distance 0 = identical truth. Distance in sign = contradiction.
+Distance in exponent = different confidence scale. Distance in mantissa =
+same truth at different precision levels (refinable, not contradictory).
+
+The WEIGHTED Hamming in `bf16_hamming.rs` already captures this —
+sign/exponent bits carry more weight than mantissa bits because
+disagreement in range is more significant than disagreement in resolution.
+
+### The Full Stack
+
+```
+NARS Truth:    {frequency, confidence, evidence}
+BF16 Value:    {sign, exponent, mantissa}
+Plane:         {acc (encounter accumulator), alpha (confidence mask), bits (current truth)}
+Node:          {S plane, P plane, O plane}    = WHO did WHAT to WHOM
+
+BF16 maps to NARS.
+Plane maps to BF16 at scale (16K positions instead of 23).
+Node maps to structured knowledge (SPO triples).
+All use the same defined/undefined semantics.
+All recover precision from context (tree path / encounter accumulation).
+
+This is not a numpy format. This is a truth encoding that happens
+to be IEEE 754 compatible, searchable via Hamming, and refinable
+via tree traversal. The numeric compatibility is a bonus, not the purpose.
+```
+
+---
+
 ## HARDWARE RELEVANCE
 
 ```
