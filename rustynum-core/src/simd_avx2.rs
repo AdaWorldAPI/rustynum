@@ -451,21 +451,11 @@ mod tests {
     fn test_hamming_batch() {
         let query = vec![0xAAu8; 16];
         let mut database = vec![0u8; 16 * 4];
-        for i in 0..16 {
-            database[i] = 0xAA;
-        }
-        for i in 16..32 {
-            database[i] = 0x55;
-        }
-        for i in 32..40 {
-            database[i] = 0xAA;
-        }
-        for i in 40..48 {
-            database[i] = 0x55;
-        }
-        for i in 48..64 {
-            database[i] = 0xAA;
-        }
+        database[0..16].fill(0xAA);
+        database[16..32].fill(0x55);
+        database[32..40].fill(0xAA);
+        database[40..48].fill(0x55);
+        database[48..64].fill(0xAA);
         database[48] = 0x55;
 
         let distances = hamming_batch(&query, &database, 4, 16);
