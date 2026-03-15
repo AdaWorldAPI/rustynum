@@ -2046,6 +2046,158 @@ pub unsafe fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
     result
 }
 
+// ─── AVX-512 BW hamming (vpshufb) — no VPOPCNTDQ required ─────────
+
+/// AVX-512 BW hamming using 512-bit vpshufb — 64 bytes per iteration.
+/// Works on any CPU with avx512bw (no VPOPCNTDQ required).
+///
+/// # Safety
+/// Caller must ensure AVX-512 BW is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw")]
+pub unsafe fn hamming_distance_bw(a: &[u8], b: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+    let n = a.len().min(b.len());
+    let mut total = 0u64;
+
+    // vpshufb LUT: popcount of each nibble (replicated across 64B)
+    let lookup = _mm512_set4_epi32(
+        0x04030302_i32, 0x03020201_i32, 0x03020201_i32, 0x02010100_i32,
+    );
+    let low_mask = _mm512_set1_epi8(0x0f);
+    let mut acc = _mm512_setzero_si512();
+    let mut i = 0;
+    let mut inner_count = 0u32;
+
+    while i + 64 <= n {
+        let va = _mm512_loadu_si512(a.as_ptr().add(i) as *const _);
+        let vb = _mm512_loadu_si512(b.as_ptr().add(i) as *const _);
+        let xor = _mm512_xor_si512(va, vb);
+
+        let lo = _mm512_and_si512(xor, low_mask);
+        let hi = _mm512_and_si512(_mm512_srli_epi16(xor, 4), low_mask);
+        let popcnt_lo = _mm512_shuffle_epi8(lookup, lo);
+        let popcnt_hi = _mm512_shuffle_epi8(lookup, hi);
+        acc = _mm512_add_epi8(acc, _mm512_add_epi8(popcnt_lo, popcnt_hi));
+
+        i += 64;
+        inner_count += 1;
+        // Flush u8 accumulators before overflow (max 255/8 ≈ 31 iterations)
+        if inner_count >= 30 {
+            let sad = _mm512_sad_epu8(acc, _mm512_setzero_si512());
+            total += _mm512_reduce_add_epi64(sad) as u64;
+            acc = _mm512_setzero_si512();
+            inner_count = 0;
+        }
+    }
+
+    if inner_count > 0 {
+        let sad = _mm512_sad_epu8(acc, _mm512_setzero_si512());
+        total += _mm512_reduce_add_epi64(sad) as u64;
+    }
+
+    // Remainder
+    while i < n {
+        total += (a[i] ^ b[i]).count_ones() as u64;
+        i += 1;
+    }
+    total
+}
+
+/// AVX-512 BW popcount using 512-bit vpshufb — 64 bytes per iteration.
+///
+/// # Safety
+/// Caller must ensure AVX-512 BW is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw")]
+pub unsafe fn popcount_bw(a: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+    let n = a.len();
+    let mut total = 0u64;
+
+    let lookup = _mm512_set4_epi32(
+        0x04030302_i32, 0x03020201_i32, 0x03020201_i32, 0x02010100_i32,
+    );
+    let low_mask = _mm512_set1_epi8(0x0f);
+    let mut acc = _mm512_setzero_si512();
+    let mut i = 0;
+    let mut inner_count = 0u32;
+
+    while i + 64 <= n {
+        let va = _mm512_loadu_si512(a.as_ptr().add(i) as *const _);
+        let lo = _mm512_and_si512(va, low_mask);
+        let hi = _mm512_and_si512(_mm512_srli_epi16(va, 4), low_mask);
+        let popcnt_lo = _mm512_shuffle_epi8(lookup, lo);
+        let popcnt_hi = _mm512_shuffle_epi8(lookup, hi);
+        acc = _mm512_add_epi8(acc, _mm512_add_epi8(popcnt_lo, popcnt_hi));
+
+        i += 64;
+        inner_count += 1;
+        if inner_count >= 30 {
+            let sad = _mm512_sad_epu8(acc, _mm512_setzero_si512());
+            total += _mm512_reduce_add_epi64(sad) as u64;
+            acc = _mm512_setzero_si512();
+            inner_count = 0;
+        }
+    }
+
+    if inner_count > 0 {
+        let sad = _mm512_sad_epu8(acc, _mm512_setzero_si512());
+        total += _mm512_reduce_add_epi64(sad) as u64;
+    }
+
+    while i < n {
+        total += a[i].count_ones() as u64;
+        i += 1;
+    }
+    total
+}
+
+/// AVX-512 BW batch hamming using vpshufb — for CPUs without VPOPCNTDQ.
+///
+/// # Safety
+/// Caller must ensure AVX-512 BW is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw")]
+pub unsafe fn hamming_batch_bw(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+    let mut distances = vec![0u64; num_rows];
+    let full = num_rows / 4;
+    for i in 0..full {
+        let base = i * 4;
+        distances[base] = hamming_distance_bw(query, &database[base * row_bytes..(base + 1) * row_bytes]);
+        distances[base + 1] = hamming_distance_bw(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
+        distances[base + 2] = hamming_distance_bw(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
+        distances[base + 3] = hamming_distance_bw(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
+    }
+    for i in (full * 4)..num_rows {
+        distances[i] = hamming_distance_bw(query, &database[i * row_bytes..(i + 1) * row_bytes]);
+    }
+    distances
+}
+
+/// AVX-512 BW top-k using vpshufb — for CPUs without VPOPCNTDQ.
+///
+/// # Safety
+/// Caller must ensure AVX-512 BW is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw")]
+pub unsafe fn hamming_top_k_bw(
+    query: &[u8],
+    database: &[u8],
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> (Vec<usize>, Vec<u64>) {
+    let distances = hamming_batch_bw(query, database, num_rows, row_bytes);
+    let k = k.min(num_rows);
+    let mut indices: Vec<usize> = (0..num_rows).collect();
+    indices.select_nth_unstable_by_key(k.saturating_sub(1), |&i| distances[i]);
+    indices.truncate(k);
+    indices.sort_unstable_by_key(|&i| distances[i]);
+    let top_distances: Vec<u64> = indices.iter().map(|&i| distances[i]).collect();
+    (indices, top_distances)
+}
+
 // ─── Batch / top-k ─────────────────────────────────────────────────
 
 #[cfg(target_arch = "x86_64")]

@@ -40,6 +40,7 @@ pub mod tail_backend;
 pub mod prefilter;
 
 pub mod hdr; // HDR cascade search
+pub mod packed; // PackedDatabase: stroke-aligned cascade search
 
 // scalar_fns: pure-scalar fallbacks (any architecture)
 pub mod scalar_fns;
@@ -92,6 +93,7 @@ pub use node::{Mask, Node, SPO, SP_, S_O, S__, _PO, _P_, __O, ___};
 pub use parallel::parallel_for_chunks;
 pub use plane::{Acc16K, Distance, Plane, Truth, PLANE_BITS, PLANE_BYTES};
 pub use rng::SplitMix64;
+pub use packed::{PackedDatabase, RankedHit as PackedRankedHit, FINGERPRINT_BYTES, STROKE1_BYTES, STROKE2_BYTES, STROKE3_BYTES};
 pub use seal::{MerkleRoot, Seal};
 pub use tail_backend::{
     auto_detect as auto_detect_backend, capabilities as backend_capabilities, gemm_backend,
