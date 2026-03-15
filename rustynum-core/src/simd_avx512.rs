@@ -1544,3 +1544,547 @@ mod tests {
         assert!((back.reduce_sum() - 16.0 * 42.0).abs() < 1e-4);
     }
 }
+
+// ============================================================================
+// Module-level AVX-512 kernel functions (for dispatch! macro)
+// ============================================================================
+//
+// Each function uses the wrapper types above (F32x16, F64x8, etc.)
+// and is guarded by #[target_feature(enable = "avx512f")].
+
+const F32_LANES: usize = 16;
+const F64_LANES: usize = 8;
+
+// ─── BLAS-1 ────────────────────────────────────────────────────────
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    let len = a.len();
+    let chunks = len / F32_LANES;
+    let mut acc0 = f32x16::splat(0.0);
+    let mut acc1 = f32x16::splat(0.0);
+    let mut acc2 = f32x16::splat(0.0);
+    let mut acc3 = f32x16::splat(0.0);
+    let full_iters = chunks / 4;
+    for i in 0..full_iters {
+        let base = i * 4 * F32_LANES;
+        acc0 += f32x16::from_slice(&a[base..]) * f32x16::from_slice(&b[base..]);
+        acc1 += f32x16::from_slice(&a[base + F32_LANES..]) * f32x16::from_slice(&b[base + F32_LANES..]);
+        acc2 += f32x16::from_slice(&a[base + 2 * F32_LANES..]) * f32x16::from_slice(&b[base + 2 * F32_LANES..]);
+        acc3 += f32x16::from_slice(&a[base + 3 * F32_LANES..]) * f32x16::from_slice(&b[base + 3 * F32_LANES..]);
+    }
+    for i in (full_iters * 4)..chunks {
+        let base = i * F32_LANES;
+        acc0 += f32x16::from_slice(&a[base..]) * f32x16::from_slice(&b[base..]);
+    }
+    let mut sum = (acc0 + acc1 + acc2 + acc3).reduce_sum();
+    for i in (chunks * F32_LANES)..len {
+        sum += a[i] * b[i];
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn dot_f64(a: &[f64], b: &[f64]) -> f64 {
+    let len = a.len();
+    let chunks = len / F64_LANES;
+    let mut acc0 = f64x8::splat(0.0);
+    let mut acc1 = f64x8::splat(0.0);
+    let mut acc2 = f64x8::splat(0.0);
+    let mut acc3 = f64x8::splat(0.0);
+    let full_iters = chunks / 4;
+    for i in 0..full_iters {
+        let base = i * 4 * F64_LANES;
+        acc0 += f64x8::from_slice(&a[base..]) * f64x8::from_slice(&b[base..]);
+        acc1 += f64x8::from_slice(&a[base + F64_LANES..]) * f64x8::from_slice(&b[base + F64_LANES..]);
+        acc2 += f64x8::from_slice(&a[base + 2 * F64_LANES..]) * f64x8::from_slice(&b[base + 2 * F64_LANES..]);
+        acc3 += f64x8::from_slice(&a[base + 3 * F64_LANES..]) * f64x8::from_slice(&b[base + 3 * F64_LANES..]);
+    }
+    for i in (full_iters * 4)..chunks {
+        let base = i * F64_LANES;
+        acc0 += f64x8::from_slice(&a[base..]) * f64x8::from_slice(&b[base..]);
+    }
+    let mut sum = (acc0 + acc1 + acc2 + acc3).reduce_sum();
+    for i in (chunks * F64_LANES)..len {
+        sum += a[i] * b[i];
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn axpy_f32(alpha: f32, x: &[f32], y: &mut [f32]) {
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let alpha_v = f32x16::splat(alpha);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let mut yv = f32x16::from_slice(&y[base..]);
+        yv += alpha_v * f32x16::from_slice(&x[base..]);
+        yv.copy_to_slice(&mut y[base..base + F32_LANES]);
+    }
+    for i in (chunks * F32_LANES)..len {
+        y[i] += alpha * x[i];
+    }
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn axpy_f64(alpha: f64, x: &[f64], y: &mut [f64]) {
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let alpha_v = f64x8::splat(alpha);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let mut yv = f64x8::from_slice(&y[base..]);
+        yv += alpha_v * f64x8::from_slice(&x[base..]);
+        yv.copy_to_slice(&mut y[base..base + F64_LANES]);
+    }
+    for i in (chunks * F64_LANES)..len {
+        y[i] += alpha * x[i];
+    }
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn scal_f32(alpha: f32, x: &mut [f32]) {
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let alpha_v = f32x16::splat(alpha);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let result = alpha_v * f32x16::from_slice(&x[base..]);
+        result.copy_to_slice(&mut x[base..base + F32_LANES]);
+    }
+    for xi in &mut x[chunks * F32_LANES..] {
+        *xi *= alpha;
+    }
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn scal_f64(alpha: f64, x: &mut [f64]) {
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let alpha_v = f64x8::splat(alpha);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let result = alpha_v * f64x8::from_slice(&x[base..]);
+        result.copy_to_slice(&mut x[base..base + F64_LANES]);
+    }
+    for xi in &mut x[chunks * F64_LANES..] {
+        *xi *= alpha;
+    }
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn asum_f32(x: &[f32]) -> f32 {
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let mut acc = f32x16::splat(0.0);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        acc += f32x16::from_slice(&x[base..]).abs();
+    }
+    let mut sum = acc.reduce_sum();
+    for &xi in &x[chunks * F32_LANES..] {
+        sum += xi.abs();
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn asum_f64(x: &[f64]) -> f64 {
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let mut acc = f64x8::splat(0.0);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        acc += f64x8::from_slice(&x[base..]).abs();
+    }
+    let mut sum = acc.reduce_sum();
+    for &xi in &x[chunks * F64_LANES..] {
+        sum += xi.abs();
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn nrm2_f32(x: &[f32]) -> f32 {
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let mut acc = f32x16::splat(0.0);
+    for i in 0..chunks {
+        let base = i * F32_LANES;
+        let xv = f32x16::from_slice(&x[base..]);
+        acc += xv * xv;
+    }
+    let mut sum = acc.reduce_sum();
+    for &xi in &x[chunks * F32_LANES..] {
+        sum += xi * xi;
+    }
+    sum.sqrt()
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn nrm2_f64(x: &[f64]) -> f64 {
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let mut acc = f64x8::splat(0.0);
+    for i in 0..chunks {
+        let base = i * F64_LANES;
+        let xv = f64x8::from_slice(&x[base..]);
+        acc += xv * xv;
+    }
+    let mut sum = acc.reduce_sum();
+    for &xi in &x[chunks * F64_LANES..] {
+        sum += xi * xi;
+    }
+    sum.sqrt()
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn iamax_f32(x: &[f32]) -> (usize, f32) {
+    if x.is_empty() { return (0, 0.0); }
+    let len = x.len();
+    let chunks = len / F32_LANES;
+    let mut global_max = 0.0f32;
+    let mut global_idx = 0usize;
+    for c in 0..chunks {
+        let base = c * F32_LANES;
+        let v = f32x16::from_slice(&x[base..]);
+        let abs_v = v.abs();
+        let chunk_max = abs_v.reduce_max();
+        if chunk_max > global_max {
+            let arr = abs_v.to_array();
+            for (lane, &val) in arr.iter().enumerate() {
+                if val >= chunk_max - f32::EPSILON {
+                    global_max = val;
+                    global_idx = base + lane;
+                    break;
+                }
+            }
+        }
+    }
+    let tail_start = chunks * F32_LANES;
+    for (j, &xi) in x[tail_start..].iter().enumerate() {
+        let v = xi.abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = tail_start + j;
+        }
+    }
+    (global_idx, global_max)
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F is available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn iamax_f64(x: &[f64]) -> (usize, f64) {
+    if x.is_empty() { return (0, 0.0); }
+    let len = x.len();
+    let chunks = len / F64_LANES;
+    let mut global_max = 0.0f64;
+    let mut global_idx = 0usize;
+    for c in 0..chunks {
+        let base = c * F64_LANES;
+        let v = f64x8::from_slice(&x[base..]);
+        let abs_v = v.abs();
+        let chunk_max = abs_v.reduce_max();
+        if chunk_max > global_max {
+            let arr = abs_v.to_array();
+            for (lane, &val) in arr.iter().enumerate() {
+                if val >= chunk_max - f64::EPSILON {
+                    global_max = val;
+                    global_idx = base + lane;
+                    break;
+                }
+            }
+        }
+    }
+    let tail_start = chunks * F64_LANES;
+    for (j, &xi) in x[tail_start..].iter().enumerate() {
+        let v = xi.abs();
+        if v > global_max {
+            global_max = v;
+            global_idx = tail_start + j;
+        }
+    }
+    (global_idx, global_max)
+}
+
+// ─── Element-wise f32 ──────────────────────────────────────────────
+
+macro_rules! elementwise_scalar_avx512_f32 {
+    ($name:ident, $op:tt) => {
+        /// # Safety
+        /// Caller must ensure AVX-512F is available at runtime.
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "avx512f")]
+        pub unsafe fn $name(a: &[f32], scalar: f32) -> Vec<f32> {
+            let len = a.len();
+            let mut out = vec![0.0f32; len];
+            let chunks = len / F32_LANES;
+            let sv = f32x16::splat(scalar);
+            for i in 0..chunks {
+                let base = i * F32_LANES;
+                let av = f32x16::from_slice(&a[base..]);
+                (av $op sv).copy_to_slice(&mut out[base..base + F32_LANES]);
+            }
+            for i in (chunks * F32_LANES)..len {
+                out[i] = a[i] $op scalar;
+            }
+            out
+        }
+    };
+}
+
+elementwise_scalar_avx512_f32!(add_f32_scalar, +);
+elementwise_scalar_avx512_f32!(sub_f32_scalar, -);
+elementwise_scalar_avx512_f32!(mul_f32_scalar, *);
+elementwise_scalar_avx512_f32!(div_f32_scalar, /);
+
+macro_rules! elementwise_vec_avx512_f32 {
+    ($name:ident, $op:tt) => {
+        /// # Safety
+        /// Caller must ensure AVX-512F is available at runtime.
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "avx512f")]
+        pub unsafe fn $name(a: &[f32], b: &[f32]) -> Vec<f32> {
+            let len = a.len();
+            let mut out = vec![0.0f32; len];
+            let chunks = len / F32_LANES;
+            for i in 0..chunks {
+                let base = i * F32_LANES;
+                let av = f32x16::from_slice(&a[base..]);
+                let bv = f32x16::from_slice(&b[base..]);
+                (av $op bv).copy_to_slice(&mut out[base..base + F32_LANES]);
+            }
+            for i in (chunks * F32_LANES)..len {
+                out[i] = a[i] $op b[i];
+            }
+            out
+        }
+    };
+}
+
+elementwise_vec_avx512_f32!(add_f32_vec, +);
+elementwise_vec_avx512_f32!(sub_f32_vec, -);
+elementwise_vec_avx512_f32!(mul_f32_vec, *);
+elementwise_vec_avx512_f32!(div_f32_vec, /);
+
+// ─── Element-wise f64 ──────────────────────────────────────────────
+
+macro_rules! elementwise_scalar_avx512_f64 {
+    ($name:ident, $op:tt) => {
+        /// # Safety
+        /// Caller must ensure AVX-512F is available at runtime.
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "avx512f")]
+        pub unsafe fn $name(a: &[f64], scalar: f64) -> Vec<f64> {
+            let len = a.len();
+            let mut out = vec![0.0f64; len];
+            let chunks = len / F64_LANES;
+            let sv = f64x8::splat(scalar);
+            for i in 0..chunks {
+                let base = i * F64_LANES;
+                let av = f64x8::from_slice(&a[base..]);
+                (av $op sv).copy_to_slice(&mut out[base..base + F64_LANES]);
+            }
+            for i in (chunks * F64_LANES)..len {
+                out[i] = a[i] $op scalar;
+            }
+            out
+        }
+    };
+}
+
+elementwise_scalar_avx512_f64!(add_f64_scalar, +);
+elementwise_scalar_avx512_f64!(sub_f64_scalar, -);
+elementwise_scalar_avx512_f64!(mul_f64_scalar, *);
+elementwise_scalar_avx512_f64!(div_f64_scalar, /);
+
+macro_rules! elementwise_vec_avx512_f64 {
+    ($name:ident, $op:tt) => {
+        /// # Safety
+        /// Caller must ensure AVX-512F is available at runtime.
+        #[cfg(target_arch = "x86_64")]
+        #[target_feature(enable = "avx512f")]
+        pub unsafe fn $name(a: &[f64], b: &[f64]) -> Vec<f64> {
+            let len = a.len();
+            let mut out = vec![0.0f64; len];
+            let chunks = len / F64_LANES;
+            for i in 0..chunks {
+                let base = i * F64_LANES;
+                let av = f64x8::from_slice(&a[base..]);
+                let bv = f64x8::from_slice(&b[base..]);
+                (av $op bv).copy_to_slice(&mut out[base..base + F64_LANES]);
+            }
+            for i in (chunks * F64_LANES)..len {
+                out[i] = a[i] $op b[i];
+            }
+            out
+        }
+    };
+}
+
+elementwise_vec_avx512_f64!(add_f64_vec, +);
+elementwise_vec_avx512_f64!(sub_f64_vec, -);
+elementwise_vec_avx512_f64!(mul_f64_vec, *);
+elementwise_vec_avx512_f64!(div_f64_vec, /);
+
+// ─── Hamming / bitops (VPOPCNTDQ) ─────────────────────────────────
+
+/// # Safety
+/// Caller must ensure AVX-512F and AVX-512 VPOPCNTDQ are available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vpopcntdq")]
+pub unsafe fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+    let len = a.len();
+    let chunks = len / 64;
+    let mut total = _mm512_setzero_si512();
+    for i in 0..chunks {
+        let base = i * 64;
+        let av = _mm512_loadu_si512(a[base..].as_ptr() as *const __m512i);
+        let bv = _mm512_loadu_si512(b[base..].as_ptr() as *const __m512i);
+        let xored = _mm512_xor_si512(av, bv);
+        total = _mm512_add_epi64(total, _mm512_popcnt_epi64(xored));
+    }
+    let mut vals = [0i64; 8];
+    _mm512_storeu_si512(vals.as_mut_ptr() as *mut __m512i, total);
+    let mut sum: u64 = vals.iter().map(|&v| v as u64).sum();
+    for i in (chunks * 64)..len {
+        sum += (a[i] ^ b[i]).count_ones() as u64;
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F and AVX-512 VPOPCNTDQ are available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vpopcntdq")]
+pub unsafe fn popcount(a: &[u8]) -> u64 {
+    use core::arch::x86_64::*;
+    let len = a.len();
+    let chunks = len / 64;
+    let mut total = _mm512_setzero_si512();
+    for i in 0..chunks {
+        let base = i * 64;
+        let v = _mm512_loadu_si512(a[base..].as_ptr() as *const __m512i);
+        total = _mm512_add_epi64(total, _mm512_popcnt_epi64(v));
+    }
+    let mut vals = [0i64; 8];
+    _mm512_storeu_si512(vals.as_mut_ptr() as *mut __m512i, total);
+    let mut sum: u64 = vals.iter().map(|&v| v as u64).sum();
+    for &byte in &a[chunks * 64..] {
+        sum += byte.count_ones() as u64;
+    }
+    sum
+}
+
+/// # Safety
+/// Caller must ensure AVX-512F and AVX-512 VNNI are available at runtime.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f,avx512vnni")]
+pub unsafe fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
+    use core::arch::x86_64::*;
+    let len = a.len();
+    let chunks = len / 64;
+    let bias = _mm512_set1_epi32(0x80808080u32 as i32);
+    let ones = _mm512_set1_epi32(0x01010101u32 as i32);
+    let mut acc = _mm512_setzero_si512();
+    let mut b_sum = _mm512_setzero_si512();
+    for i in 0..chunks {
+        let base = i * 64;
+        let av = _mm512_loadu_si512(a[base..].as_ptr() as *const __m512i);
+        let bv = _mm512_loadu_si512(b[base..].as_ptr() as *const __m512i);
+        let av_u = _mm512_xor_si512(av, bias);
+        acc = _mm512_dpbusd_epi32(acc, av_u, bv);
+        b_sum = _mm512_dpbusd_epi32(b_sum, ones, bv);
+    }
+    let mut acc_vals = [0i32; 16];
+    _mm512_storeu_si512(acc_vals.as_mut_ptr() as *mut __m512i, acc);
+    let total_biased: i64 = acc_vals.iter().map(|&v| v as i64).sum();
+    let mut bsum_vals = [0i32; 16];
+    _mm512_storeu_si512(bsum_vals.as_mut_ptr() as *mut __m512i, b_sum);
+    let total_b: i64 = bsum_vals.iter().map(|&v| v as i64).sum();
+    let mut result = total_biased - 128 * total_b;
+    for i in (chunks * 64)..len {
+        result += (a[i] as i8 as i64) * (b[i] as i8 as i64);
+    }
+    result
+}
+
+// ─── Batch / top-k ─────────────────────────────────────────────────
+
+#[cfg(target_arch = "x86_64")]
+/// # Safety
+/// Caller must ensure AVX-512F and AVX-512 VPOPCNTDQ are available at runtime.
+#[target_feature(enable = "avx512f,avx512vpopcntdq")]
+pub unsafe fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+    let mut distances = vec![0u64; num_rows];
+    let full = num_rows / 4;
+    for i in 0..full {
+        let base = i * 4;
+        distances[base] = hamming_distance(query, &database[base * row_bytes..(base + 1) * row_bytes]);
+        distances[base + 1] = hamming_distance(query, &database[(base + 1) * row_bytes..(base + 2) * row_bytes]);
+        distances[base + 2] = hamming_distance(query, &database[(base + 2) * row_bytes..(base + 3) * row_bytes]);
+        distances[base + 3] = hamming_distance(query, &database[(base + 3) * row_bytes..(base + 4) * row_bytes]);
+    }
+    for i in (full * 4)..num_rows {
+        distances[i] = hamming_distance(query, &database[i * row_bytes..(i + 1) * row_bytes]);
+    }
+    distances
+}
+
+#[cfg(target_arch = "x86_64")]
+/// # Safety
+/// Caller must ensure AVX-512F and AVX-512 VPOPCNTDQ are available at runtime.
+#[target_feature(enable = "avx512f,avx512vpopcntdq")]
+pub unsafe fn hamming_top_k(
+    query: &[u8],
+    database: &[u8],
+    num_rows: usize,
+    row_bytes: usize,
+    k: usize,
+) -> (Vec<usize>, Vec<u64>) {
+    let distances = hamming_batch(query, database, num_rows, row_bytes);
+    let k = k.min(num_rows);
+    let mut indices: Vec<usize> = (0..num_rows).collect();
+    indices.select_nth_unstable_by_key(k.saturating_sub(1), |&i| distances[i]);
+    indices.truncate(k);
+    indices.sort_unstable_by_key(|&i| distances[i]);
+    let top_distances: Vec<u64> = indices.iter().map(|&i| distances[i]).collect();
+    (indices, top_distances)
+}
