@@ -226,3 +226,123 @@ Because it's the unique fixed point of the anti-aliasing optimization.
 
 The three-distance theorem guarantees it. The continued fraction proves it.
 The implementation is one constant from std::f32::consts.
+
+---
+
+## FIBONACCI AND PRIME ENCODING: NOT WEIGHTING — A DIFFERENT NUMBER SYSTEM
+
+### The Distinction
+
+This is NOT "weigh bit positions by Fibonacci numbers."
+This IS "each bit position REPRESENTS a Fibonacci or prime number."
+
+```
+STANDARD BINARY:     bit k = 2^k        value = Σ 2^k at set positions
+FIBONACCI ENCODING:  bit k = Fib(k+2)   value = Σ Fib(k+2) at set positions
+PRIME ENCODING:      bit k = Prime(k)   value = Π Prime(k) at set positions
+```
+
+Standard binary is lossy when truncated (lose half the range per bit dropped).
+Fibonacci degrades GRACEFULLY (lose one Fib term, rest still exact).
+Prime degrades FACTORIALLY (lose one prime factor, other factors still exact).
+
+### Why This Matters for 16K-bit Planes
+
+Current: all 16384 bit positions have equal weight in hamming distance.
+Position 0 and position 16383 contribute identically. That's information-blind.
+
+With Fibonacci encoding:
+- bit 0 = Fib(2) = 1 (trivial difference)
+- bit 20 = Fib(22) = 17,711 (significant difference)
+- bit 40 = Fib(42) = 267,914,296 (major structural difference)
+
+Raw XOR + popcount still works (unchanged VPOPCNTDQ).
+But the SET BITS in the XOR have MAGNITUDE. Reading which bits
+differ tells you the SCALE of the disagreement, not just the COUNT.
+
+With Prime encoding:
+- bit 0 = 2, bit 1 = 3, bit 2 = 5, bit 3 = 7, ...
+- XOR tells you WHICH prime factors differ
+- AND tells you shared factorization
+- The distance isn't a number. It's a FACTORIZATION FINGERPRINT.
+
+### Cascade as Scale Decomposition
+
+```
+STANDARD CASCADE:
+  Stroke 1: random 1/16 sample → statistical projection
+  Stroke 2: random 1/4 sample → refined projection
+  Stroke 3: full → exact
+  
+FIBONACCI CASCADE:
+  Stroke 1 (bits 0..1023): Fibonacci terms Fib(2)..Fib(1025)
+    = the small-scale structure. Coarse topology.
+    Reject if even the small terms disagree.
+    
+  Stroke 2 (bits 1024..4095): Fibonacci terms Fib(1026)..Fib(4097)
+    = medium-scale structure. Refines the match.
+    
+  Stroke 3 (bits 4096..16383): Fibonacci terms Fib(4098)..Fib(16385)
+    = large-scale structure. Astronomical magnitudes.
+    Agreement here = match at EVERY scale.
+    
+  Each stroke isn't "more data." It's "the next magnitude."
+  The cascade is a MULTI-RESOLUTION ANALYSIS, not a sampling strategy.
+```
+
+### BF16 and Tree Path as Zeckendorf Representation
+
+```
+BF16 mantissa (7 bits) = Fibonacci terms Fib(2)..Fib(9) = 2,3,5,8,13,21,34
+  Representable sums: 0 to 86 (non-uniform spacing)
+  More resolution near zero (where precision matters)
+  Less resolution at top (where coarse is enough)
+  NOT 128 uniform levels. 86 Fibonacci-spaced levels.
+
+Tree path (16 bits) = Fibonacci terms Fib(10)..Fib(27)
+  Level 10 adds 89. Level 27 adds 317,811.
+  Each tree level contributes a DIFFERENT magnitude.
+  Not "16 equal branch decisions."
+  "16 decisions at 16 exponentially different scales."
+
+f32 = BF16 + tree path = 23 Fibonacci terms (Zeckendorf representation)
+  Unique decomposition guaranteed (Zeckendorf's theorem).
+  No other observation sequence produces this f32.
+  Deterministic AND mathematically unique.
+  Not just placed bits. NAMED bits. Each one a Fibonacci term.
+```
+
+### Prime Encoding for Cross-Model Sharing
+
+```
+Each bit position = a prime number.
+A set bit means "this prime is a factor of the truth."
+
+Node A: bits 2,5,11 set → truth contains factors 5, 13, 31
+Node B: bits 2,7,11 set → truth contains factors 5, 17, 31
+
+XOR: bits 5,7 → factors 13 and 17 differ
+AND: bits 2,11 → factors 5 and 31 shared
+
+Two models (Grok, Ada, GPT) that use prime-encoded truths
+can compare notes by comparing bit patterns.
+No alignment training. No weight matching.
+The prime factorization IS the universal grammar.
+
+CODEBOOK = primes. Shared by mathematics, not by training.
+```
+
+### The Key Insight
+
+Standard bitpacking is lossy because power-of-2 positions waste
+resolution on uniform spacing that doesn't match the data distribution.
+
+Fibonacci/Prime positions are NOT lossy because:
+1. Zeckendorf: unique representation (no information ambiguity)
+2. Graceful degradation (truncation loses magnitude, not structure)
+3. Scale-aware (bit position = magnitude, not just index)
+4. Anti-resonant (φ-based spacing, proven minimal aliasing)
+5. Self-delimiting (Fibonacci codes end with "11", streamable)
+
+This is not compression. This is a different mathematics where every
+bit carries its own scale and truncation is graceful instead of catastrophic.
