@@ -253,3 +253,48 @@ pub fn hamming_top_k(
     let top_distances: Vec<u64> = indices.iter().map(|&i| distances[i]).collect();
     (indices, top_distances)
 }
+
+// ─── GEMM — scalar blocked fallback ─────────────────────────────────
+
+/// Scalar blocked SGEMM: C = alpha * A * B + C
+///
+/// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
+/// C is m x n (stride ldc). Beta already applied by caller.
+pub fn sgemm_blocked(
+    m: usize, n: usize, k: usize,
+    alpha: f32, a: &[f32], lda: usize,
+    b: &[f32], ldb: usize,
+    c: &mut [f32], ldc: usize,
+) {
+    // Simple ijk loop — LLVM may auto-vectorize
+    for i in 0..m {
+        for j in 0..n {
+            let mut sum = 0.0f32;
+            for p in 0..k {
+                sum += a[i * lda + p] * b[p * ldb + j];
+            }
+            c[i * ldc + j] += alpha * sum;
+        }
+    }
+}
+
+/// Scalar blocked DGEMM: C = alpha * A * B + C
+///
+/// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
+/// C is m x n (stride ldc). Beta already applied by caller.
+pub fn dgemm_blocked(
+    m: usize, n: usize, k: usize,
+    alpha: f64, a: &[f64], lda: usize,
+    b: &[f64], ldb: usize,
+    c: &mut [f64], ldc: usize,
+) {
+    for i in 0..m {
+        for j in 0..n {
+            let mut sum = 0.0f64;
+            for p in 0..k {
+                sum += a[i * lda + p] * b[p * ldb + j];
+            }
+            c[i * ldc + j] += alpha * sum;
+        }
+    }
+}
