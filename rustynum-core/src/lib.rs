@@ -41,6 +41,9 @@ pub mod prefilter;
 
 pub mod hdr; // HDR cascade search
 
+// scalar_fns: pure-scalar fallbacks (any architecture)
+pub mod scalar_fns;
+
 // simd_avx2: AVX2 implementations (always compiled on x86_64, used by runtime dispatch)
 #[cfg(target_arch = "x86_64")]
 pub mod simd_avx2;

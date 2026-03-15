@@ -366,6 +366,109 @@ pub fn hamming_top_k(
     (indices, top_distances)
 }
 
+/// AVX2 popcount using Harley-Seal vpshufb nibble lookup.
+pub fn popcount(a: &[u8]) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use core::arch::x86_64::*;
+        unsafe {
+            let len = a.len();
+            let chunks = len / 32;
+            let low_mask = _mm256_set1_epi8(0x0f);
+            let lookup = _mm256_setr_epi8(
+                0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+                0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+            );
+            let mut total = _mm256_setzero_si256();
+            let blocks = chunks / 8;
+            for block in 0..blocks {
+                let mut local = _mm256_setzero_si256();
+                for i in 0..8 {
+                    let idx = (block * 8 + i) * 32;
+                    let v = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+                    let lo = _mm256_and_si256(v, low_mask);
+                    let hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), low_mask);
+                    let cnt = _mm256_add_epi8(
+                        _mm256_shuffle_epi8(lookup, lo),
+                        _mm256_shuffle_epi8(lookup, hi),
+                    );
+                    local = _mm256_add_epi8(local, cnt);
+                }
+                total = _mm256_add_epi64(total, _mm256_sad_epu8(local, _mm256_setzero_si256()));
+            }
+            if blocks * 8 < chunks {
+                let mut local = _mm256_setzero_si256();
+                for i in blocks * 8..chunks {
+                    let idx = i * 32;
+                    let v = _mm256_loadu_si256(a[idx..].as_ptr() as *const __m256i);
+                    let lo = _mm256_and_si256(v, low_mask);
+                    let hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), low_mask);
+                    let cnt = _mm256_add_epi8(
+                        _mm256_shuffle_epi8(lookup, lo),
+                        _mm256_shuffle_epi8(lookup, hi),
+                    );
+                    local = _mm256_add_epi8(local, cnt);
+                }
+                total = _mm256_add_epi64(total, _mm256_sad_epu8(local, _mm256_setzero_si256()));
+            }
+            let arr: [i64; 4] = std::mem::transmute(total);
+            let mut sum: u64 = arr.iter().map(|&v| v as u64).sum();
+            for &byte in &a[chunks * 32..] {
+                sum += byte.count_ones() as u64;
+            }
+            sum
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        crate::scalar_fns::popcount(a)
+    }
+}
+
+/// AVX2 int8 dot product using VPMADDUBSW + VPMADDWD with XOR-0x80 bias correction.
+pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use core::arch::x86_64::*;
+        unsafe {
+            let len = a.len();
+            let chunks = len / 32;
+            let bias = _mm256_set1_epi8(-128i8);
+            let ones_u8 = _mm256_set1_epi8(1);
+            let ones_i16 = _mm256_set1_epi16(1);
+            let mut acc = _mm256_setzero_si256();
+            let mut b_sum = _mm256_setzero_si256();
+            for i in 0..chunks {
+                let base = i * 32;
+                let av = _mm256_loadu_si256(a[base..].as_ptr() as *const __m256i);
+                let bv = _mm256_loadu_si256(b[base..].as_ptr() as *const __m256i);
+                let av_u = _mm256_xor_si256(av, bias);
+                let prod = _mm256_maddubs_epi16(av_u, bv);
+                let widened = _mm256_madd_epi16(prod, ones_i16);
+                acc = _mm256_add_epi32(acc, widened);
+                let b_abs = _mm256_maddubs_epi16(ones_u8, bv);
+                let b_wide = _mm256_madd_epi16(b_abs, ones_i16);
+                b_sum = _mm256_add_epi32(b_sum, b_wide);
+            }
+            let mut acc_vals = [0i32; 8];
+            _mm256_storeu_si256(acc_vals.as_mut_ptr() as *mut __m256i, acc);
+            let total_biased: i64 = acc_vals.iter().map(|&v| v as i64).sum();
+            let mut bsum_vals = [0i32; 8];
+            _mm256_storeu_si256(bsum_vals.as_mut_ptr() as *mut __m256i, b_sum);
+            let total_b: i64 = bsum_vals.iter().map(|&v| v as i64).sum();
+            let mut result = total_biased - 128 * total_b;
+            for i in (chunks * 32)..len {
+                result += (a[i] as i8 as i64) * (b[i] as i8 as i64);
+            }
+            result
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        crate::scalar_fns::dot_i8(a, b)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
