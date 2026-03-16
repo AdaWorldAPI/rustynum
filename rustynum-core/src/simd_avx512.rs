@@ -2326,6 +2326,7 @@ unsafe fn pack_b_f32(b: &[f32], ldb: usize, kc: usize, nc: usize, k_start: usize
 /// Caller must ensure AVX-512F is available and all slice bounds are valid.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::too_many_arguments)]
 unsafe fn sgemm_ukernel_6x16(
     kc: usize,
     alpha: f32,
@@ -2380,8 +2381,8 @@ unsafe fn sgemm_ukernel_6x16(
         } else {
             // SAFETY: masked store for edge tiles
             let mask: u16 = (1u32 << nr_eff) as u16 - 1;
-            let cv = _mm512_maskz_loadu_ps(mask.into(), row_ptr);
-            _mm512_mask_storeu_ps(row_ptr, mask.into(), _mm512_add_ps(cv, rows[ir]));
+            let cv = _mm512_maskz_loadu_ps(mask, row_ptr);
+            _mm512_mask_storeu_ps(row_ptr, mask, _mm512_add_ps(cv, rows[ir]));
         }
     }
 }
@@ -2396,6 +2397,7 @@ unsafe fn sgemm_ukernel_6x16(
 /// Caller must ensure AVX-512F is available at runtime.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::too_many_arguments)]
 pub unsafe fn sgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f32, a: &[f32], lda: usize,
@@ -2521,6 +2523,7 @@ unsafe fn pack_b_f64(b: &[f64], ldb: usize, kc: usize, nc: usize, k_start: usize
 /// Caller must ensure AVX-512F is available and all slice bounds are valid.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::too_many_arguments)]
 unsafe fn dgemm_ukernel_6x8(
     kc: usize,
     alpha: f64,
@@ -2571,8 +2574,8 @@ unsafe fn dgemm_ukernel_6x8(
         } else {
             // SAFETY: masked store for edge tiles
             let mask: u8 = (1u16 << nr_eff) as u8 - 1;
-            let cv = _mm512_maskz_loadu_pd(mask.into(), row_ptr);
-            _mm512_mask_storeu_pd(row_ptr, mask.into(), _mm512_add_pd(cv, rows[ir]));
+            let cv = _mm512_maskz_loadu_pd(mask, row_ptr);
+            _mm512_mask_storeu_pd(row_ptr, mask, _mm512_add_pd(cv, rows[ir]));
         }
     }
 }
@@ -2585,6 +2588,7 @@ unsafe fn dgemm_ukernel_6x8(
 /// Caller must ensure AVX-512F is available at runtime.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::too_many_arguments)]
 pub unsafe fn dgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f64, a: &[f64], lda: usize,

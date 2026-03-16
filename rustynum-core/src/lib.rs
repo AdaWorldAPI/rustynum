@@ -57,10 +57,10 @@ pub mod simd;
 pub mod mkl_ffi;
 
 pub use bf16_hamming::{
-    bf16_bytes_to_fp32, bf16_hamming_scalar, fp32_to_bf16_bytes, pack_awareness_states,
-    select_bf16_hamming_fn, structural_diff, superposition_decompose, unpack_awareness_states,
-    AwarenessState, AwarenessThresholds, BF16StructuralDiff, BF16Weights, SuperpositionState,
-    JINA_WEIGHTS, TRAINING_WEIGHTS,
+    bf16_bytes_to_fp32, bf16_from_projections, bf16_hamming_scalar, bf16_unpack_projections,
+    fp32_to_bf16_bytes, pack_awareness_states, select_bf16_hamming_fn, structural_diff,
+    superposition_decompose, unpack_awareness_states, AwarenessState, AwarenessThresholds,
+    BF16StructuralDiff, BF16Weights, SuperpositionState, JINA_WEIGHTS, TRAINING_WEIGHTS,
 };
 pub use blackboard::Blackboard;
 pub use compute::{ComputeCaps, ComputeTier, Precision};
@@ -93,7 +93,7 @@ pub use node::{Mask, Node, SPO, SP_, S_O, S__, _PO, _P_, __O, ___};
 pub use parallel::parallel_for_chunks;
 pub use plane::{Acc16K, Distance, Plane, Truth, PLANE_BITS, PLANE_BYTES};
 pub use rng::SplitMix64;
-pub use packed::{PackedDatabase, RankedHit as PackedRankedHit, FINGERPRINT_BYTES, STROKE1_BYTES, STROKE2_BYTES, STROKE3_BYTES};
+pub use packed::{BandedHit, PackedDatabase, RankedHit as PackedRankedHit, FINGERPRINT_BYTES, STROKE1_BYTES, STROKE2_BYTES, STROKE3_BYTES};
 pub use seal::{MerkleRoot, Seal};
 pub use tail_backend::{
     auto_detect as auto_detect_backend, capabilities as backend_capabilities, gemm_backend,
@@ -149,9 +149,10 @@ pub use qualia_gate::{GatedQualia, QualiaGateLevel, ResonanzZirkel, TuningFork};
 // SynapseState (efficacy + theta + maturity), organic_deposit, 5-state packing, homeostasis
 pub mod organic;
 pub use organic::{
-    crystallize, crystallize_quantized, five_state_histogram, homeostatic_scale, mean_efficacy,
-    organic_deposit, organic_deposit_batch, pack_five_states, pack_three, saturation_ratio,
-    unpack_five_states, unpack_three, FiveState, SynapseState,
+    crystallize, crystallize_quantized, fingerprint_to_evidence, five_state_histogram,
+    homeostatic_scale, mean_efficacy, organic_deposit, organic_deposit_batch, organic_encounter,
+    pack_five_states, pack_three, saturation_ratio, unpack_five_states, unpack_three, FiveState,
+    SynapseState,
 };
 
 // Int8 soaking layer: dot-product kernel, binary↔int8 bridge, attention mask

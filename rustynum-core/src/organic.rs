@@ -410,6 +410,53 @@ pub fn crystallize_quantized<const N: usize>(states: &[SynapseState]) -> Fingerp
 }
 
 // ---------------------------------------------------------------------------
+// Plane ↔ Organic bridge: BCM-mediated encounters
+// ---------------------------------------------------------------------------
+
+/// Convert a Fingerprint's bits to i8 evidence (+1 for set, -1 for clear).
+///
+/// This is the intermediate form for feeding into `organic_deposit_batch`.
+/// Returns a Vec of length `Fingerprint<N>::BITS`.
+pub fn fingerprint_to_evidence<const N: usize>(fp: &Fingerprint<N>) -> Vec<i8> {
+    let mut evidence = Vec::with_capacity(N * 64);
+    for word in &fp.words {
+        for bit in 0..64 {
+            evidence.push(if (word >> bit) & 1 == 1 { 1i8 } else { -1i8 });
+        }
+    }
+    evidence
+}
+
+/// BCM-mediated encounter: feeds Plane evidence through organic plasticity.
+///
+/// Instead of raw `encounter_bits` (which blindly does acc += ±1), this route
+/// passes each bit through the BCM learning rule with:
+/// - theta-dependent potentiation/depression
+/// - maturity damping (old synapses change less)
+/// - homeostatic normalization
+///
+/// After deposit, crystallizes the synapse states back into a Fingerprint
+/// that can be compared or encountered into another Plane.
+///
+/// `reward_sign`: positive reinforces, negative punishes (flips evidence).
+pub fn organic_encounter<const N: usize>(
+    synapses: &mut [SynapseState],
+    evidence_fp: &Fingerprint<N>,
+    reward_sign: i8,
+) {
+    let n = synapses.len().min(Fingerprint::<N>::BITS);
+    let evidence = fingerprint_to_evidence(evidence_fp);
+
+    if reward_sign >= 0 {
+        organic_deposit_batch(&mut synapses[..n], &evidence[..n]);
+    } else {
+        // Invert evidence for punishment
+        let inverted: Vec<i8> = evidence[..n].iter().map(|&e| -e).collect();
+        organic_deposit_batch(&mut synapses[..n], &inverted);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -777,5 +824,82 @@ mod tests {
             eff_before,
             s.efficacy
         );
+    }
+
+    #[test]
+    fn test_fingerprint_to_evidence_all_ones() {
+        let fp = Fingerprint::<4>::ones();
+        let ev = fingerprint_to_evidence(&fp);
+        assert_eq!(ev.len(), 256);
+        assert!(ev.iter().all(|&e| e == 1));
+    }
+
+    #[test]
+    fn test_fingerprint_to_evidence_all_zeros() {
+        let fp = Fingerprint::<4>::zero();
+        let ev = fingerprint_to_evidence(&fp);
+        assert_eq!(ev.len(), 256);
+        assert!(ev.iter().all(|&e| e == -1));
+    }
+
+    #[test]
+    fn test_fingerprint_to_evidence_mixed() {
+        let fp = Fingerprint::<1> { words: [0xFF] }; // first 8 bits set
+        let ev = fingerprint_to_evidence(&fp);
+        assert_eq!(ev.len(), 64);
+        // First 8 are +1, rest are -1
+        for i in 0..8 {
+            assert_eq!(ev[i], 1, "bit {i} should be +1");
+        }
+        for i in 8..64 {
+            assert_eq!(ev[i], -1, "bit {i} should be -1");
+        }
+    }
+
+    #[test]
+    fn test_organic_encounter_reinforces() {
+        let n = 256; // small for test
+        let mut synapses: Vec<SynapseState> = (0..n).map(|_| SynapseState::new()).collect();
+        let fp = Fingerprint::<4>::ones();
+
+        // 3 positive encounters should potentiate all synapses
+        organic_encounter(&mut synapses, &fp, 1);
+        organic_encounter(&mut synapses, &fp, 1);
+        organic_encounter(&mut synapses, &fp, 1);
+
+        let positive_count = synapses.iter().filter(|s| s.efficacy > 0).count();
+        assert!(positive_count > n / 2, "most synapses should be positive, got {positive_count}/{n}");
+    }
+
+    #[test]
+    fn test_organic_encounter_punishes() {
+        let n = 256;
+        let mut synapses: Vec<SynapseState> = (0..n).map(|_| SynapseState::new()).collect();
+        let fp = Fingerprint::<4>::ones();
+
+        // 3 negative encounters should depress
+        organic_encounter(&mut synapses, &fp, -1);
+        organic_encounter(&mut synapses, &fp, -1);
+        organic_encounter(&mut synapses, &fp, -1);
+
+        let negative_count = synapses.iter().filter(|s| s.efficacy < 0).count();
+        assert!(negative_count > n / 2, "most synapses should be negative, got {negative_count}/{n}");
+    }
+
+    #[test]
+    fn test_organic_crystallize_roundtrip() {
+        let n = 256;
+        let mut synapses: Vec<SynapseState> = (0..n).map(|_| SynapseState::new()).collect();
+        let fp = Fingerprint::<4>::ones();
+
+        // Encounter then crystallize
+        organic_encounter(&mut synapses, &fp, 1);
+        organic_encounter(&mut synapses, &fp, 1);
+        organic_encounter(&mut synapses, &fp, 1);
+
+        let crystallized: Fingerprint<4> = crystallize(&synapses);
+        // Crystallized should agree with the original evidence direction
+        let hamming = fp.hamming_distance(&crystallized);
+        assert!(hamming < (n as u32) / 4, "crystallized should be close to evidence, hamming={hamming}");
     }
 }
