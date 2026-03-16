@@ -74,6 +74,7 @@ macro_rules! dispatch {
     ) => {
         $(#[$meta])*
         #[inline]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name( $($arg : $ty),* ) -> $ret {
             match tier() {
                 Tier::Avx512 => unsafe { $a512($($arg),*) },
@@ -90,6 +91,7 @@ macro_rules! dispatch {
     ) => {
         $(#[$meta])*
         #[inline]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name( $($arg : $ty),* ) {
             match tier() {
                 Tier::Avx512 => unsafe { $a512($($arg),*) },

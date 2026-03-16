@@ -478,6 +478,7 @@ pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
 /// A dedicated AVX2 microkernel (MR=6, NR=8 with ymm registers) could be
 /// added later. For now, the scalar path with LLVM auto-vectorization is
 /// sufficient as the AVX2 fallback tier.
+#[allow(clippy::too_many_arguments)]
 pub fn sgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f32, a: &[f32], lda: usize,
@@ -488,6 +489,7 @@ pub fn sgemm_blocked(
 }
 
 /// AVX2 blocked DGEMM fallback — delegates to scalar implementation.
+#[allow(clippy::too_many_arguments)]
 pub fn dgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f64, a: &[f64], lda: usize,

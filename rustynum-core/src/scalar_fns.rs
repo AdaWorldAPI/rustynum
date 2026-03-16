@@ -260,6 +260,7 @@ pub fn hamming_top_k(
 ///
 /// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
 /// C is m x n (stride ldc). Beta already applied by caller.
+#[allow(clippy::too_many_arguments)]
 pub fn sgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f32, a: &[f32], lda: usize,
@@ -282,6 +283,7 @@ pub fn sgemm_blocked(
 ///
 /// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
 /// C is m x n (stride ldc). Beta already applied by caller.
+#[allow(clippy::too_many_arguments)]
 pub fn dgemm_blocked(
     m: usize, n: usize, k: usize,
     alpha: f64, a: &[f64], lda: usize,
