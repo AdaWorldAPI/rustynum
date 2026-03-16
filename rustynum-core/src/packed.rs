@@ -17,6 +17,7 @@
 //! assert_eq!(packed.num_candidates(), 3);
 //! ```
 
+use crate::hdr::{Band, Cascade};
 use crate::simd;
 
 /// Stroke 1: first 128 bytes (1024 bits) — coarse rejection (~90% eliminated).
@@ -61,6 +62,17 @@ pub struct RankedHit {
     pub index: usize,
     /// Full Hamming distance (sum of all 3 strokes).
     pub distance: u64,
+}
+
+/// A ranked hit with quality band from cascade search.
+#[derive(Debug, Clone)]
+pub struct BandedHit {
+    /// Original candidate index.
+    pub index: usize,
+    /// Full Hamming distance.
+    pub distance: u64,
+    /// Quality band assigned by the cascade.
+    pub band: Band,
 }
 
 impl PackedDatabase {
@@ -190,6 +202,68 @@ impl PackedDatabase {
         }
 
         // Sort and take top-k
+        results.sort_unstable_by_key(|h| h.distance);
+        results.truncate(k);
+        results
+    }
+
+    /// Three-stroke cascade query using a [`Cascade`] for threshold and band classification.
+    ///
+    /// Combines PackedDatabase's stroke-aligned layout with Cascade's calibrated thresholds
+    /// and quality band classification. Returns hits with Band labels.
+    pub fn cascade_query_banded(
+        &self,
+        query: &[u8],
+        cascade: &Cascade,
+        k: usize,
+    ) -> Vec<BandedHit> {
+        assert!(query.len() >= FINGERPRINT_BYTES);
+
+        let threshold = cascade.threshold;
+        // Stroke 1 threshold: proportional to stroke1's bit fraction
+        let s1_frac = STROKE1_BYTES as f64 / FINGERPRINT_BYTES as f64;
+        let s1_threshold = (threshold as f64 * s1_frac * 1.5) as u64; // 1.5x safety margin
+        let s12_frac = (STROKE1_BYTES + STROKE2_BYTES) as f64 / FINGERPRINT_BYTES as f64;
+        let s12_threshold = (threshold as f64 * s12_frac * 1.3) as u64;
+
+        let query_s1 = &query[..STROKE1_BYTES];
+        let query_s2 = &query[STROKE1_BYTES..STROKE1_BYTES + STROKE2_BYTES];
+        let query_s3 = &query[STROKE1_BYTES + STROKE2_BYTES..FINGERPRINT_BYTES];
+
+        // STROKE 1
+        let mut survivors: Vec<(usize, u64)> = Vec::with_capacity(self.num_candidates / 10);
+        for i in 0..self.num_candidates {
+            let d1 = simd::hamming_distance(query_s1, self.get_stroke1(i));
+            if d1 <= s1_threshold {
+                survivors.push((i, d1));
+            }
+        }
+
+        // STROKE 2
+        let mut survivors2: Vec<(usize, u64)> = Vec::with_capacity(survivors.len() / 10);
+        for &(idx, d1) in &survivors {
+            let d2 = simd::hamming_distance(query_s2, self.get_stroke2(idx));
+            let d_cumul = d1 + d2;
+            if d_cumul <= s12_threshold {
+                survivors2.push((idx, d_cumul));
+            }
+        }
+
+        // STROKE 3 + band classification
+        let mut results: Vec<BandedHit> = Vec::with_capacity(survivors2.len());
+        for &(idx, d12) in &survivors2 {
+            let d3 = simd::hamming_distance(query_s3, self.get_stroke3(idx));
+            let total = d12 + d3;
+            if total <= threshold {
+                let band = cascade.expose(total as u32);
+                results.push(BandedHit {
+                    index: self.original_id(idx) as usize,
+                    distance: total,
+                    band,
+                });
+            }
+        }
+
         results.sort_unstable_by_key(|h| h.distance);
         results.truncate(k);
         results
@@ -327,6 +401,54 @@ mod tests {
         let brute_dists: Vec<u64> = brute.iter().map(|r| r.distance).collect();
         let cascade_dists: Vec<u64> = cascade.iter().map(|r| r.distance).collect();
         assert_eq!(brute_dists, cascade_dists);
+    }
+
+    #[test]
+    fn test_cascade_query_banded() {
+        let n = 3;
+        let mut db = vec![0u8; n * FINGERPRINT_BYTES];
+        db[1 * FINGERPRINT_BYTES] = 0xFF; // distance 8
+        db[2 * FINGERPRINT_BYTES] = 0xFF;
+        db[2 * FINGERPRINT_BYTES + 1] = 0xFF; // distance 16
+
+        let packed = PackedDatabase::pack(&db, FINGERPRINT_BYTES);
+        let query = vec![0u8; FINGERPRINT_BYTES];
+        // Threshold 1000 → s1_threshold ~93, s12_threshold ~325
+        let cascade = Cascade::from_threshold(1000, FINGERPRINT_BYTES);
+
+        let results = packed.cascade_query_banded(&query, &cascade, 10);
+
+        // All 3 candidates should survive
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].index, 0);
+        assert_eq!(results[0].distance, 0);
+        assert!(matches!(results[0].band, Band::Foveal));
+
+        assert_eq!(results[1].index, 1);
+        assert_eq!(results[1].distance, 8);
+        assert!(matches!(results[1].band, Band::Foveal)); // 8 < 1000/4 = 250
+    }
+
+    #[test]
+    fn test_banded_vs_brute_force_no_false_negatives() {
+        let n = 50;
+        let db: Vec<u8> = (0..n * FINGERPRINT_BYTES).map(|i| (i * 7 + 13) as u8).collect();
+        let packed = PackedDatabase::pack(&db, FINGERPRINT_BYTES);
+        let query: Vec<u8> = (0..FINGERPRINT_BYTES).map(|i| (i * 3) as u8).collect();
+
+        let cascade = Cascade::from_threshold(u64::MAX / 2, FINGERPRINT_BYTES);
+        let brute = packed.brute_force_query(&query, n);
+        let banded = packed.cascade_query_banded(&query, &cascade, n);
+
+        // Banded should find at least as many as brute force (with generous threshold)
+        let brute_indices: std::collections::HashSet<usize> =
+            brute.iter().map(|h| h.index).collect();
+        let banded_indices: std::collections::HashSet<usize> =
+            banded.iter().map(|h| h.index).collect();
+        assert!(
+            brute_indices.is_subset(&banded_indices),
+            "banded cascade should find all brute force hits"
+        );
     }
 
     #[test]

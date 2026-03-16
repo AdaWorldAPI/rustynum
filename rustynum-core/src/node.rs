@@ -170,6 +170,20 @@ impl Node {
         }
     }
 
+    /// All 7 non-null SPO projections at once.
+    /// Returns [S__, _P_, __O, SP_, S_O, _PO, SPO] distances.
+    pub fn project_all(&mut self, other: &mut Node) -> [Distance; 7] {
+        [
+            self.distance(other, S__),
+            self.distance(other, _P_),
+            self.distance(other, __O),
+            self.distance(other, SP_),
+            self.distance(other, S_O),
+            self.distance(other, _PO),
+            self.distance(other, SPO),
+        ]
+    }
+
     /// Combined truth across masked planes.
     pub fn truth(&mut self, mask: Mask) -> Truth {
         let mut total_freq = 0u64;
@@ -284,5 +298,61 @@ mod tests {
         assert_eq!(a.s.acc(), b.s.acc());
         assert_eq!(a.p.acc(), b.p.acc());
         assert_eq!(a.o.acc(), b.o.acc());
+    }
+
+    #[test]
+    fn project_all_returns_seven() {
+        let mut a = Node::random(42);
+        let mut b = Node::random(43);
+        let projections = a.project_all(&mut b);
+        assert_eq!(projections.len(), 7);
+        // All should be Measured for random nodes with encounters
+        for (i, d) in projections.iter().enumerate() {
+            assert!(
+                matches!(d, Distance::Measured { .. }),
+                "projection {i} should be Measured"
+            );
+        }
+    }
+
+    #[test]
+    fn project_all_order_matches_masks() {
+        let mut a = Node::random(100);
+        let mut b = Node::random(101);
+        let projections = a.project_all(&mut b);
+
+        // Re-compute individually to verify order
+        let mut a2 = Node::random(100);
+        let mut b2 = Node::random(101);
+        let masks = [S__, _P_, __O, SP_, S_O, _PO, SPO];
+        for (i, mask) in masks.iter().enumerate() {
+            let d = a2.distance(&mut b2, *mask);
+            match (projections[i], d) {
+                (
+                    Distance::Measured { disagreement: d1, overlap: o1, penalty: p1 },
+                    Distance::Measured { disagreement: d2, overlap: o2, penalty: p2 },
+                ) => {
+                    assert_eq!(d1, d2, "disagreement mismatch at projection {i}");
+                    assert_eq!(o1, o2, "overlap mismatch at projection {i}");
+                    assert_eq!(p1, p2, "penalty mismatch at projection {i}");
+                }
+                _ => panic!("both should be Measured at projection {i}"),
+            }
+        }
+    }
+
+    #[test]
+    fn project_all_self_zero_distance() {
+        let mut a = Node::random(77);
+        let mut a2 = Node::random(77);
+        let projections = a.project_all(&mut a2);
+        for (i, d) in projections.iter().enumerate() {
+            match d {
+                Distance::Measured { disagreement, .. } => {
+                    assert_eq!(*disagreement, 0, "self-distance should be 0 at projection {i}");
+                }
+                _ => panic!("expected Measured at projection {i}"),
+            }
+        }
     }
 }

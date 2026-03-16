@@ -912,6 +912,68 @@ pub fn bundle_qualia(items: &[&PackedQualia]) -> PackedQualia {
     compress_to_qualia(&acc)
 }
 
+// ---------------------------------------------------------------------------
+// BF16 truth assembly from 7 SPO projection bands
+// ---------------------------------------------------------------------------
+
+/// Pack 7 band classifications + finest distance + causality into BF16.
+///
+/// Layout (16 bits):
+/// - sign (bit 15) = causality direction (0=Causing, 1=Experiencing)
+/// - exponent (bits 14-8) = 7 bits from 7 projection bands (Foveal/Near → 1, else → 0)
+/// - mantissa (bits 7-1) = 7 bits of finest Hamming distance (normalized to 0..127)
+/// - bit 0 = reserved (0)
+///
+/// The exponent encodes which projections are "close" (Foveal or Near),
+/// giving a 7-bit fingerprint of the relationship shape across S/P/O masks.
+/// The mantissa captures the finest-grained distance for ranking within a band.
+pub fn bf16_from_projections(
+    bands: &[crate::hdr::Band; 7],
+    finest_distance: u32,
+    finest_max: u32,
+    direction: crate::causality::CausalityDirection,
+) -> u16 {
+    let sign: u16 = match direction {
+        crate::causality::CausalityDirection::Causing => 0,
+        crate::causality::CausalityDirection::Experiencing => 1,
+    };
+
+    let mut exponent: u16 = 0;
+    for (i, band) in bands.iter().enumerate() {
+        match band {
+            crate::hdr::Band::Foveal | crate::hdr::Band::Near => {
+                exponent |= 1 << i;
+            }
+            _ => {}
+        }
+    }
+
+    // Normalize finest distance to 7 bits (0..127)
+    let mantissa: u16 = if finest_max > 0 {
+        ((finest_distance as u64 * 127) / finest_max as u64).min(127) as u16
+    } else {
+        0
+    };
+
+    (sign << 15) | ((exponent & 0x7F) << 8) | ((mantissa & 0x7F) << 1)
+}
+
+/// Unpack a BF16 truth value assembled by [`bf16_from_projections`].
+///
+/// Returns (direction, exponent_bits, mantissa_7bit).
+pub fn bf16_unpack_projections(
+    packed: u16,
+) -> (crate::causality::CausalityDirection, u8, u8) {
+    let direction = if packed & 0x8000 != 0 {
+        crate::causality::CausalityDirection::Experiencing
+    } else {
+        crate::causality::CausalityDirection::Causing
+    };
+    let exponent = ((packed >> 8) & 0x7F) as u8;
+    let mantissa = ((packed >> 1) & 0x7F) as u8;
+    (direction, exponent, mantissa)
+}
+
 #[cfg(test)]
 mod qualia_tests {
     use super::*;
@@ -1370,5 +1432,79 @@ mod tests {
             "Percentages should sum to ~1.0, got {}",
             total
         );
+    }
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use crate::causality::CausalityDirection;
+    use crate::hdr::Band;
+
+    #[test]
+    fn bf16_from_projections_all_foveal_causing() {
+        let bands = [Band::Foveal; 7];
+        let packed = bf16_from_projections(&bands, 0, 1000, CausalityDirection::Causing);
+        let (dir, exp, man) = bf16_unpack_projections(packed);
+        assert_eq!(dir, CausalityDirection::Causing);
+        assert_eq!(exp, 0x7F); // all 7 bits set
+        assert_eq!(man, 0); // distance = 0
+    }
+
+    #[test]
+    fn bf16_from_projections_all_reject_experiencing() {
+        let bands = [Band::Reject; 7];
+        let packed = bf16_from_projections(&bands, 500, 1000, CausalityDirection::Experiencing);
+        let (dir, exp, man) = bf16_unpack_projections(packed);
+        assert_eq!(dir, CausalityDirection::Experiencing);
+        assert_eq!(exp, 0); // no close projections
+        // mantissa: 500/1000 * 127 = 63
+        assert_eq!(man, 63);
+    }
+
+    #[test]
+    fn bf16_from_projections_mixed_bands() {
+        let bands = [
+            Band::Foveal, // bit 0
+            Band::Near,   // bit 1
+            Band::Good,   // bit 2 = 0
+            Band::Weak,   // bit 3 = 0
+            Band::Foveal, // bit 4
+            Band::Reject, // bit 5 = 0
+            Band::Near,   // bit 6
+        ];
+        let packed = bf16_from_projections(&bands, 100, 1000, CausalityDirection::Causing);
+        let (dir, exp, man) = bf16_unpack_projections(packed);
+        assert_eq!(dir, CausalityDirection::Causing);
+        // bits 0,1,4,6 set = 0b1010011 = 0x53
+        assert_eq!(exp, 0b1010011);
+        // mantissa: 100/1000 * 127 = 12
+        assert_eq!(man, 12);
+    }
+
+    #[test]
+    fn bf16_from_projections_roundtrip_sign() {
+        let bands = [Band::Good; 7];
+        for dir in [CausalityDirection::Causing, CausalityDirection::Experiencing] {
+            let packed = bf16_from_projections(&bands, 50, 100, dir);
+            let (unpacked_dir, _, _) = bf16_unpack_projections(packed);
+            assert_eq!(unpacked_dir, dir);
+        }
+    }
+
+    #[test]
+    fn bf16_from_projections_max_distance() {
+        let bands = [Band::Foveal; 7];
+        let packed = bf16_from_projections(&bands, 1000, 1000, CausalityDirection::Causing);
+        let (_, _, man) = bf16_unpack_projections(packed);
+        assert_eq!(man, 127); // saturates at 127
+    }
+
+    #[test]
+    fn bf16_from_projections_zero_max() {
+        let bands = [Band::Foveal; 7];
+        let packed = bf16_from_projections(&bands, 500, 0, CausalityDirection::Causing);
+        let (_, _, man) = bf16_unpack_projections(packed);
+        assert_eq!(man, 0); // zero max → mantissa 0
     }
 }
