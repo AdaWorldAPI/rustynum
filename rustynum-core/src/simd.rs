@@ -157,10 +157,67 @@ dispatch!(mul_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64>
 dispatch!(div_f64_vec(a: &[f64], b: &[f64]) -> Vec<f64>
     { crate::simd_avx512::div_f64_vec, crate::scalar_fns::div_f64_vec, crate::scalar_fns::div_f64_vec });
 
-// ─── Hamming / bitops ──────────────────────────────────────────────
+// ─── GEMM ───────────────────────────────────────────────────────────
 
-dispatch!(hamming_distance(a: &[u8], b: &[u8]) -> u64);
-dispatch!(popcount(a: &[u8]) -> u64);
+// Goto BLAS style blocked SGEMM: C = alpha * A * B + C
+// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
+// C is m x n (stride ldc). Beta already applied by caller.
+// On AVX-512 CPUs, uses a packed 6x16 microkernel with FMA.
+// Falls back to scalar on other architectures.
+dispatch!(sgemm_blocked(m: usize, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, b: &[f32], ldb: usize, c: &mut [f32], ldc: usize)
+    { crate::simd_avx512::sgemm_blocked, crate::simd_avx2::sgemm_blocked, crate::scalar_fns::sgemm_blocked });
+
+// Goto BLAS style blocked DGEMM: C = alpha * A * B + C
+// Row-major layout. A is m x k (stride lda), B is k x n (stride ldb),
+// C is m x n (stride ldc). Beta already applied by caller.
+// On AVX-512 CPUs, uses a packed 6x8 microkernel with FMA.
+// Falls back to scalar on other architectures.
+dispatch!(dgemm_blocked(m: usize, n: usize, k: usize, alpha: f64, a: &[f64], lda: usize, b: &[f64], ldb: usize, c: &mut [f64], ldc: usize)
+    { crate::simd_avx512::dgemm_blocked, crate::simd_avx2::dgemm_blocked, crate::scalar_fns::dgemm_blocked });
+
+// ─── Hamming / bitops ──────────────────────────────────────────────
+//
+// 4-tier dispatch: VPOPCNTDQ → AVX-512 BW (vpshufb) → AVX2 → scalar.
+// The standard dispatch! macro only handles 3 tiers, so hamming uses
+// hand-written dispatch for the intermediate AVX-512 BW tier.
+
+/// Hamming distance with 4-tier SIMD dispatch.
+///
+/// Dispatches to: VPOPCNTDQ → AVX-512 BW (vpshufb 64B/iter) → AVX2 → scalar.
+pub fn hamming_distance(a: &[u8], b: &[u8]) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512bw") {
+            // SAFETY: checked VPOPCNTDQ + BW
+            return unsafe { crate::simd_avx512::hamming_distance(a, b) };
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            // SAFETY: checked AVX-512 BW — uses 512-bit vpshufb (64B/iter)
+            return unsafe { crate::simd_avx512::hamming_distance_bw(a, b) };
+        }
+        if is_x86_feature_detected!("avx2") {
+            return crate::simd_avx2::hamming_distance(a, b);
+        }
+    }
+    crate::scalar_fns::hamming_distance(a, b)
+}
+
+/// Population count with 3-tier dispatch: VPOPCNTDQ → AVX-512 BW → scalar.
+pub fn popcount(a: &[u8]) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") {
+            // SAFETY: checked VPOPCNTDQ
+            return unsafe { crate::simd_avx512::popcount(a) };
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            // SAFETY: checked AVX-512 BW
+            return unsafe { crate::simd_avx512::popcount_bw(a) };
+        }
+    }
+    crate::scalar_fns::popcount(a)
+}
+
 dispatch!(dot_i8(a: &[u8], b: &[u8]) -> i64);
 
 // ─── Functions that return fn pointers (for hot-loop callers) ──────
@@ -169,11 +226,19 @@ dispatch!(dot_i8(a: &[u8], b: &[u8]) -> i64);
 // call `f` millions of times. The fn pointer IS the dispatch.
 
 pub fn select_hamming_fn() -> fn(&[u8], &[u8]) -> u64 {
-    match tier() {
-        Tier::Avx512 => |a, b| unsafe { crate::simd_avx512::hamming_distance(a, b) },
-        Tier::Avx2   => crate::simd_avx2::hamming_distance,
-        Tier::Scalar => crate::scalar_fns::hamming_distance,
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512bw") {
+            return |a, b| unsafe { crate::simd_avx512::hamming_distance(a, b) };
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            return |a, b| unsafe { crate::simd_avx512::hamming_distance_bw(a, b) };
+        }
+        if is_x86_feature_detected!("avx2") {
+            return crate::simd_avx2::hamming_distance;
+        }
     }
+    crate::scalar_fns::hamming_distance
 }
 
 pub fn select_dot_i8_fn() -> fn(&[u8], &[u8]) -> i64 {
@@ -186,7 +251,22 @@ pub fn select_dot_i8_fn() -> fn(&[u8], &[u8]) -> i64 {
 
 // ─── Batch / top-k ─────────────────────────────────────────────────
 
-dispatch!(hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64>);
+/// Batch hamming with 4-tier dispatch.
+pub fn hamming_batch(query: &[u8], database: &[u8], num_rows: usize, row_bytes: usize) -> Vec<u64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512bw") {
+            return unsafe { crate::simd_avx512::hamming_batch(query, database, num_rows, row_bytes) };
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            return unsafe { crate::simd_avx512::hamming_batch_bw(query, database, num_rows, row_bytes) };
+        }
+    }
+    match tier() {
+        Tier::Avx512 | Tier::Avx2 => crate::simd_avx2::hamming_batch(query, database, num_rows, row_bytes),
+        Tier::Scalar => crate::scalar_fns::hamming_batch(query, database, num_rows, row_bytes),
+    }
+}
 
 /// Top-k nearest neighbors by Hamming distance.
 ///
@@ -199,11 +279,17 @@ pub fn hamming_top_k(
     row_bytes: usize,
     k: usize,
 ) -> (Vec<usize>, Vec<u64>) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512vpopcntdq") && is_x86_feature_detected!("avx512bw") {
+            return unsafe { crate::simd_avx512::hamming_top_k(query, database, num_rows, row_bytes, k) };
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            return unsafe { crate::simd_avx512::hamming_top_k_bw(query, database, num_rows, row_bytes, k) };
+        }
+    }
     match tier() {
-        Tier::Avx512 => unsafe {
-            crate::simd_avx512::hamming_top_k(query, database, num_rows, row_bytes, k)
-        },
-        Tier::Avx2 => crate::simd_avx2::hamming_top_k(query, database, num_rows, row_bytes, k),
+        Tier::Avx512 | Tier::Avx2 => crate::simd_avx2::hamming_top_k(query, database, num_rows, row_bytes, k),
         Tier::Scalar => crate::scalar_fns::hamming_top_k(query, database, num_rows, row_bytes, k),
     }
 }
@@ -828,5 +914,177 @@ mod tests {
             results[0].precise,
             results[1].precise
         );
+    }
+
+    // ---- GEMM tests ----
+
+    #[test]
+    fn test_sgemm_blocked_identity() {
+        // A = 4x4 identity, B = 4x4 with known values, C should equal alpha * B
+        let m = 4;
+        let n = 4;
+        let k = 4;
+        let alpha = 1.0f32;
+        let a = vec![
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let b = vec![
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0,
+        ];
+        let mut c = vec![0.0f32; m * n];
+        sgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+        for i in 0..m * n {
+            assert!(
+                (c[i] - b[i]).abs() < 1e-4,
+                "sgemm identity mismatch at {}: {} vs {}",
+                i, c[i], b[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_sgemm_blocked_alpha() {
+        let m = 2;
+        let n = 2;
+        let k = 2;
+        let alpha = 2.5f32;
+        let a = vec![1.0, 2.0, 3.0, 4.0];
+        let b = vec![5.0, 6.0, 7.0, 8.0];
+        let mut c = vec![0.0f32; 4];
+        sgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+        // C = alpha * A * B
+        // A*B = [[1*5+2*7, 1*6+2*8], [3*5+4*7, 3*6+4*8]] = [[19, 22], [43, 50]]
+        // alpha * A*B = [[47.5, 55.0], [107.5, 125.0]]
+        let expected = vec![47.5, 55.0, 107.5, 125.0];
+        for i in 0..4 {
+            assert!(
+                (c[i] - expected[i]).abs() < 1e-3,
+                "sgemm alpha mismatch at {}: {} vs {}",
+                i, c[i], expected[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_sgemm_blocked_non_square() {
+        // Non-square: 3x5 = 3x4 * 4x5
+        let m = 3;
+        let n = 5;
+        let k = 4;
+        let alpha = 1.0f32;
+        let a: Vec<f32> = (0..m * k).map(|i| (i + 1) as f32).collect();
+        let b: Vec<f32> = (0..k * n).map(|i| ((i + 1) as f32) * 0.1).collect();
+        let mut c = vec![0.0f32; m * n];
+        sgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+
+        // Verify against naive
+        let mut expected = vec![0.0f32; m * n];
+        for i in 0..m {
+            for j in 0..n {
+                for p in 0..k {
+                    expected[i * n + j] += a[i * k + p] * b[p * n + j];
+                }
+            }
+        }
+        for i in 0..m * n {
+            assert!(
+                (c[i] - expected[i]).abs() < 1e-3,
+                "sgemm non-square mismatch at {}: {} vs {}",
+                i, c[i], expected[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_sgemm_blocked_large() {
+        // Test with dimensions that exercise blocking (larger than MR/NR)
+        let m = 50;
+        let n = 40;
+        let k = 30;
+        let alpha = 1.0f32;
+        let a: Vec<f32> = (0..m * k).map(|i| ((i % 7) as f32 - 3.0) * 0.5).collect();
+        let b: Vec<f32> = (0..k * n).map(|i| ((i % 11) as f32 - 5.0) * 0.3).collect();
+        let mut c = vec![0.0f32; m * n];
+        sgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+
+        // Verify against naive
+        let mut expected = vec![0.0f32; m * n];
+        for i in 0..m {
+            for j in 0..n {
+                for p in 0..k {
+                    expected[i * n + j] += a[i * k + p] * b[p * n + j];
+                }
+            }
+        }
+        for i in 0..m * n {
+            assert!(
+                (c[i] - expected[i]).abs() < 1e-1,
+                "sgemm large mismatch at {}: {} vs {}",
+                i, c[i], expected[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_dgemm_blocked_identity() {
+        let m = 4;
+        let n = 4;
+        let k = 4;
+        let alpha = 1.0f64;
+        let a = vec![
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let b = vec![
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0,
+        ];
+        let mut c = vec![0.0f64; m * n];
+        dgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+        for i in 0..m * n {
+            assert!(
+                (c[i] - b[i]).abs() < 1e-10,
+                "dgemm identity mismatch at {}: {} vs {}",
+                i, c[i], b[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_dgemm_blocked_large() {
+        let m = 50;
+        let n = 40;
+        let k = 30;
+        let alpha = 1.0f64;
+        let a: Vec<f64> = (0..m * k).map(|i| ((i % 7) as f64 - 3.0) * 0.5).collect();
+        let b: Vec<f64> = (0..k * n).map(|i| ((i % 11) as f64 - 5.0) * 0.3).collect();
+        let mut c = vec![0.0f64; m * n];
+        dgemm_blocked(m, n, k, alpha, &a, k, &b, n, &mut c, n);
+
+        let mut expected = vec![0.0f64; m * n];
+        for i in 0..m {
+            for j in 0..n {
+                for p in 0..k {
+                    expected[i * n + j] += a[i * k + p] * b[p * n + j];
+                }
+            }
+        }
+        for i in 0..m * n {
+            assert!(
+                (c[i] - expected[i]).abs() < 1e-6,
+                "dgemm large mismatch at {}: {} vs {}",
+                i, c[i], expected[i]
+            );
+        }
     }
 }

@@ -469,6 +469,34 @@ pub fn dot_i8(a: &[u8], b: &[u8]) -> i64 {
     }
 }
 
+// ============================================================================
+// GEMM — AVX2 fallback (delegates to scalar for now)
+// ============================================================================
+
+/// AVX2 blocked SGEMM fallback — delegates to scalar implementation.
+///
+/// A dedicated AVX2 microkernel (MR=6, NR=8 with ymm registers) could be
+/// added later. For now, the scalar path with LLVM auto-vectorization is
+/// sufficient as the AVX2 fallback tier.
+pub fn sgemm_blocked(
+    m: usize, n: usize, k: usize,
+    alpha: f32, a: &[f32], lda: usize,
+    b: &[f32], ldb: usize,
+    c: &mut [f32], ldc: usize,
+) {
+    crate::scalar_fns::sgemm_blocked(m, n, k, alpha, a, lda, b, ldb, c, ldc);
+}
+
+/// AVX2 blocked DGEMM fallback — delegates to scalar implementation.
+pub fn dgemm_blocked(
+    m: usize, n: usize, k: usize,
+    alpha: f64, a: &[f64], lda: usize,
+    b: &[f64], ldb: usize,
+    c: &mut [f64], ldc: usize,
+) {
+    crate::scalar_fns::dgemm_blocked(m, n, k, alpha, a, lda, b, ldb, c, ldc);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
