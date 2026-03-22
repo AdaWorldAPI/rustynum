@@ -61,7 +61,9 @@ enum CpuidReg {
 /// Check a specific CPUID feature bit (for AMX detection which lacks stable Rust macros).
 #[cfg(target_arch = "x86_64")]
 fn detect_cpuid_feature(leaf: u32, sub_leaf: u32, reg: CpuidReg, bit: u32) -> bool {
-    let result = core::arch::x86_64::__cpuid_count(leaf, sub_leaf);
+    // Safety: __cpuid_count is safe to call on x86_64 with valid leaf/sub_leaf values.
+    // We only call this behind #[cfg(target_arch = "x86_64")].
+    let result = unsafe { core::arch::x86_64::__cpuid_count(leaf, sub_leaf) };
     let val = match reg {
         CpuidReg::Eax => result.eax,
         CpuidReg::Ebx => result.ebx,
