@@ -4,6 +4,9 @@
 //! This is NOT a separate code path — kernel code using these types
 //! compiles identically to kernel code using the AVX-512 or NEON backends.
 
+// Index-based loops mirror the intrinsic backends for API consistency.
+#![allow(clippy::needless_range_loop)]
+
 use core::fmt;
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
