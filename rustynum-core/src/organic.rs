@@ -848,11 +848,11 @@ mod tests {
         let ev = fingerprint_to_evidence(&fp);
         assert_eq!(ev.len(), 64);
         // First 8 are +1, rest are -1
-        for i in 0..8 {
-            assert_eq!(ev[i], 1, "bit {i} should be +1");
+        for (i, &v) in ev[..8].iter().enumerate() {
+            assert_eq!(v, 1, "bit {i} should be +1");
         }
-        for i in 8..64 {
-            assert_eq!(ev[i], -1, "bit {i} should be -1");
+        for (i, &v) in ev[8..].iter().enumerate() {
+            assert_eq!(v, -1, "bit {} should be -1", i + 8);
         }
     }
 

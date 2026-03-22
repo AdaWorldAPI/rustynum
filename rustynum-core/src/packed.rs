@@ -330,7 +330,7 @@ mod tests {
         let n = 5;
         let mut db = vec![0u8; n * FINGERPRINT_BYTES];
         // Candidate 1: first byte 0xFF → distance 8
-        db[1 * FINGERPRINT_BYTES] = 0xFF;
+        db[FINGERPRINT_BYTES] = 0xFF;
         // Candidate 2: first 2 bytes 0xFF → distance 16
         db[2 * FINGERPRINT_BYTES] = 0xFF;
         db[2 * FINGERPRINT_BYTES + 1] = 0xFF;
@@ -361,7 +361,7 @@ mod tests {
     fn test_cascade_query() {
         let n = 5;
         let mut db = vec![0u8; n * FINGERPRINT_BYTES];
-        db[1 * FINGERPRINT_BYTES] = 0xFF;
+        db[FINGERPRINT_BYTES] = 0xFF;
         db[2 * FINGERPRINT_BYTES] = 0xFF;
         db[2 * FINGERPRINT_BYTES + 1] = 0xFF;
         db[3 * FINGERPRINT_BYTES] = 0xFF;
@@ -407,7 +407,7 @@ mod tests {
     fn test_cascade_query_banded() {
         let n = 3;
         let mut db = vec![0u8; n * FINGERPRINT_BYTES];
-        db[1 * FINGERPRINT_BYTES] = 0xFF; // distance 8
+        db[FINGERPRINT_BYTES] = 0xFF; // distance 8
         db[2 * FINGERPRINT_BYTES] = 0xFF;
         db[2 * FINGERPRINT_BYTES + 1] = 0xFF; // distance 16
 
