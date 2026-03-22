@@ -52,6 +52,11 @@ pub mod simd_avx2;
 // simd: runtime dispatch — picks best ISA at runtime (AVX-512 → AVX2 → scalar)
 pub mod simd;
 
+// simd_types: unified wide types (F32x16, F64x8) that compile to optimal code
+// per target. The wrapper IS the dispatch boundary — kernel code uses F32x16
+// and gets AVX-512 / AVX2 / NEON / scalar depending on target_arch.
+pub mod simd_types;
+
 // Intel MKL FFI bindings (only compiled when --features mkl is enabled)
 #[cfg(feature = "mkl")]
 pub mod mkl_ffi;
