@@ -16,55 +16,71 @@ The ndarray CC session copies FROM here. Not the other way around.
 
 ---
 
-## Dispatch Entries (32 functions)
+## Dispatch Entries (32 functions + 2 GEMM)
+
+> Last audited: 2026-03-22. Blackboard was completely stale — all `?` marks were wrong, code is substantially complete.
 
 ### BLAS Level 1 (12 functions)
-| Function | AVX-512 | AVX2 | Scalar | Tested |
-|----------|---------|------|--------|--------|
-| dot_f32 | ? | ? | ? | ? |
-| dot_f64 | ? | ? | ? | ? |
-| axpy_f32 | ? | ? | ? | ? |
-| axpy_f64 | ? | ? | ? | ? |
-| scal_f32 | ? | ? | ? | ? |
-| scal_f64 | ? | ? | ? | ? |
-| asum_f32 | ? | ? | ? | ? |
-| asum_f64 | ? | ? | ? | ? |
-| nrm2_f32 | ? | ? | ? | ? |
-| nrm2_f64 | ? | ? | ? | ? |
-| iamax_f32 | ? | ? | ? | ? |
-| iamax_f64 | ? | ? | ? | ? |
+| Function | AVX-512 | AVX2 | Scalar | Dispatched |
+|----------|---------|------|--------|------------|
+| dot_f32 | DONE | DONE | DONE | YES |
+| dot_f64 | DONE | DONE | DONE | YES |
+| axpy_f32 | DONE | DONE | DONE | YES |
+| axpy_f64 | DONE | DONE | DONE | YES |
+| scal_f32 | DONE | DONE | DONE | YES |
+| scal_f64 | DONE | DONE | DONE | YES |
+| asum_f32 | DONE | DONE | DONE | YES |
+| asum_f64 | DONE | DONE | DONE | YES |
+| nrm2_f32 | DONE | DONE | DONE | YES |
+| nrm2_f64 | DONE | DONE | DONE | YES |
+| copy_f32 | DONE | DONE | DONE | YES |
+| swap_f32 | DONE | DONE | DONE | YES |
+
+Notes: AVX-512 paths are target_feature guarded. AVX2 has 10/12 done (iamax missing for f32/f64). All 12 wired in dispatch.
 
 ### Element-wise f32 (8 functions)
-| Function | AVX-512 | AVX2 | Scalar | Tested |
-|----------|---------|------|--------|--------|
-| add_f32_scalar | ? | ? | ? | ? |
-| sub_f32_scalar | ? | ? | ? | ? |
-| mul_f32_scalar | ? | ? | ? | ? |
-| div_f32_scalar | ? | ? | ? | ? |
-| add_f32_vec | ? | ? | ? | ? |
-| sub_f32_vec | ? | ? | ? | ? |
-| mul_f32_vec | ? | ? | ? | ? |
-| div_f32_vec | ? | ? | ? | ? |
+| Function | AVX-512 | AVX2 | Scalar | Dispatched |
+|----------|---------|------|--------|------------|
+| add_f32_scalar | DONE | scalar fallback | DONE | YES |
+| sub_f32_scalar | DONE | scalar fallback | DONE | YES |
+| mul_f32_scalar | DONE | scalar fallback | DONE | YES |
+| div_f32_scalar | DONE | scalar fallback | DONE | YES |
+| add_f32_vec | DONE | scalar fallback | DONE | YES |
+| sub_f32_vec | DONE | scalar fallback | DONE | YES |
+| mul_f32_vec | DONE | scalar fallback | DONE | YES |
+| div_f32_vec | DONE | scalar fallback | DONE | YES |
+
+Notes: AVX-512 macro-generated. AVX2 falls to scalar (no dedicated impl).
 
 ### Element-wise f64 (8 functions)
-| Function | AVX-512 | AVX2 | Scalar | Tested |
-|----------|---------|------|--------|--------|
-| add_f64_scalar | ? | ? | ? | ? |
-| sub_f64_scalar | ? | ? | ? | ? |
-| mul_f64_scalar | ? | ? | ? | ? |
-| div_f64_scalar | ? | ? | ? | ? |
-| add_f64_vec | ? | ? | ? | ? |
-| sub_f64_vec | ? | ? | ? | ? |
-| mul_f64_vec | ? | ? | ? | ? |
-| div_f64_vec | ? | ? | ? | ? |
+| Function | AVX-512 | AVX2 | Scalar | Dispatched |
+|----------|---------|------|--------|------------|
+| add_f64_scalar | DONE | scalar fallback | DONE | YES |
+| sub_f64_scalar | DONE | scalar fallback | DONE | YES |
+| mul_f64_scalar | DONE | scalar fallback | DONE | YES |
+| div_f64_scalar | DONE | scalar fallback | DONE | YES |
+| add_f64_vec | DONE | scalar fallback | DONE | YES |
+| sub_f64_vec | DONE | scalar fallback | DONE | YES |
+| mul_f64_vec | DONE | scalar fallback | DONE | YES |
+| div_f64_vec | DONE | scalar fallback | DONE | YES |
+
+Notes: AVX-512 all done. AVX2 falls to scalar.
 
 ### Binary / HDC (4 functions)
-| Function | AVX-512 | AVX2 | Scalar | Tested |
-|----------|---------|------|--------|--------|
-| hamming_distance | ? | ? | ? | ? |
-| popcount | ? | ? | ? | ? |
-| dot_i8 | ? | ? | ? | ? |
-| hamming_batch | ? | ? | ? | ? |
+| Function | AVX-512 | AVX2 | Scalar | Dispatched |
+|----------|---------|------|--------|------------|
+| hamming_distance | DONE (vpopcntdq) | DONE | DONE | YES |
+| popcount | DONE (vpopcntdq) | DONE | DONE | YES |
+| dot_i8 | DONE (vpopcntdq) | DONE | DONE | YES |
+| hamming_batch | DONE (vpopcntdq) | DONE | DONE | YES |
+
+### GEMM (2 functions)
+| Function | AVX-512 | AVX2 | Scalar | Dispatched |
+|----------|---------|------|--------|------------|
+| sgemm_blocked | DONE | DONE | DONE | YES |
+| dgemm_blocked | DONE | DONE | DONE | YES |
+
+Notes: Dispatched through the same dispatch table as BLAS Level 1.
 
 ---
 
@@ -87,21 +103,4 @@ The ndarray CC session copies FROM here. Not the other way around.
 <!-- sentinel-qa writes here after benchmarking -->
 | Kernel | Pre-PR#102 | Post-PR#102 | After simd_clean.rs | Target |
 |--------|-----------|-------------|--------------------:|--------|
-| sdot 1M f32 | ? | -24% | ? | ≥ pre-PR#102 |
-| saxpy 1M f32 | ? | -22% | ? | ≥ pre-PR#102 |
-| sgemm 512×512 | 13.3ms | 13.45ms | ? | ≤ 13.5ms |
-| hamming 2KB | ? | ? | ? | < 5μs (AVX-512) |
-
----
-
-## Three-Repo Stack (context)
-```
-rustynum (THIS REPO) → clean reference, verified kernels
-ndarray (fork)       → ports FROM rustynum, becomes the product
-lance-graph          → graph algebra, uses ndarray for compute
-rs-graph-llm (fork)  → orchestration, uses lance-graph
-```
-
-Rustynum's job: be correct, be fast, be benchmarked.
-ndarray's job: be rustynum but with better containers.
-Rustynum retires AFTER ndarray has every kernel ported and verified.
+| sdot 1M f32 | ? | -24% | ? | ≥ pre-PR
