@@ -1,7 +1,7 @@
 # CLAUDE.md — Rustynum
 
-> **Updated**: 2026-03-12
-> **CI Status**: Rust CI FAILING, Python bindings FAILING
+> **Updated**: 2026-03-22
+> **CI Status**: BROKEN — see details below
 > **Branch**: main
 
 ---
@@ -15,8 +15,9 @@ organic plasticity, CLAM clustering, Arrow integration, DataFusion UDFs.
 
 ### 1. CI IS BROKEN
 
-Rust CI and Python bindings both failing as of 2026-03-03 (sha d46f0d20).
-Likely cause: PRs 91/92 deprecated panicking APIs → broke downstream callers.
+CI is BROKEN as of 2026-03-22.
+Root cause: missing `unsafe` block in `rustynum-core/src/compute.rs:64` (call to `__cpuid_count`).
+Rust CI and Python bindings both failing.
 **FIX CI BEFORE ADDING NEW CODE.**
 
 ### 2. THREE-TIER WORKSPACE
@@ -36,6 +37,8 @@ Frozen:           .archive-rustynum-v1, .archive-rustynum-v3, etc.
   → DO NOT MODIFY. Path dep resolution only.
 ```
 
+**Note (2026-03-22):** Some workspace crates mentioned in docs don't exist as directories: rustynum-cam, rustynum-accel, rustynum-carrier, rustynum-focus.
+
 ### 3. ladybug-rs DEPENDS ON THIS
 
 ladybug-rs has path deps on: `rustynum-rs`, `rustynum-core`, `rustynum-bnn`,
@@ -44,7 +47,7 @@ Breaking changes here break ladybug-rs. Check compatibility.
 
 ### 4. DEPRECATED API MIGRATION (PRs 91-92)
 
-28 panicking public functions deprecated, `try_*` versions added.
+The deprecated API migration is COMPLETE as of 2026-03-22: 34 deprecated + 38 try_* replacements.
 Old: `softmax()` (panics on bad input)
 New: `try_softmax()` (returns Result)
 Callers in ladybug-rs may not be updated yet.
