@@ -462,13 +462,8 @@ where
 {
 }
 
-// ---------------------------------------------------------------------------
-// Tests (commented out — sibling modules not yet compiled)
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
-    /*
     use super::*;
     use crate::nd::dimension::{Ix1, Ix2, Ix3, IxDyn};
     use crate::nd::storage::OwnedStorage;
@@ -643,5 +638,4 @@ mod tests {
         assert_eq!(a.shape(), &[2, 3, 4]);
         assert_eq!(a.len(), 24);
     }
-    */
 }

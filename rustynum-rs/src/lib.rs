@@ -59,6 +59,7 @@ impl std::fmt::Display for NumError {
 impl std::error::Error for NumError {}
 
 mod helpers;
+pub mod nd;
 pub mod num_array;
 pub mod simd_ops;
 

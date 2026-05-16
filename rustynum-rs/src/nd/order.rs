@@ -1,5 +1,3 @@
-/// Memory layout order and stride utilities for N-dimensional arrays.
-
 /// Memory layout order for an N-dimensional array.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Order {
